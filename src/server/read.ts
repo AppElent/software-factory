@@ -179,9 +179,14 @@ function readItems(store: Store): QueueItem[] {
 		};
 		const title = `#${pr.number} ${pr.title}`;
 		if (pr.group === "ready") {
-			items.push({ ...base, kind: "ready_pr", title, meta: "All gates passed · ready to merge", since: pr.updatedAt });
+			items.push({
+				...base,
+				kind: "ready_pr",
+				title,
+				meta: "All gates passed · ready to merge",
+				since: pr.updatedAt,
+			});
 		} else if (rebasing.has(`${pr.project}:${pr.number}`)) {
-			continue;
 		} else if (pr.group === "stale") {
 			items.push({ ...base, kind: "stale_pr", title, meta: "Stale · no activity", since: pr.updatedAt });
 		} else if (pr.group === "rebase") {
@@ -318,7 +323,8 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 	const { approvals } = store.settings();
 	const merged = store.workOrders("merged_at IS NOT NULL");
 	const regressed = (w: WorkOrder) =>
-		(store.db.prepare("SELECT regressed FROM work_orders WHERE id = ?").get(w.id) as { regressed: number }).regressed === 1;
+		(store.db.prepare("SELECT regressed FROM work_orders WHERE id = ?").get(w.id) as { regressed: number })
+			.regressed === 1;
 	const byType: WorkTypeHealth[] = WORK_TYPES.map((type: WorkType) => {
 		const runs = merged.filter((w) => w.type === type);
 		const first = runs.filter((w) => w.firstTry).length;
@@ -344,7 +350,9 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 		daily.push({
 			day: key,
 			shipped: list.length,
-			firstTryPct: list.length ? Math.round((list.filter((w) => w.firstTry).length / list.length) * 100) : null,
+			firstTryPct: list.length
+				? Math.round((list.filter((w) => w.firstTry).length / list.length) * 100)
+				: null,
 			medianToPrMinutes: medianToPr(store, list),
 			regressions: list.filter(regressed).length,
 		});
@@ -364,7 +372,9 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 }
 
 /** Marks shipped fixes whose error came back. Returns the work orders newly regressed. */
-export function findRegressions(store: Store): Array<{ id: number; type: WorkType; prNumber: number | null }> {
+export function findRegressions(
+	store: Store,
+): Array<{ id: number; type: WorkType; prNumber: number | null }> {
 	const out: Array<{ id: number; type: WorkType; prNumber: number | null }> = [];
 	for (const e of store.errors()) {
 		const fix = store.db
@@ -377,7 +387,9 @@ export function findRegressions(store: Store): Array<{ id: number; type: WorkTyp
 		if (!fix || !isRegression(e, { mergedAt: fix.merged_at })) continue;
 		if (fix.regressed) continue;
 		store.db
-			.prepare("UPDATE work_orders SET regressed = 1, state = CASE WHEN state = 'observing' THEN 'done' ELSE state END WHERE id = ?")
+			.prepare(
+				"UPDATE work_orders SET regressed = 1, state = CASE WHEN state = 'observing' THEN 'done' ELSE state END WHERE id = ?",
+			)
 			.run(fix.id);
 		store.addActivity(fix.id, "The error came back after this fix");
 		out.push({ id: fix.id, type: fix.type, prNumber: fix.pr_number });

@@ -193,7 +193,8 @@ export class Engine {
 			if (block) {
 				if (block === "limit") {
 					const waiting = open.filter((w) => w.stage === "Intake").length;
-					if (waiting) this.onEvent({ kind: "slots_full", agents: this.store.settings().agents.agentsAtOnce, waiting });
+					if (waiting)
+						this.onEvent({ kind: "slots_full", agents: this.store.settings().agents.agentsAtOnce, waiting });
 				}
 				return;
 			}
@@ -290,7 +291,8 @@ export class Engine {
 			return;
 		}
 		const output = JSON.stringify(state.recent.map(stripBlocks));
-		if (state.worktree && state.worktree !== wo.worktree) this.store.patchWorkOrder(wo.id, { worktree: state.worktree });
+		if (state.worktree && state.worktree !== wo.worktree)
+			this.store.patchWorkOrder(wo.id, { worktree: state.worktree });
 		if (JSON.stringify(wo.output) !== output) {
 			this.store.patchWorkOrder(wo.id, { output });
 			this.publish([`work-order:${wo.id}`]);
@@ -303,7 +305,9 @@ export class Engine {
 			return;
 		}
 		if (wo.state === "waiting_in_t3" && (state.status === "running" || state.status === "queued")) {
-			this.patch(wo.id, { state: wo.stage === "Plan" ? "planning" : wo.stage === "Verify" ? "retrying" : "building" });
+			this.patch(wo.id, {
+				state: wo.stage === "Plan" ? "planning" : wo.stage === "Verify" ? "retrying" : "building",
+			});
 			return;
 		}
 		if (state.status === "failed") {
@@ -321,7 +325,10 @@ export class Engine {
 		const question = QuestionShape.safeParse(parsed.question);
 		if (question.success) {
 			this.store.addActivity(wo.id, "Asked a question");
-			this.patch(wo.id, { state: "question", question: JSON.stringify(question.data satisfies AgentQuestion) });
+			this.patch(wo.id, {
+				state: "question",
+				question: JSON.stringify(question.data satisfies AgentQuestion),
+			});
 			return;
 		}
 		if (wo.stage === "Plan") {
@@ -333,7 +340,8 @@ export class Engine {
 		}
 		if (wo.stage === "Build") {
 			const project = this.store.project(wo.project);
-			const number = wo.prNumber ?? (project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch) : null);
+			const number =
+				wo.prNumber ?? (project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch) : null);
 			if (!number) {
 				const message = "The agent finished without opening a PR.";
 				this.store.addActivity(wo.id, message, parsed.text || null);
@@ -414,19 +422,34 @@ export class Engine {
 		const first = wo.retries === 0 && wo.firstTry;
 		this.store.addActivity(
 			wo.id,
-			allFourPassed(pr.gates) && first ? "All 4 gates passed on the first try" : noChecks ? "No gates set up" : "Gates passed",
+			allFourPassed(pr.gates) && first
+				? "All 4 gates passed on the first try"
+				: noChecks
+					? "No gates set up"
+					: "Gates passed",
 		);
-		this.patch(wo.id, { stage: "Review", state: "ready", stage_at: this.store.iso(), failure: null, failed_gate: null });
+		this.patch(wo.id, {
+			stage: "Review",
+			state: "ready",
+			stage_at: this.store.iso(),
+			failure: null,
+			failed_gate: null,
+		});
 		await this.review({ ...wo, gates: pr.gates, stage: "Review", state: "ready" });
 	}
 
 	private failedSha(id: number) {
-		return (this.store.db.prepare("SELECT failed_sha FROM work_orders WHERE id = ?").get(id) as { failed_sha: string | null })
-			.failed_sha;
+		return (
+			this.store.db.prepare("SELECT failed_sha FROM work_orders WHERE id = ?").get(id) as {
+				failed_sha: string | null;
+			}
+		).failed_sha;
 	}
 
 	private stateAt(id: number) {
-		const row = this.store.db.prepare("SELECT state_at, updated_at FROM work_orders WHERE id = ?").get(id) as {
+		const row = this.store.db
+			.prepare("SELECT state_at, updated_at FROM work_orders WHERE id = ?")
+			.get(id) as {
 			state_at: string | null;
 			updated_at: string;
 		};
@@ -438,7 +461,9 @@ export class Engine {
 		const project = this.store.project(wo.project);
 		const check = pr.checks.find((c) => c.bucket === "fail");
 		const log = project && check ? await failedLog(this.cli, project.repo, check.url) : null;
-		const text = log ?? (samePush ? "The agent's retry pushed no new commit." : `${check?.name ?? gate ?? "A gate"} failed.`);
+		const text =
+			log ??
+			(samePush ? "The agent's retry pushed no new commit." : `${check?.name ?? gate ?? "A gate"} failed.`);
 		const { retries } = this.store.settings().agents;
 		const line = this.store.line();
 		if (wo.retries < retries && !line.stopped && !wo.hold && wo.threadId && !samePush) {
@@ -488,7 +513,14 @@ export class Engine {
 			})
 		) {
 			const res = await mergePr(this.cli, project.repo, pr.number);
-			audit(this.store.db, "merge PR", `${project.repo}#${pr.number}`, "factory", res.reason || null, this.store.now());
+			audit(
+				this.store.db,
+				"merge PR",
+				`${project.repo}#${pr.number}`,
+				"factory",
+				res.reason || null,
+				this.store.now(),
+			);
 			if (res.ok) {
 				this.markMerged(wo, "Merged without you");
 				this.onEvent({ kind: "merged_alone", workOrder: wo, prTitle: pr.title });
@@ -555,7 +587,8 @@ export class Engine {
 	private need(id: number, states: WorkOrder["state"][]): WorkOrder {
 		const wo = this.store.workOrder(id);
 		if (!wo) throw new ActionError("That work order doesn't exist.", 404);
-		if (!states.includes(wo.state)) throw new ActionError("That work order has moved on. Reload to see where it is.");
+		if (!states.includes(wo.state))
+			throw new ActionError("That work order has moved on. Reload to see where it is.");
 		return wo;
 	}
 
@@ -674,7 +707,13 @@ export class Engine {
 		if (wo?.threadId) {
 			await this.sendOrThrow(wo.threadId, requestChangesPrompt(note));
 			this.store.addActivity(wo.id, "You asked for changes on the PR", note);
-			this.patch(wo.id, { stage: "Verify", state: "retrying", first_try: 0, failed_sha: pr.headSha, gates: JSON.stringify(noGates("running")) });
+			this.patch(wo.id, {
+				stage: "Verify",
+				state: "retrying",
+				first_try: 0,
+				failed_sha: pr.headSha,
+				gates: JSON.stringify(noGates("running")),
+			});
 			return { workOrderId: wo.id };
 		}
 		// A PR with no work order gets one, with the note as its request.
@@ -726,7 +765,8 @@ export class Engine {
 		const res = await closePr(this.cli, proj.repo, number);
 		if (res.code !== 0) throw new ActionError(res.stderr.trim() || "GitHub refused.", 502);
 		audit(this.store.db, "close PR", `${proj.repo}#${number}`, "you", null, this.store.now());
-		if (pr.workOrderId) await this.closeOut(pr.workOrderId, `PR #${number} closed by you`, { keepRemoteBranch: true });
+		if (pr.workOrderId)
+			await this.closeOut(pr.workOrderId, `PR #${number} closed by you`, { keepRemoteBranch: true });
 		this.store.db.prepare("DELETE FROM prs WHERE project = ? AND number = ?").run(project, number);
 		this.publish(["prs", "queue", "shell", "projects"]);
 	}
@@ -734,7 +774,14 @@ export class Engine {
 	setLine(stopped: boolean) {
 		const at = this.store.iso();
 		kvSet(this.store.db, "line", { stopped, stoppedAt: stopped ? at : null });
-		audit(this.store.db, stopped ? "stop the line" : "restart the line", "line", "you", null, this.store.now());
+		audit(
+			this.store.db,
+			stopped ? "stop the line" : "restart the line",
+			"line",
+			"you",
+			null,
+			this.store.now(),
+		);
 		if (!stopped) this.store.db.prepare("UPDATE work_orders SET held_by_line = 0").run();
 		this.publish(["line", "queue", "floor", "shell", "work-orders"]);
 		void this.tick();

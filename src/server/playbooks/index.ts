@@ -16,7 +16,11 @@ const PROTOCOL = `Software Factory protocol:
 - Follow the project's own AGENTS.md and standards.`;
 
 function context(wo: WorkOrder): string {
-	const parts = [`Work order WO-${wo.id}: ${wo.title}`, `Project: ${wo.projectName}`, `Work type: ${wo.type}`];
+	const parts = [
+		`Work order WO-${wo.id}: ${wo.title}`,
+		`Project: ${wo.projectName}`,
+		`Work type: ${wo.type}`,
+	];
 	const body = [parts.join("\n")];
 	if (wo.description && wo.description !== wo.title) body.push(`Request from the owner:\n${wo.description}`);
 	if (wo.source.data) body.push(delimit(wo.source.kind, wo.source.data));

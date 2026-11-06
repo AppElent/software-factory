@@ -1,13 +1,13 @@
-import type { ErrorItem, Project, ToolkitState, WorkType } from "../shared/types.ts";
 import { isRegression } from "../shared/rules.ts";
+import type { ErrorItem, Project, ToolkitState, WorkType } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import { GithubError, readRepos, readToolkit } from "./connectors/github.ts";
 import { readDetail, readIssues, readOrg, readProjects, SentryError } from "./connectors/sentry.ts";
 import { kvGet, kvSet } from "./db.ts";
-import type { Store } from "./store.ts";
-import { findRegressions } from "./read.ts";
 import type { Engine } from "./engine.ts";
+import { findRegressions } from "./read.ts";
+import type { Store } from "./store.ts";
 
 const GITHUB_MS = 60_000;
 const GITHUB_BUSY_MS = 20_000;
@@ -83,7 +83,11 @@ export class Poller {
 		let delay = busy ? GITHUB_BUSY_MS : GITHUB_MS;
 		try {
 			if (projects.length) {
-				const read = await readRepos(cli, projects.map((p) => p.repo), now.getTime());
+				const read = await readRepos(
+					cli,
+					projects.map((p) => p.repo),
+					now.getTime(),
+				);
 				for (const r of read.repos) {
 					const project = projects.find((p) => p.repo.toLowerCase() === r.repo.toLowerCase());
 					if (!project) continue;
@@ -124,7 +128,11 @@ export class Poller {
 		return delay;
 	}
 
-	private saveRepo(project: Project, r: Awaited<ReturnType<typeof readRepos>>["repos"][number], toolkit: ToolkitState) {
+	private saveRepo(
+		project: Project,
+		r: Awaited<ReturnType<typeof readRepos>>["repos"][number],
+		toolkit: ToolkitState,
+	) {
 		const { store } = this.d;
 		store.db
 			.prepare(
@@ -245,7 +253,8 @@ export class Poller {
 				triage: null,
 				workOrderId: null,
 			};
-			if (!regressed && prev) item.kind = (JSON.parse(prev.json) as ErrorItem).kind === "new" ? "new" : "ongoing";
+			if (!regressed && prev)
+				item.kind = (JSON.parse(prev.json) as ErrorItem).kind === "new" ? "new" : "ongoing";
 			insert.run(issue.id, p.slug, JSON.stringify(item), detail ? JSON.stringify(detail) : null);
 		}
 	}

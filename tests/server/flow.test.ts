@@ -2,14 +2,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { noGates } from "../../src/shared/rules.ts";
-import type { CheckRun, PullRequest, WorkOrder } from "../../src/shared/types.ts";
 import type { Cli } from "../../src/server/cli.ts";
-import { openDb } from "../../src/server/db.ts";
+import { kvSet, openDb } from "../../src/server/db.ts";
 import { ActionError, Engine, OBSERVE_MS } from "../../src/server/engine.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
 import { Store } from "../../src/server/store.ts";
-import { kvSet } from "../../src/server/db.ts";
+import { noGates } from "../../src/shared/rules.ts";
+import type { CheckRun, PullRequest, WorkOrder } from "../../src/shared/types.ts";
 
 type Calls = string[];
 
@@ -24,7 +23,14 @@ const cli: Cli = async (cmd, args) => {
 	const line = `${cmd} ${args.join(" ")}`;
 	calls.push(line);
 	for (const [k, v] of Object.entries(cliResult)) {
-		if (line.includes(k)) return { code: v.code, stdout: v.stdout ?? "", stderr: v.stderr ?? "", timedOut: false, missing: false };
+		if (line.includes(k))
+			return {
+				code: v.code,
+				stdout: v.stdout ?? "",
+				stderr: v.stderr ?? "",
+				timedOut: false,
+				missing: false,
+			};
 	}
 	return { code: 0, stdout: "", stderr: "", timedOut: false, missing: false };
 };
@@ -86,7 +92,14 @@ beforeEach(() => {
 	exec = new FakeExecutor();
 	calls = [];
 	cliResult = { "pr view": { code: 0, stdout: '{"state":"OPEN"}' } };
-	engine = new Engine({ store, cli, executor: exec, publish: () => {}, pollSoon: () => {}, git: async () => {} });
+	engine = new Engine({
+		store,
+		cli,
+		executor: exec,
+		publish: () => {},
+		pollSoon: () => {},
+		git: async () => {},
+	});
 	addProject();
 });
 
@@ -138,7 +151,10 @@ describe("a work order's path", () => {
 	it("treats an agent's question as waiting for you, and keeps going after the answer", async () => {
 		const id = start({ type: "Chore" });
 		await settle();
-		exec.finish(threadOf(id), '```factory-question\n{"question":"Which?","options":[{"label":"A"},{"label":"Stop","stop":true}]}\n```');
+		exec.finish(
+			threadOf(id),
+			'```factory-question\n{"question":"Which?","options":[{"label":"A"},{"label":"Stop","stop":true}]}\n```',
+		);
 		await settle();
 		expect(wo(id)).toMatchObject({ state: "question", question: { question: "Which?" } });
 		await engine.answer(id, "A", null);
@@ -171,7 +187,10 @@ describe("a work order's path", () => {
 		await settle();
 		exec.finish(threadOf(id), "All done!");
 		await settle();
-		expect(wo(id)).toMatchObject({ state: "run_failed", failure: "The agent finished without opening a PR." });
+		expect(wo(id)).toMatchObject({
+			state: "run_failed",
+			failure: "The agent finished without opening a PR.",
+		});
 	});
 });
 
@@ -219,7 +238,12 @@ describe("retries", () => {
 
 describe("limits", () => {
 	it("starts up to the limit, in order, and the rest wait", async () => {
-		kvSet(store.db, "settings:agents", { agentsAtOnce: 1, pauseOnReview: false, retries: 1, agent: "claude" });
+		kvSet(store.db, "settings:agents", {
+			agentsAtOnce: 1,
+			pauseOnReview: false,
+			retries: 1,
+			agent: "claude",
+		});
 		const a = start({ type: "Chore", title: "a" });
 		const b = start({ type: "Chore", title: "b" });
 		await settle();

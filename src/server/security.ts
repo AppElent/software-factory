@@ -31,7 +31,13 @@ export function guard(opts: { port: number; token: string; devOrigins?: string[]
 		if (!safe && c.req.header(SESSION_HEADER) !== opts.token) return c.text("Missing session", 403);
 		// Other sites can link to the page, but can't call the API.
 		const site = c.req.header("sec-fetch-site");
-		if (c.req.path.startsWith("/api/") && site && site !== "same-origin" && site !== "none" && !opts.devOrigins?.length)
+		if (
+			c.req.path.startsWith("/api/") &&
+			site &&
+			site !== "same-origin" &&
+			site !== "none" &&
+			!opts.devOrigins?.length
+		)
 			return c.text("Wrong site", 403);
 		await next();
 		c.header("Content-Security-Policy", CSP);

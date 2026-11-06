@@ -1,5 +1,5 @@
 {
-	"files": { "includes": ["**", "!designs/**", "!dist/**", "!tests/fixtures/**", "!.scratch/**"] },
+	"files": { "includes": ["**", "!designs", "!dist", "!tests/fixtures", "!.scratch"] },
 	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 110 },
 	"javascript": { "formatter": { "quoteStyle": "double" } },
 	"linter": { "enabled": true, "rules": { "recommended": true } },

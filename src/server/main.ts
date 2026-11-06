@@ -1,5 +1,5 @@
-import { serve } from "@hono/node-server";
 import { join } from "node:path";
+import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { Bus } from "./bus.ts";
 import { realCli } from "./cli.ts";

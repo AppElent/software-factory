@@ -8,11 +8,20 @@ export default defineConfig({
 		projects: [
 			{
 				extends: true,
-				test: { name: "server", environment: "node", include: ["tests/server/**/*.test.ts", "tests/shared/**/*.test.ts"] },
+				test: {
+					name: "server",
+					environment: "node",
+					include: ["tests/server/**/*.test.ts", "tests/shared/**/*.test.ts"],
+				},
 			},
 			{
 				extends: true,
-				test: { name: "web", environment: "jsdom", include: ["tests/web/**/*.test.{ts,tsx}"], setupFiles: ["tests/setup.ts"] },
+				test: {
+					name: "web",
+					environment: "jsdom",
+					include: ["tests/web/**/*.test.{ts,tsx}"],
+					setupFiles: ["tests/setup.ts"],
+				},
 			},
 		],
 	},

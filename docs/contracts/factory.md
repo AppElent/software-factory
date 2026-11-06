@@ -1,4 +1,5 @@
 ---
+
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
 version: 1.1.0
@@ -39,12 +40,12 @@ Typecheck, Tests, Lint, Preview. Each is not started, running, passed, failed, o
 
 ## Approvals
 
-| Moment | Rule |
-| --- | --- |
-| Plan | Per work type. Defaults: Always for Bug fix and Feature, Skip for Toolkit sync and Chore |
-| Merge | You, one PR at a time, with no dialog on the PR page. Bulk merge has a confirmation |
-| New project | Each outside change is approved first, and each service is confirmed or skipped |
-| Deleting anything outside the app | Named and confirmed. Never automatic |
+| Moment                            | Rule                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------- |
+| Plan                              | Per work type. Defaults: Always for Bug fix and Feature, Skip for Toolkit sync and Chore |
+| Merge                             | You, one PR at a time, with no dialog on the PR page. Bulk merge has a confirmation      |
+| New project                       | Each outside change is approved first, and each service is confirmed or skipped          |
+| Deleting anything outside the app | Named and confirmed. Never automatic                                                     |
 
 ### Merge without me
 

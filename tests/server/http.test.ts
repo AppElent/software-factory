@@ -51,10 +51,32 @@ beforeEach(() => {
 	const config: Config = { dataDir: dir, port: PORT, host: "127.0.0.1", sessionToken: TOKEN, demo: false };
 	store = new Store(openDb(join(dir, "t.db")), dir);
 	const bus = new Bus();
-	const engine = new Engine({ store, cli, executor: new FakeExecutor(), publish: bus.publish, pollSoon: () => {} });
-	const poller = new Poller({ store, cli, engine: () => engine, publish: bus.publish, onRegression: () => {}, onRead: () => {} });
+	const engine = new Engine({
+		store,
+		cli,
+		executor: new FakeExecutor(),
+		publish: bus.publish,
+		pollSoon: () => {},
+	});
+	const poller = new Poller({
+		store,
+		cli,
+		engine: () => engine,
+		publish: bus.publish,
+		onRegression: () => {},
+		onRead: () => {},
+	});
 	poller.stop();
-	app = createApp({ config, store, cli, engine, poller, notifier: new Notifier(store, cli, PORT), bus, webRoot: join(dir, "none") });
+	app = createApp({
+		config,
+		store,
+		cli,
+		engine,
+		poller,
+		notifier: new Notifier(store, cli, PORT),
+		bus,
+		webRoot: join(dir, "none"),
+	});
 });
 
 describe("the boundary", () => {
@@ -84,7 +106,11 @@ describe("the boundary", () => {
 	});
 
 	it("accepts a mutation with it", async () => {
-		const res = await app.request("/api/line", { method: "POST", headers: SESSION, body: '{"stopped":true}' });
+		const res = await app.request("/api/line", {
+			method: "POST",
+			headers: SESSION,
+			body: '{"stopped":true}',
+		});
 		expect(res.status).toBe(200);
 		expect(store.line().stopped).toBe(true);
 	});

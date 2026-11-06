@@ -24,7 +24,7 @@ import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import type { Config } from "./config.ts";
 import { writeNeverTouch } from "./config.ts";
-import { cloneRepo, listRepos, readPrFiles, REPO_RE } from "./connectors/github.ts";
+import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
 import { checkTools, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
@@ -67,7 +67,10 @@ export interface AppDeps {
 	webRoot?: string;
 }
 
-const body = async <T extends z.ZodType>(req: { json: () => Promise<unknown> }, shape: T): Promise<z.infer<T>> => {
+const body = async <T extends z.ZodType>(
+	req: { json: () => Promise<unknown> },
+	shape: T,
+): Promise<z.infer<T>> => {
 	const raw = await req.json().catch(() => {
 		throw new ActionError("That request wasn't valid JSON.", 400);
 	});
@@ -97,7 +100,9 @@ export function createApp(d: AppDeps): Hono {
 	const devOrigin = process.env.SF_DEV_ORIGIN;
 	const buildId = () => {
 		const index = join(webRoot, "index.html");
-		return existsSync(index) ? createHash("sha1").update(readFileSync(index)).digest("hex").slice(0, 10) : "dev";
+		return existsSync(index)
+			? createHash("sha1").update(readFileSync(index)).digest("hex").slice(0, 10)
+			: "dev";
 	};
 	const newProjects = new NewProjects({
 		store,
@@ -107,7 +112,9 @@ export function createApp(d: AppDeps): Hono {
 		addProject: (repo, localPath) => addProject(repo, localPath),
 	});
 
-	app.use(guard({ port: config.port, token: config.sessionToken, devOrigins: devOrigin ? [devOrigin] : undefined }));
+	app.use(
+		guard({ port: config.port, token: config.sessionToken, devOrigins: devOrigin ? [devOrigin] : undefined }),
+	);
 
 	app.onError((e, c) => {
 		if (e instanceof ActionError) return c.json({ error: e.message }, e.status as 400);
@@ -151,7 +158,11 @@ export function createApp(d: AppDeps): Hono {
 		// Rules run on the names first. Nothing about a skipped repo goes further than this line.
 		const { kept, skipped } = applyNeverTouch(
 			rules,
-			listed.map((r) => ({ ...r, repo: r.nameWithOwner, path: join(cloneFolder, r.nameWithOwner.split("/")[1] ?? "") })),
+			listed.map((r) => ({
+				...r,
+				repo: r.nameWithOwner,
+				path: join(cloneFolder, r.nameWithOwner.split("/")[1] ?? ""),
+			})),
 		);
 		const added = new Set(store.projects().map((p) => p.repo.toLowerCase()));
 		const res: RepoListResponse = {
@@ -500,7 +511,9 @@ export function createApp(d: AppDeps): Hono {
 						`${e.title}`,
 						`${e.culprit}`,
 						`${e.events} events, ${e.users} users, first seen ${e.firstSeen}`,
-						...(detail?.stack ?? []).slice(0, 12).map((f) => `${f.file}${f.line ? `:${f.line}` : ""} ${f.context ?? ""}`),
+						...(detail?.stack ?? [])
+							.slice(0, 12)
+							.map((f) => `${f.file}${f.line ? `:${f.line}` : ""} ${f.context ?? ""}`),
 					].join("\n"),
 					regressionOf: e.regressionOf
 						? { workOrderId: e.regressionOf.workOrderId, prNumber: e.regressionOf.prNumber }
@@ -510,7 +523,13 @@ export function createApp(d: AppDeps): Hono {
 		}
 		if (s.fingerprint?.startsWith("main:")) {
 			const main = store.main(project);
-			return { kind, fingerprint: s.fingerprint, data: main ? `${main.sha} ${main.message}\n${main.failing.map((f: { name: string }) => f.name).join("\n")}` : undefined };
+			return {
+				kind,
+				fingerprint: s.fingerprint,
+				data: main
+					? `${main.sha} ${main.message}\n${main.failing.map((f: { name: string }) => f.name).join("\n")}`
+					: undefined,
+			};
 		}
 		return { kind, fingerprint: s.fingerprint, prNumber: s.prNumber };
 	}
@@ -536,7 +555,10 @@ export function createApp(d: AppDeps): Hono {
 		return c.json(ok);
 	});
 	app.post("/api/work-orders/:id/answer", async (c) => {
-		const { answer, note } = await body(c.req, z.object({ answer: z.string().min(1), note: z.string().nullish() }));
+		const { answer, note } = await body(
+			c.req,
+			z.object({ answer: z.string().min(1), note: z.string().nullish() }),
+		);
 		await engine.answer(num(c.req.param("id")), answer, note ?? null);
 		return c.json(ok);
 	});
@@ -636,7 +658,9 @@ export function createApp(d: AppDeps): Hono {
 	function errorDetail(id: string): ErrorDetail | null {
 		const e = store.error(id);
 		if (!e) return null;
-		const row = store.db.prepare("SELECT detail FROM errors WHERE id = ?").get(id) as { detail: string | null };
+		const row = store.db.prepare("SELECT detail FROM errors WHERE id = ?").get(id) as {
+			detail: string | null;
+		};
 		const detail = row.detail ? JSON.parse(row.detail) : null;
 		return { ...e, stack: detail?.stack ?? [], likelySource: detail?.likelySource ?? null };
 	}
@@ -674,15 +698,15 @@ export function createApp(d: AppDeps): Hono {
 		return c.json(store.settings().agents);
 	});
 
-	const TypeMap = <T extends z.ZodType>(v: T) =>
+	const byWorkType = <T extends z.ZodType>(v: T) =>
 		z.object({ "Bug fix": v, Feature: v, "Toolkit sync": v, Chore: v });
 
 	app.put("/api/settings/approvals", async (c) => {
 		const next = await body(
 			c.req,
 			z.object({
-				planReview: TypeMap(z.enum(["always", "skip"])),
-				mergeWithoutMe: TypeMap(z.boolean()),
+				planReview: byWorkType(z.enum(["always", "skip"])),
+				mergeWithoutMe: byWorkType(z.boolean()),
 				thresholds: z.object({ runs: z.number().int().min(5), firstTryPct: z.number().min(50).max(100) }),
 			}),
 		);
@@ -696,7 +720,11 @@ export function createApp(d: AppDeps): Hono {
 			const qualified =
 				rec &&
 				qualifies(
-					{ runs: rec.runs, firstTry: Math.round(((rec.firstTryPct ?? 0) * rec.runs) / 100), regressions: rec.regressions },
+					{
+						runs: rec.runs,
+						firstTry: Math.round(((rec.firstTryPct ?? 0) * rec.runs) / 100),
+						regressions: rec.regressions,
+					},
 					next.thresholds,
 				);
 			if (!qualified) throw new ActionError(`${type} doesn't qualify yet.`);
@@ -830,7 +858,10 @@ export function createApp(d: AppDeps): Hono {
 
 	app.get("/api/new-project/:id", (c) => c.json(needRun(num(c.req.param("id")))));
 
-	const startScaffold = (c: { req: { param: (k: string) => string | undefined }; json: (v: unknown) => Response }) => {
+	const startScaffold = (c: {
+		req: { param: (k: string) => string | undefined };
+		json: (v: unknown) => Response;
+	}) => {
 		const id = num(c.req.param("id"));
 		needRun(id);
 		void newProjects.scaffold(id).catch((e) => console.error(scrub(String(e))));
@@ -848,7 +879,10 @@ export function createApp(d: AppDeps): Hono {
 		return c.json(await newProjects.connect(num(c.req.param("id")), service));
 	});
 	app.post("/api/new-project/:id/service", async (c) => {
-		const { service, state } = await body(c.req, z.object({ service: z.string(), state: z.enum(["open", "skipped"]) }));
+		const { service, state } = await body(
+			c.req,
+			z.object({ service: z.string(), state: z.enum(["open", "skipped"]) }),
+		);
 		newProjects.setService(num(c.req.param("id")), service, state);
 		return c.json(ok);
 	});
@@ -902,7 +936,13 @@ export function createApp(d: AppDeps): Hono {
 	app.get("*", (c) => {
 		const rel = normalize(decodeURIComponent(c.req.path)).replace(/^\/+/, "");
 		const file = resolve(webRoot, rel);
-		if (rel && file.startsWith(`${webRoot}/`) && existsSync(file) && statSync(file).isFile() && !file.endsWith("index.html")) {
+		if (
+			rel &&
+			file.startsWith(`${webRoot}/`) &&
+			existsSync(file) &&
+			statSync(file).isFile() &&
+			!file.endsWith("index.html")
+		) {
 			const immutable = rel.startsWith("assets/");
 			return c.body(readFileSync(file), 200, {
 				"Content-Type": MIME[extname(file)] ?? "application/octet-stream",
@@ -926,5 +966,5 @@ const firstLine = (text: string) => {
 	return line.length > 80 ? `${line.slice(0, 77)}…` : line;
 };
 
-export { CSP, SESSION_HEADER };
 export type { Settings };
+export { CSP, SESSION_HEADER };

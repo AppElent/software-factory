@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { TriageRecord } from "../shared/rules.ts";
 import { applyNeverTouch, noGates } from "../shared/rules.ts";
 import type {
 	ActivityEntry,
@@ -18,10 +22,6 @@ import type {
 import { readNeverTouch } from "./config.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
-import type { TriageRecord } from "../shared/rules.ts";
-import { homedir } from "node:os";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 export const OPEN_FILTER = "state NOT IN ('done', 'closed')";
 
@@ -147,7 +147,10 @@ export class Store {
 			readAt: r.read_at,
 			openPrs: count("SELECT COUNT(*) n FROM prs WHERE project = ?", r.slug),
 			openErrors: count("SELECT COUNT(*) n FROM errors WHERE project = ?", r.slug),
-			openWorkOrders: count(`SELECT COUNT(*) n FROM work_orders WHERE project = ? AND ${OPEN_FILTER}`, r.slug),
+			openWorkOrders: count(
+				`SELECT COUNT(*) n FROM work_orders WHERE project = ? AND ${OPEN_FILTER}`,
+				r.slug,
+			),
 			redMain: main?.state === "red",
 		};
 	}
@@ -165,13 +168,21 @@ export class Store {
 		const visible = this.projects();
 		const names = new Map(visible.map((p) => [p.slug, p.name]));
 		const links = this.db
-			.prepare(`SELECT id, project, pr_number, type FROM work_orders WHERE pr_number IS NOT NULL AND ${OPEN_FILTER}`)
+			.prepare(
+				`SELECT id, project, pr_number, type FROM work_orders WHERE pr_number IS NOT NULL AND ${OPEN_FILTER}`,
+			)
 			.all() as Array<{ id: number; project: string; pr_number: number; type: WorkType }>;
-		const rows = this.db.prepare("SELECT project, json FROM prs").all() as Array<{ project: string; json: string }>;
+		const rows = this.db.prepare("SELECT project, json FROM prs").all() as Array<{
+			project: string;
+			json: string;
+		}>;
 		return rows
 			.filter((r) => names.has(r.project) && (!project || r.project === project))
 			.map((r) => {
-				const pr = JSON.parse(r.json) as Omit<PullRequest, "project" | "projectName" | "workOrderId" | "workType">;
+				const pr = JSON.parse(r.json) as Omit<
+					PullRequest,
+					"project" | "projectName" | "workOrderId" | "workType"
+				>;
 				const link = links.find((l) => l.project === r.project && l.pr_number === pr.number);
 				return {
 					...pr,
@@ -209,7 +220,9 @@ export class Store {
 	private decorateError(e: ErrorItem, projectName: string): ErrorItem {
 		const fp = `error:${e.id}`;
 		const open = this.db
-			.prepare(`SELECT id FROM work_orders WHERE fingerprint = ? AND ${OPEN_FILTER} AND stage NOT IN ('Observe')`)
+			.prepare(
+				`SELECT id FROM work_orders WHERE fingerprint = ? AND ${OPEN_FILTER} AND stage NOT IN ('Observe')`,
+			)
 			.get(fp) as { id: number } | undefined;
 		return { ...e, projectName, workOrderId: open?.id ?? null, triage: this.triage(fp) };
 	}
@@ -217,9 +230,9 @@ export class Store {
 	/* ---------- triage ---------- */
 
 	triage(fingerprint: string): TriageState | null {
-		const row = this.db.prepare("SELECT action, until, at FROM triage WHERE fingerprint = ?").get(fingerprint) as
-			| { action: "snooze" | "dismiss"; until: string | null; at: string }
-			| undefined;
+		const row = this.db
+			.prepare("SELECT action, until, at FROM triage WHERE fingerprint = ?")
+			.get(fingerprint) as { action: "snooze" | "dismiss"; until: string | null; at: string } | undefined;
 		return row ?? null;
 	}
 
@@ -298,7 +311,9 @@ export class Store {
 			stageAt: r.stage_at,
 			finishedAt: r.finished_at,
 			mergedAt: r.merged_at,
-			activity: activity.map((a): ActivityEntry => ({ at: a.at, text: a.text, detail: a.detail ?? undefined })),
+			activity: activity.map(
+				(a): ActivityEntry => ({ at: a.at, text: a.text, detail: a.detail ?? undefined }),
+			),
 			output: JSON.parse(r.output),
 			waitingFor: this.waitingFor(r, project),
 		};

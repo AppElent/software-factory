@@ -56,10 +56,9 @@ export function kvGet<T>(db: Db, key: string): T | null {
 }
 
 export function kvSet(db: Db, key: string, value: unknown): void {
-	db.prepare("INSERT INTO kv (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json").run(
-		key,
-		JSON.stringify(value),
-	);
+	db.prepare(
+		"INSERT INTO kv (key, json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET json = excluded.json",
+	).run(key, JSON.stringify(value));
 }
 
 export function kvDelete(db: Db, key: string): void {

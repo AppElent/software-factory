@@ -58,7 +58,12 @@ export class FakeExecutor implements Executor {
 	finish(threadId: string, reply: string) {
 		const t = this.threads.get(threadId);
 		if (!t) throw new Error(`No thread ${threadId}`);
-		t.state = { ...t.state, status: "completed", lastReply: reply, recent: [...t.state.recent, reply].slice(-6) };
+		t.state = {
+			...t.state,
+			status: "completed",
+			lastReply: reply,
+			recent: [...t.state.recent, reply].slice(-6),
+		};
 	}
 
 	fail(threadId: string, error: string) {

@@ -65,7 +65,19 @@ export function toIssue(raw: z.infer<typeof Issue>): SentryIssue {
 export async function readIssues(cli: Cli, org: string, project: string): Promise<SentryIssue[]> {
 	const res = await cli(
 		"sentry",
-		["issue", "list", `${org}/${project}`, "--query", "is:unresolved", "--limit", "25", "--period", "14d", "--json", "--fresh"],
+		[
+			"issue",
+			"list",
+			`${org}/${project}`,
+			"--query",
+			"is:unresolved",
+			"--limit",
+			"25",
+			"--period",
+			"14d",
+			"--json",
+			"--fresh",
+		],
 		{ timeoutMs: 60_000 },
 	);
 	if (res.code !== 0) throw new SentryError(res.stderr.trim() || `sentry exited with ${res.code}`);
@@ -102,7 +114,10 @@ const Frame = z.object({
 	function: z.string().nullable().optional(),
 	lineNo: z.number().nullable().optional(),
 	inApp: z.boolean().nullable().optional(),
-	context: z.array(z.tuple([z.number(), z.string().nullable()])).nullable().optional(),
+	context: z
+		.array(z.tuple([z.number(), z.string().nullable()]))
+		.nullable()
+		.optional(),
 });
 
 const View = z.object({
@@ -117,7 +132,14 @@ const View = z.object({
 });
 
 const ExceptionData = z.object({
-	values: z.array(z.object({ stacktrace: z.object({ frames: z.array(Frame) }).nullable().optional() })),
+	values: z.array(
+		z.object({
+			stacktrace: z
+				.object({ frames: z.array(Frame) })
+				.nullable()
+				.optional(),
+		}),
+	),
 });
 
 export interface SentryDetail {

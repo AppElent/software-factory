@@ -17,7 +17,8 @@ export interface CliOptions {
 /** Every outside tool goes through here, so tests can replace all of them with recorded output. */
 export type Cli = (cmd: string, args: string[], opts?: CliOptions) => Promise<CliResult>;
 
-const SECRET = /\b(gh[opusr]_[A-Za-z0-9]{10,}|sntry[a-z]*_[A-Za-z0-9]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g;
+const SECRET =
+	/\b(gh[opusr]_[A-Za-z0-9]{10,}|sntry[a-z]*_[A-Za-z0-9]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g;
 
 /** Removes token-shaped strings before anything reaches a log, the database, or the browser. */
 export const scrub = (text: string) => text.replace(SECRET, "[hidden]");

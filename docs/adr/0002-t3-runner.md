@@ -1,4 +1,5 @@
 ---
+
 type: decision
 description: Read when changing how the factory starts, watches, or stops agents.
 version: 1.0.0

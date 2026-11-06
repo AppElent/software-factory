@@ -25,7 +25,9 @@ const { values: o } = parseArgs({
 const dry = o["dry-run"];
 const { repo, folder, template, visibility, description, toolkit } = o;
 if (!repo || !folder || !o.step) {
-	console.error("Usage: new-project.mjs --step repo|folder|template|baseline|t3 --repo owner/name --folder path");
+	console.error(
+		"Usage: new-project.mjs --step repo|folder|template|baseline|t3 --repo owner/name --folder path",
+	);
 	process.exit(2);
 }
 const name = repo.split("/")[1];
@@ -35,7 +37,12 @@ const run = (cmd, args, cwd = folder) => {
 		console.log(`$ ${cmd} ${args.join(" ")}`);
 		return "";
 	}
-	return execFileSync(cmd, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10 * 60_000 });
+	return execFileSync(cmd, args, {
+		cwd,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+		timeout: 10 * 60_000,
+	});
 };
 
 const write = (path, text) => {
@@ -56,7 +63,10 @@ const TEMPLATES = {
 			`${JSON.stringify({ name, private: true, type: "module", scripts: { start: "node src/index.ts", test: "node --test" }, dependencies: { hono: "^4.13.0" } }, null, "\t")}\n`,
 		);
 		if (!dry) mkdirSync(join(folder, "src"), { recursive: true });
-		write("src/index.ts", 'import { Hono } from "hono";\n\nexport const app = new Hono();\napp.get("/", (c) => c.text("ok"));\n');
+		write(
+			"src/index.ts",
+			'import { Hono } from "hono";\n\nexport const app = new Hono();\napp.get("/", (c) => c.text("ok"));\n',
+		);
 	},
 	bare: () => {},
 };
@@ -91,13 +101,16 @@ const steps = {
 		run("git", ["push", "-u", "origin", "main"]);
 	},
 	baseline() {
-		const script = template === "expo" ? "baseline-mobile.mjs" : template === "vite" ? "baseline-web.mjs" : "baseline.mjs";
+		const script =
+			template === "expo" ? "baseline-mobile.mjs" : template === "vite" ? "baseline-web.mjs" : "baseline.mjs";
 		run("node", [join(toolkit, "scripts", script), "--path", folder, "--apply"], process.cwd());
 		const pkg = existsSync(join(folder, "package.json"));
 		if (pkg) {
 			run("pnpm", ["install"]);
 			for (const s of ["typecheck", "test", "check"]) {
-				const scripts = dry ? {} : (JSON.parse(readFileSync(join(folder, "package.json"), "utf8")).scripts ?? {});
+				const scripts = dry
+					? {}
+					: (JSON.parse(readFileSync(join(folder, "package.json"), "utf8")).scripts ?? {});
 				if (scripts[s]) run("pnpm", [s]);
 			}
 		}

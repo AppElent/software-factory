@@ -39,7 +39,11 @@ class DemoExecutor extends FakeExecutor {
 			branch: null,
 			worktree: null,
 			lastReply: null,
-			recent: ["Reading the failing test.", "Adding a guard to the scorecard loader.", "Running the test suite."],
+			recent: [
+				"Reading the failing test.",
+				"Adding a guard to the scorecard loader.",
+				"Running the test suite.",
+			],
 			error: null,
 		};
 	}
@@ -58,14 +62,22 @@ const demoCli: Cli = async (cmd, args) => {
 	if (cmd === "gh" && args[0] === "repo" && args[1] === "list") {
 		return ok(
 			JSON.stringify(
-				["fairway", "foundry", "gather", "arcade-club", "labs", "roadmaps", "satisfactory", "client-work", "client-archive"].map(
-					(n, i) => ({
-						nameWithOwner: `${OWNER}/${n}`,
-						pushedAt: new Date(Date.now() - i * DAY).toISOString(),
-						isPrivate: i % 2 === 0,
-						isArchived: false,
-					}),
-				),
+				[
+					"fairway",
+					"foundry",
+					"gather",
+					"arcade-club",
+					"labs",
+					"roadmaps",
+					"satisfactory",
+					"client-work",
+					"client-archive",
+				].map((n, i) => ({
+					nameWithOwner: `${OWNER}/${n}`,
+					pushedAt: new Date(Date.now() - i * DAY).toISOString(),
+					isPrivate: i % 2 === 0,
+					isArchived: false,
+				})),
 			),
 		);
 	}
@@ -79,14 +91,17 @@ const demoCli: Cli = async (cmd, args) => {
 			}),
 		);
 	}
-	if (line.includes("--version") || line.includes("auth status") || args[0] === "whoami") return ok("demo 1.0.0");
+	if (line.includes("--version") || line.includes("auth status") || args[0] === "whoami")
+		return ok("demo 1.0.0");
 	return ok("{}");
 };
 
 const demoScaffold: ScaffoldRunner = async (run, step) => {
 	await new Promise((r) => setTimeout(r, 400));
-	if (run.name === "fail-template" && step === "template") return { ok: false, detail: "pnpm install failed: registry timeout" };
-	if (run.name === "fail-baseline" && step === "baseline") return { ok: false, detail: "Tests failed: 1 of 3\nexpected 200, got 500" };
+	if (run.name === "fail-template" && step === "template")
+		return { ok: false, detail: "pnpm install failed: registry timeout" };
+	if (run.name === "fail-baseline" && step === "baseline")
+		return { ok: false, detail: "Tests failed: 1 of 3\nexpected 200, got 500" };
 	return { ok: true };
 };
 
@@ -136,8 +151,13 @@ interface WoSeed {
 }
 
 const PLAN: Plan = {
-	summary: "Guard the scorecard loader against courses with no holes, and show the empty state instead of crashing.",
-	steps: ["Add a test for a course with no holes.", "Return an empty scorecard when holes is missing.", "Render the existing empty state."],
+	summary:
+		"Guard the scorecard loader against courses with no holes, and show the empty state instead of crashing.",
+	steps: [
+		"Add a test for a course with no holes.",
+		"Return an empty scorecard when holes is missing.",
+		"Render the existing empty state.",
+	],
 	files: "src/scorecard/load.ts, tests/scorecard.test.ts",
 	risk: "Low. The change is in one loader.",
 	estimate: "About 10 minutes",
@@ -187,7 +207,12 @@ export function installDemo(store: Store) {
 			);
 	};
 
-	const seedPr = (project: string, number: number, title: string, opts: Partial<PullRequest> & { checks?: CheckRun[]; ageDays?: number } = {}) => {
+	const seedPr = (
+		project: string,
+		number: number,
+		title: string,
+		opts: Partial<PullRequest> & { checks?: CheckRun[]; ageDays?: number } = {},
+	) => {
 		const now = store.now().getTime();
 		const checks = opts.checks ?? PASS;
 		const base = {
@@ -211,10 +236,18 @@ export function installDemo(store: Store) {
 			checks,
 		};
 		const group = prGroup({ ...base, now });
-		store.db.prepare("INSERT INTO prs (project, number, json) VALUES (?, ?, ?)").run(project, number, JSON.stringify({ ...base, group }));
+		store.db
+			.prepare("INSERT INTO prs (project, number, json) VALUES (?, ?, ?)")
+			.run(project, number, JSON.stringify({ ...base, group }));
 	};
 
-	const seedError = (project: string, id: string, title: string, opts: Partial<ErrorItem> = {}, stack = true) => {
+	const seedError = (
+		project: string,
+		id: string,
+		title: string,
+		opts: Partial<ErrorItem> = {},
+		stack = true,
+	) => {
 		const now = store.now().getTime();
 		const item: Partial<ErrorItem> = {
 			id,
@@ -237,14 +270,26 @@ export function installDemo(store: Store) {
 		const detail = stack
 			? {
 					stack: [
-						{ file: "src/scorecard/load.ts", line: 42, context: "const first = course.holes[0];", inApp: true },
-						{ file: "src/screens/Round.tsx", line: 18, context: "const card = loadScorecard(course);", inApp: true },
+						{
+							file: "src/scorecard/load.ts",
+							line: 42,
+							context: "const first = course.holes[0];",
+							inApp: true,
+						},
+						{
+							file: "src/screens/Round.tsx",
+							line: 18,
+							context: "const card = loadScorecard(course);",
+							inApp: true,
+						},
 						{ file: "node_modules/react/index.js", line: 901, context: "renderWithHooks", inApp: false },
 					],
 					likelySource: "src/scorecard/load.ts:42",
 				}
 			: null;
-		store.db.prepare("INSERT INTO errors (id, project, json, detail) VALUES (?, ?, ?, ?)").run(id, project, JSON.stringify(item), detail ? JSON.stringify(detail) : null);
+		store.db
+			.prepare("INSERT INTO errors (id, project, json, detail) VALUES (?, ?, ?, ?)")
+			.run(id, project, JSON.stringify(item), detail ? JSON.stringify(detail) : null);
 	};
 
 	const seedWo = (w: WoSeed) => {
@@ -290,13 +335,25 @@ export function installDemo(store: Store) {
 			);
 		const id = Number(res.lastInsertRowid);
 		for (const [text, detail] of w.activity ?? [["Added by you"], ["Created worktree and branch"]]) {
-			store.db.prepare("INSERT INTO activity (work_order, at, text, detail) VALUES (?, ?, ?, ?)").run(id, at, text, detail ?? null);
+			store.db
+				.prepare("INSERT INTO activity (work_order, at, text, detail) VALUES (?, ?, ?, ?)")
+				.run(id, at, text, detail ?? null);
 		}
 		return id;
 	};
 
 	const reset = () => {
-		for (const t of ["projects", "prs", "errors", "triage", "work_orders", "activity", "audit_log", "notified", "new_projects"]) {
+		for (const t of [
+			"projects",
+			"prs",
+			"errors",
+			"triage",
+			"work_orders",
+			"activity",
+			"audit_log",
+			"notified",
+			"new_projects",
+		]) {
 			store.db.prepare(`DELETE FROM ${t}`).run();
 		}
 		store.db.prepare("DELETE FROM kv WHERE key NOT LIKE 'settings:cloneFolder'").run();
@@ -324,7 +381,12 @@ export function installDemo(store: Store) {
 		seedProject({ slug: "arcade-club", name: "Arcade Club" });
 		seedProject({ slug: "roadmaps", name: "roadmaps", noSentry: true });
 		seedProject({ slug: "satisfactory", name: "satisfactory", noSentry: true });
-		seedProject({ slug: "labs", name: "labs", noSentry: true, toolkit: { status: "behind", behindDays: 41, changed: 12 } });
+		seedProject({
+			slug: "labs",
+			name: "labs",
+			noSentry: true,
+			toolkit: { status: "behind", behindDays: 41, changed: 12 },
+		});
 	};
 
 	const history = () => {
@@ -349,7 +411,10 @@ export function installDemo(store: Store) {
 		baseProjects();
 		healthy();
 		history();
-		seedError("fairway", "6001", "TypeError: Cannot read properties of undefined (reading 'holes')", { users: 14, events: 41 });
+		seedError("fairway", "6001", "TypeError: Cannot read properties of undefined (reading 'holes')", {
+			users: 14,
+			events: 41,
+		});
 		const q = seedWo({
 			project: "foundry",
 			title: "Migrate the invoices table",
@@ -359,7 +424,14 @@ export function installDemo(store: Store) {
 			question: QUESTION,
 			output: ["Reading the migration folder.", "Two migrations touch invoices."],
 		});
-		seedWo({ project: "fairway", title: "Show the empty scorecard state", stage: "Plan", state: "plan_ready", plan: PLAN, ageMin: 12 });
+		seedWo({
+			project: "fairway",
+			title: "Show the empty scorecard state",
+			stage: "Plan",
+			state: "plan_ready",
+			plan: PLAN,
+			ageMin: 12,
+		});
 		store.db.prepare("UPDATE projects SET main = ? WHERE slug = 'gather'").run(
 			JSON.stringify({
 				sha: "f81c0de2a9",
@@ -380,20 +452,75 @@ export function installDemo(store: Store) {
 			prNumber: 31,
 			gates: { Typecheck: "passed", Tests: "failed", Lint: "passed", Preview: "passed" },
 			failure: "FAIL tests/leaderboard.test.ts > sorts by score\nexpected [3, 2, 1], got [1, 2, 3]",
-			activity: [["Created worktree and branch"], ["Opened PR #31"], ["Tests failed", "expected [3, 2, 1], got [1, 2, 3]"], ["Tests failed after retries"]],
+			activity: [
+				["Created worktree and branch"],
+				["Opened PR #31"],
+				["Tests failed", "expected [3, 2, 1], got [1, 2, 3]"],
+				["Tests failed after retries"],
+			],
 		});
 		seedPr("arcade-club", 31, "Fix the leaderboard sort", { checks: FAIL, additions: 8, deletions: 2 });
-		seedWo({ project: "fairway", title: "Guard the scorecard loader", stage: "Build", state: "building", output: ["Reading the failing test.", "Adding a guard to the scorecard loader."], activity: [["Plan approved by you"], ["Created worktree and branch"]] });
-		seedWo({ project: "foundry", title: "Add invoice export", type: "Feature", stage: "Verify", state: "verifying", prNumber: 168, gates: { Typecheck: "passed", Tests: "running", Lint: "passed", Preview: "running" } });
+		seedWo({
+			project: "fairway",
+			title: "Guard the scorecard loader",
+			stage: "Build",
+			state: "building",
+			output: ["Reading the failing test.", "Adding a guard to the scorecard loader."],
+			activity: [["Plan approved by you"], ["Created worktree and branch"]],
+		});
+		seedWo({
+			project: "foundry",
+			title: "Add invoice export",
+			type: "Feature",
+			stage: "Verify",
+			state: "verifying",
+			prNumber: 168,
+			gates: { Typecheck: "passed", Tests: "running", Lint: "passed", Preview: "running" },
+		});
 		seedPr("foundry", 168, "Add invoice export", { checks: RUN });
-		seedWo({ project: "fairway", title: "Add the round summary", type: "Feature", stage: "Intake", state: "waiting" });
-		seedWo({ project: "roadmaps", title: "Update the changelog", type: "Chore", stage: "Review", state: "ready", prNumber: 96, gates: noGates("passed") });
+		seedWo({
+			project: "fairway",
+			title: "Add the round summary",
+			type: "Feature",
+			stage: "Intake",
+			state: "waiting",
+		});
+		seedWo({
+			project: "roadmaps",
+			title: "Update the changelog",
+			type: "Chore",
+			stage: "Review",
+			state: "ready",
+			prNumber: 96,
+			gates: noGates("passed"),
+		});
 		seedPr("roadmaps", 96, "Update the changelog", {});
 		seedPr("satisfactory", 12, "Sync toolkit standards", {});
 		seedPr("labs", 7, "Try the new router", { ageDays: 40 });
-		seedPr("gather", 44, "Rename the event model", { mergeable: "CONFLICTING", mergeState: "DIRTY", gates: { Typecheck: "out_of_date", Tests: "out_of_date", Lint: "out_of_date", Preview: "out_of_date" } });
-		seedWo({ project: "fairway", title: "Fix the handicap rounding", stage: "Observe", state: "observing", mergedDaysAgo: 0, prNumber: 90, gates: noGates("passed") });
-		seedWo({ project: "foundry", title: "Remove the old export", type: "Chore", stage: "Ship", state: "shipping", mergedDaysAgo: 0, prNumber: 165, gates: noGates("passed") });
+		seedPr("gather", 44, "Rename the event model", {
+			mergeable: "CONFLICTING",
+			mergeState: "DIRTY",
+			gates: { Typecheck: "out_of_date", Tests: "out_of_date", Lint: "out_of_date", Preview: "out_of_date" },
+		});
+		seedWo({
+			project: "fairway",
+			title: "Fix the handicap rounding",
+			stage: "Observe",
+			state: "observing",
+			mergedDaysAgo: 0,
+			prNumber: 90,
+			gates: noGates("passed"),
+		});
+		seedWo({
+			project: "foundry",
+			title: "Remove the old export",
+			type: "Chore",
+			stage: "Ship",
+			state: "shipping",
+			mergedDaysAgo: 0,
+			prNumber: 165,
+			gates: noGates("passed"),
+		});
 		return q;
 	};
 
@@ -402,7 +529,15 @@ export function installDemo(store: Store) {
 		full,
 		back: () => {
 			full();
-			kvSet(store.db, "visit_state", { back: { since: new Date(store.now().getTime() - 16 * HOUR).toISOString(), shipped: 4, failed: 1, newErrors: 2 }, firstLook: false });
+			kvSet(store.db, "visit_state", {
+				back: {
+					since: new Date(store.now().getTime() - 16 * HOUR).toISOString(),
+					shipped: 4,
+					failed: 1,
+					newErrors: 2,
+				},
+				firstLook: false,
+			});
 		},
 		first_look: () => {
 			baseProjects();
@@ -425,11 +560,21 @@ export function installDemo(store: Store) {
 		},
 		limit: () => {
 			full();
-			kvSet(store.db, "settings:agents", { agentsAtOnce: 1, pauseOnReview: false, retries: 1, agent: "claude" });
+			kvSet(store.db, "settings:agents", {
+				agentsAtOnce: 1,
+				pauseOnReview: false,
+				retries: 1,
+				agent: "claude",
+			});
 		},
 		review_hold: () => {
 			full();
-			kvSet(store.db, "settings:agents", { agentsAtOnce: 1, pauseOnReview: true, retries: 1, agent: "claude" });
+			kvSet(store.db, "settings:agents", {
+				agentsAtOnce: 1,
+				pauseOnReview: true,
+				retries: 1,
+				agent: "claude",
+			});
 		},
 		loading: () => {
 			baseProjects();
@@ -437,27 +582,63 @@ export function installDemo(store: Store) {
 		},
 		degraded: () => {
 			full();
-			healthy({ Sentry: { ok: false, lastOk: new Date(store.now().getTime() - 38 * MIN).toISOString(), error: "401 Unauthorized", fix: "sentry auth login" } });
+			healthy({
+				Sentry: {
+					ok: false,
+					lastOk: new Date(store.now().getTime() - 38 * MIN).toISOString(),
+					error: "401 Unauthorized",
+					fix: "sentry auth login",
+				},
+			});
 		},
 		stopped: () => {
 			full();
-			kvSet(store.db, "line", { stopped: true, stoppedAt: new Date(store.now().getTime() - 12 * MIN).toISOString() });
-			store.db.prepare("UPDATE work_orders SET held_by_line = 1 WHERE state IN ('waiting', 'plan_approved', 'build_done')").run();
+			kvSet(store.db, "line", {
+				stopped: true,
+				stoppedAt: new Date(store.now().getTime() - 12 * MIN).toISOString(),
+			});
+			store.db
+				.prepare(
+					"UPDATE work_orders SET held_by_line = 1 WHERE state IN ('waiting', 'plan_approved', 'build_done')",
+				)
+				.run();
 		},
 		long: () => {
 			full();
-			const long = "Make the scorecard loader handle courses that were imported from the legacy federation export without any hole data and then re-synced";
-			seedError("foundry", "6002", `${long} — RangeError: Maximum call stack size exceeded in src/invoices/really/deeply/nested/folder/structure/render.ts`, { users: 3 });
+			const long =
+				"Make the scorecard loader handle courses that were imported from the legacy federation export without any hole data and then re-synced";
+			seedError(
+				"foundry",
+				"6002",
+				`${long} — RangeError: Maximum call stack size exceeded in src/invoices/really/deeply/nested/folder/structure/render.ts`,
+				{ users: 3 },
+			);
 			seedWo({ project: "foundry", title: long, stage: "Build", state: "building" });
-			seedPr("foundry", 170, long, { headRef: "factory/wo-170-a-very-long-branch-name-that-keeps-going-and-going-past-the-edge" });
+			seedPr("foundry", 170, long, {
+				headRef: "factory/wo-170-a-very-long-branch-name-that-keeps-going-and-going-past-the-edge",
+			});
 		},
 		regression: () => {
 			baseProjects();
 			healthy();
-			const fix = seedWo({ project: "fairway", title: "Guard the scorecard loader", stage: "Observe", state: "done", mergedDaysAgo: 6, prNumber: 88, regressed: true, gates: noGates("passed"), fingerprint: "error:6001" });
+			const fix = seedWo({
+				project: "fairway",
+				title: "Guard the scorecard loader",
+				stage: "Observe",
+				state: "done",
+				mergedDaysAgo: 6,
+				prNumber: 88,
+				regressed: true,
+				gates: noGates("passed"),
+				fingerprint: "error:6001",
+			});
 			seedError("fairway", "6001", "TypeError: Cannot read properties of undefined (reading 'holes')", {
 				kind: "regression",
-				regressionOf: { workOrderId: fix, prNumber: 88, fixedAt: new Date(store.now().getTime() - 6 * DAY).toISOString() },
+				regressionOf: {
+					workOrderId: fix,
+					prNumber: 88,
+					fixedAt: new Date(store.now().getTime() - 6 * DAY).toISOString(),
+				},
 			});
 		},
 		merge_ready: () => {
@@ -465,13 +646,34 @@ export function installDemo(store: Store) {
 			healthy();
 			// Enough record for each work type to qualify.
 			for (let i = 0; i < 12; i += 1) {
-				seedWo({ project: "foundry", title: `Sync ${i}`, type: "Toolkit sync", stage: "Observe", state: "done", mergedDaysAgo: i % 10, prNumber: 200 + i, gates: noGates("passed") });
+				seedWo({
+					project: "foundry",
+					title: `Sync ${i}`,
+					type: "Toolkit sync",
+					stage: "Observe",
+					state: "done",
+					mergedDaysAgo: i % 10,
+					prNumber: 200 + i,
+					gates: noGates("passed"),
+				});
 			}
 		},
 		missing_folder: () => {
 			seedProject({ slug: "fairway", name: "Fairway" });
-			seedProject({ slug: "labs", name: "labs", missing: true, noSentry: true, toolkit: { status: "behind", behindDays: 41, changed: 12 } });
-			seedProject({ slug: "roadmaps", name: "roadmaps", paused: true, noSentry: true, toolkit: { status: "behind", behindDays: 9, changed: 3 } });
+			seedProject({
+				slug: "labs",
+				name: "labs",
+				missing: true,
+				noSentry: true,
+				toolkit: { status: "behind", behindDays: 41, changed: 12 },
+			});
+			seedProject({
+				slug: "roadmaps",
+				name: "roadmaps",
+				paused: true,
+				noSentry: true,
+				toolkit: { status: "behind", behindDays: 9, changed: 3 },
+			});
 			healthy();
 		},
 	};
@@ -487,9 +689,23 @@ export function installDemo(store: Store) {
 				if (!seed) return c.json({ error: "Unknown scenario" }, 404);
 				reset();
 				seed();
-				bus.publish(["queue", "floor", "prs", "errors", "projects", "shell", "work-orders", "settings", "health", "line"]);
+				bus.publish([
+					"queue",
+					"floor",
+					"prs",
+					"errors",
+					"projects",
+					"shell",
+					"work-orders",
+					"settings",
+					"health",
+					"line",
+				]);
 				void engine;
-				return c.json({ ok: true, ids: store.workOrders().map((w) => ({ id: w.id, state: w.state, title: w.title })) });
+				return c.json({
+					ok: true,
+					ids: store.workOrders().map((w) => ({ id: w.id, state: w.state, title: w.title })),
+				});
 			});
 		},
 	};

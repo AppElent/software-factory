@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { checkTools } from "./connectors/tools.ts";
 import type { NewProjectLogLine, NewProjectRun, ToolStatus } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
+import { checkTools } from "./connectors/tools.ts";
 import { audit } from "./db.ts";
 import type { Store } from "./store.ts";
 
@@ -109,7 +109,12 @@ export class NewProjects {
 		return res.code === 0 ? res.stdout.trim() : "";
 	}
 
-	async create(input: { name: string; description: string; template: string; visibility: "private" | "public" }) {
+	async create(input: {
+		name: string;
+		description: string;
+		template: string;
+		visibility: "private" | "public";
+	}) {
 		const owner = await this.owner();
 		const folder = this.store.settings().projects.cloneFolder;
 		const run: Omit<NewProjectRun, "id"> = {
@@ -166,10 +171,17 @@ export class NewProjects {
 		run.serviceTools = Object.fromEntries(
 			["sentry", "eas", "infisical"].map((n) => [
 				n,
-				{ installed: has(n)?.state !== "missing", fix: has(n)?.state === "missing" ? (has(n)?.fix ?? null) : null },
+				{
+					installed: has(n)?.state !== "missing",
+					fix: has(n)?.state === "missing" ? (has(n)?.fix ?? null) : null,
+				},
 			]),
 		);
-		run.services = { sentry: "open", eas: "open", infisical: has("infisical")?.state === "missing" ? "skipped" : "open" };
+		run.services = {
+			sentry: "open",
+			eas: "open",
+			infisical: has("infisical")?.state === "missing" ? "skipped" : "open",
+		};
 		run.step = "connect";
 		this.save(run);
 	}
@@ -185,7 +197,9 @@ export class NewProjects {
 			const slug = org.code === 0 ? (JSON.parse(org.stdout)?.[0]?.slug as string | undefined) : undefined;
 			res = await this.cli("sentry", ["project", "create", `${slug ?? ""}/${name}`, "react-native"]);
 			if (res.code === 0 && run.projectSlug) {
-				this.store.db.prepare("UPDATE projects SET sentry_project = ? WHERE slug = ?").run(name, run.projectSlug);
+				this.store.db
+					.prepare("UPDATE projects SET sentry_project = ? WHERE slug = ?")
+					.run(name, run.projectSlug);
 			}
 		} else if (service === "eas") {
 			res = await this.cli("eas", ["init", "--non-interactive", "--force"], { cwd: folder });
@@ -194,7 +208,14 @@ export class NewProjects {
 		} else {
 			return { ok: false, reason: "Unknown service" };
 		}
-		audit(this.store.db, `connect ${service}`, run.repo, "you", res.code === 0 ? null : res.stderr, this.store.now());
+		audit(
+			this.store.db,
+			`connect ${service}`,
+			run.repo,
+			"you",
+			res.code === 0 ? null : res.stderr,
+			this.store.now(),
+		);
 		if (res.code !== 0) return { ok: false, reason: res.stderr.trim() || "It didn't connect." };
 		run.services[service] = "connected";
 		this.save(run);

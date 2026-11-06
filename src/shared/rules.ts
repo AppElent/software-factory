@@ -2,8 +2,8 @@
 import type {
 	CheckRun,
 	GateName,
-	Gates,
 	GateState,
+	Gates,
 	Limits,
 	PrGroup,
 	QueueItem,
@@ -15,13 +15,17 @@ import { GATE_NAMES } from "./types.ts";
 /* ---------- never touch ---------- */
 
 const escapeRe = (s: string) => s.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-const globRe = (rule: string) => new RegExp(`^${escapeRe(rule).replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+const globRe = (rule: string) =>
+	new RegExp(`^${escapeRe(rule).replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
 
 /**
  * A rule matches a repo name, `owner/name`, or any single folder in a path.
  * Rules with a slash match the whole `owner/name` or path instead.
  */
-export function matchesNeverTouch(rules: string[], candidate: { repo?: string; path?: string | null }): boolean {
+export function matchesNeverTouch(
+	rules: string[],
+	candidate: { repo?: string; path?: string | null },
+): boolean {
 	const targets: string[] = [];
 	if (candidate.repo) {
 		targets.push(candidate.repo);
@@ -136,7 +140,8 @@ export function prGroup(pr: {
 }): PrGroup {
 	const ageDays = (pr.now - Date.parse(pr.updatedAt)) / 86_400_000;
 	if (ageDays >= STALE_DAYS) return "stale";
-	if (pr.mergeable === "CONFLICTING" || pr.mergeState === "DIRTY" || pr.mergeState === "BEHIND") return "rebase";
+	if (pr.mergeable === "CONFLICTING" || pr.mergeState === "DIRTY" || pr.mergeState === "BEHIND")
+		return "rebase";
 	if (anyGate(pr.gates, "failed")) return "failed";
 	if (pr.isDraft || !gatesClear(pr.gates)) return "running";
 	return "ready";
@@ -151,7 +156,8 @@ export function mergeBlockers(pr: {
 }): string[] {
 	const out: string[] = [];
 	if (pr.isDraft) out.push("It's a draft.");
-	if (pr.mergeable === "CONFLICTING" || pr.mergeState === "DIRTY") out.push("It conflicts with the base branch.");
+	if (pr.mergeable === "CONFLICTING" || pr.mergeState === "DIRTY")
+		out.push("It conflicts with the base branch.");
 	if (pr.mergeState === "BEHIND") out.push("The base branch moved on, so it needs a rebase.");
 	if (anyGate(pr.gates, "failed")) out.push("A gate failed.");
 	if (anyGate(pr.gates, "running")) out.push("Gates are still running.");

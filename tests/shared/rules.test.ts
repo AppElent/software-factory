@@ -38,7 +38,10 @@ describe("never touch", () => {
 	});
 
 	it("splits a list before anything reads it", () => {
-		const { kept, skipped } = applyNeverTouch(["client-*"], [{ repo: "me/client-a" }, { repo: "me/fairway" }]);
+		const { kept, skipped } = applyNeverTouch(
+			["client-*"],
+			[{ repo: "me/client-a" }, { repo: "me/fairway" }],
+		);
 		expect(kept.map((r) => r.repo)).toEqual(["me/fairway"]);
 		expect(skipped).toHaveLength(1);
 	});
@@ -55,7 +58,9 @@ describe("gates", () => {
 
 	it("maps a preview deploy to Preview, and a skipped one to not set up", () => {
 		expect(mapGates([check("check", "pass"), check("deploy", "pass", "PR Preview")]).Preview).toBe("passed");
-		expect(mapGates([check("check", "pass"), check("deploy", "skipped", "PR Preview")]).Preview).toBe("not_set_up");
+		expect(mapGates([check("check", "pass"), check("deploy", "skipped", "PR Preview")]).Preview).toBe(
+			"not_set_up",
+		);
 	});
 
 	it("a failed check fails its gates", () => {
@@ -149,7 +154,9 @@ describe("triage", () => {
 	};
 	it("snooze ends at the time, at 100 events, or on a new release with users", () => {
 		expect(triageHides(snooze, { events: 11, users: 2, release: "1.0" }, now)).toBe(true);
-		expect(triageHides(snooze, { events: 11, users: 2, release: "1.0" }, Date.parse("2026-11-07T09:00:00Z"))).toBe(false);
+		expect(
+			triageHides(snooze, { events: 11, users: 2, release: "1.0" }, Date.parse("2026-11-07T09:00:00Z")),
+		).toBe(false);
 		expect(triageHides(snooze, { events: 100, users: 2, release: "1.0" }, now)).toBe(false);
 		expect(triageHides(snooze, { events: 11, users: 2, release: "1.1" }, now)).toBe(false);
 	});
@@ -165,7 +172,12 @@ describe("triage", () => {
 });
 
 describe("queue rank", () => {
-	const item = (kind: QueueItem["kind"], users = 0, since = "2026-11-06T00:00:00Z", fp = kind): QueueItem => ({
+	const item = (
+		kind: QueueItem["kind"],
+		users = 0,
+		since = "2026-11-06T00:00:00Z",
+		fp: string = kind,
+	): QueueItem => ({
 		fingerprint: fp,
 		kind,
 		project: null,

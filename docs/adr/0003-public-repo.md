@@ -1,4 +1,5 @@
 ---
+
 type: decision
 description: Read when adding sample data, config, or anything personal to this repo.
 version: 1.0.0

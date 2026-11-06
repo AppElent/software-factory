@@ -136,7 +136,9 @@ export class Notifier {
 	}
 
 	private mark(key: string) {
-		this.store.db.prepare("INSERT OR IGNORE INTO notified (key, at) VALUES (?, ?)").run(key, this.store.iso());
+		this.store.db
+			.prepare("INSERT OR IGNORE INTO notified (key, at) VALUES (?, ?)")
+			.run(key, this.store.iso());
 	}
 
 	/** Compares the queue with what has already been sent. Called after every read. */

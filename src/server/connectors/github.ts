@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { mapGates, prGroup } from "../../shared/rules.ts";
-import type { CheckBucket, CheckRun, MainBranchState, PullRequest, ToolkitState } from "../../shared/types.ts";
+import type {
+	CheckBucket,
+	CheckRun,
+	MainBranchState,
+	PullRequest,
+	ToolkitState,
+} from "../../shared/types.ts";
 import type { Cli } from "../cli.ts";
 
 export const TOOLKIT_REPO = "AppElent/developer-tools";
@@ -34,10 +40,7 @@ const Contexts = z
 	.nullable()
 	.optional();
 
-const Blob = z
-	.object({ text: z.string().nullable().optional() })
-	.nullable()
-	.optional();
+const Blob = z.object({ text: z.string().nullable().optional() }).nullable().optional();
 
 const RepoNode = z.object({
 	nameWithOwner: z.string(),
@@ -83,7 +86,10 @@ const RepoNode = z.object({
 });
 
 const Response = z.object({
-	data: z.record(z.string(), z.union([RepoNode, z.object({ remaining: z.number(), resetAt: z.string() }), z.null()])),
+	data: z.record(
+		z.string(),
+		z.union([RepoNode, z.object({ remaining: z.number(), resetAt: z.string() }), z.null()]),
+	),
 });
 
 const CommitDate = z.object({ commit: z.object({ committer: z.object({ date: z.string() }) }) });
@@ -169,7 +175,9 @@ function devtoolsCommit(text: string | null | undefined): string | null {
 	}
 }
 
-function readMain(target: NonNullable<z.infer<typeof RepoNode>["defaultBranchRef"]>["target"]): MainBranchState {
+function readMain(
+	target: NonNullable<z.infer<typeof RepoNode>["defaultBranchRef"]>["target"],
+): MainBranchState {
 	const checks = readChecks(target.statusCheckRollup);
 	const failing = checks.filter((c) => c.bucket === "fail");
 	const running = checks.some((c) => c.bucket === "running");
@@ -195,7 +203,9 @@ export async function readRepos(cli: Cli, repos: string[], now: number): Promise
 			return ["-f", `o${n}=${owner}`, "-f", `n${n}=${name}`];
 		});
 		const decl = batch.map((_, n) => `$o${n}: String!, $n${n}: String!`).join(", ");
-		const body = batch.map((_, n) => `r${n}: repository(owner: $o${n}, name: $n${n}) { ${FIELDS} }`).join("\n");
+		const body = batch
+			.map((_, n) => `r${n}: repository(owner: $o${n}, name: $n${n}) { ${FIELDS} }`)
+			.join("\n");
 		const query = `query(${decl}) {\n${body}\nrateLimit { remaining resetAt }\n}\n${CHECKS}`;
 		const res = await cli("gh", ["api", "graphql", "-f", `query=${query}`, ...vars], { timeoutMs: 60_000 });
 		let json: unknown;
@@ -206,7 +216,8 @@ export async function readRepos(cli: Cli, repos: string[], now: number): Promise
 		}
 		const parsed = Response.safeParse(json);
 		// A repo that's gone returns null plus an error, and gh exits non-zero. The other repos still count.
-		if (!parsed.success) throw new GithubError(res.stderr.trim() || "GitHub returned an unexpected response.");
+		if (!parsed.success)
+			throw new GithubError(res.stderr.trim() || "GitHub returned an unexpected response.");
 		batch.forEach((repo, n) => {
 			const node = parsed.data.data[`r${n}`];
 			if (!node || !("nameWithOwner" in node)) {
@@ -296,7 +307,9 @@ export async function readToolkit(
 	}
 	const pinned = await cli("gh", ["api", `repos/${TOOLKIT_REPO}/commits/${commit}`]);
 	const date = pinned.code === 0 ? CommitDate.safeParse(JSON.parse(pinned.stdout)) : null;
-	const days = date?.success ? Math.floor((now - Date.parse(date.data.commit.committer.date)) / 86_400_000) : 0;
+	const days = date?.success
+		? Math.floor((now - Date.parse(date.data.commit.committer.date)) / 86_400_000)
+		: 0;
 	const state: ToolkitState = { status: "behind", behindDays: days, changed: parsed.data.files?.length ?? 0 };
 	cache.set(commit, state);
 	return state;
@@ -340,11 +353,19 @@ export async function readPrFiles(cli: Cli, repo: string, number: number) {
 }
 
 /** Squash by default. Repos that forbid it get a merge commit. Returns GitHub's words on failure. */
-export async function mergePr(cli: Cli, repo: string, number: number): Promise<{ ok: boolean; reason: string }> {
-	const first = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--squash"], { timeoutMs: 90_000 });
+export async function mergePr(
+	cli: Cli,
+	repo: string,
+	number: number,
+): Promise<{ ok: boolean; reason: string }> {
+	const first = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--squash"], {
+		timeoutMs: 90_000,
+	});
 	if (first.code === 0) return { ok: true, reason: "" };
 	if (/squash merges? (are )?not allowed|not allowed to.*squash/i.test(first.stderr)) {
-		const second = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--merge"], { timeoutMs: 90_000 });
+		const second = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--merge"], {
+			timeoutMs: 90_000,
+		});
 		if (second.code === 0) return { ok: true, reason: "" };
 		return { ok: false, reason: second.stderr.trim() };
 	}
@@ -357,13 +378,28 @@ export async function closePr(cli: Cli, repo: string, number: number) {
 }
 
 export async function prByBranch(cli: Cli, repo: string, branch: string): Promise<number | null> {
-	const res = await cli("gh", ["pr", "list", "-R", repo, "--head", branch, "--state", "all", "--json", "number,state"]);
+	const res = await cli("gh", [
+		"pr",
+		"list",
+		"-R",
+		repo,
+		"--head",
+		branch,
+		"--state",
+		"all",
+		"--json",
+		"number,state",
+	]);
 	if (res.code !== 0) return null;
 	const parsed = z.array(z.object({ number: z.number() })).safeParse(JSON.parse(res.stdout));
 	return parsed.success ? (parsed.data[0]?.number ?? null) : null;
 }
 
-export async function prState(cli: Cli, repo: string, number: number): Promise<"OPEN" | "MERGED" | "CLOSED" | null> {
+export async function prState(
+	cli: Cli,
+	repo: string,
+	number: number,
+): Promise<"OPEN" | "MERGED" | "CLOSED" | null> {
 	const res = await cli("gh", ["pr", "view", String(number), "-R", repo, "--json", "state"]);
 	if (res.code !== 0) return null;
 	const parsed = z.object({ state: z.enum(["OPEN", "MERGED", "CLOSED"]) }).safeParse(JSON.parse(res.stdout));
