@@ -691,20 +691,10 @@ export function createApp(d: AppDeps): Hono {
 		await engine.closePullRequest(c.req.param("project"), num(c.req.param("n")));
 		return c.json(ok);
 	});
-	app.post("/api/prs/:project/:n/rebase", (c) => {
+	app.post("/api/prs/:project/:n/rebase", async (c) => {
 		const project = c.req.param("project");
 		const number = num(c.req.param("n"));
-		const pr = store.pr(project, number);
-		if (!pr) throw new ActionError("That PR isn't open.", 404);
-		const id = engine.create({
-			project,
-			type: "Chore",
-			title: `Rebase #${number} ${pr.title}`,
-			description: `Rebase PR #${number} on its base branch and resolve any conflicts.`,
-			source: { kind: "rebase_pr", fingerprint: `rebase:${project}:${number}`, prNumber: number },
-			prNumber: number,
-		});
-		return c.json({ workOrderId: id });
+		return c.json({ workOrderId: await engine.rebasePr(project, number) });
 	});
 
 	/* ---------- errors ---------- */
@@ -896,10 +886,15 @@ export function createApp(d: AppDeps): Hono {
 		const { name } = await body(c.req, z.object({ name: z.string() }));
 		const owner = await newProjects.owner();
 		const { cloneFolder } = store.settings().projects;
+		const folder = join(cloneFolder, name);
+		// Never touch comes first, so a name that matches it never reaches GitHub.
+		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo: `${owner}/${name}`, path: folder }]);
 		return c.json({
 			owner,
-			folder: join(cloneFolder, name),
-			problem: await newProjects.validate(owner, name, join(cloneFolder, name)),
+			folder,
+			problem: kept.length
+				? await newProjects.validate(owner, name, folder)
+				: "This name matches a Never touch rule. Choose another name.",
 		});
 	});
 
@@ -915,12 +910,12 @@ export function createApp(d: AppDeps): Hono {
 		);
 		const owner = await newProjects.owner();
 		const { cloneFolder } = store.settings().projects;
-		const problem = await newProjects.validate(owner, input.name, join(cloneFolder, input.name));
-		if (problem) throw new ActionError(problem, 400);
 		const { kept } = filterNeverTouch(store.neverTouch(), [
 			{ repo: `${owner}/${input.name}`, path: join(cloneFolder, input.name) },
 		]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that name.", 403);
+		const problem = await newProjects.validate(owner, input.name, join(cloneFolder, input.name));
+		if (problem) throw new ActionError(problem, 400);
 		return c.json({ id: await newProjects.create(input) });
 	});
 

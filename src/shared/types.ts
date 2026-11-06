@@ -148,6 +148,8 @@ export interface CheckRun {
 export type PrGroup = "ready" | "failed" | "running" | "rebase" | "stale";
 
 export interface PullRequest {
+	/** Why the factory won't merge this yet, when the reason is the agent's work and not the gates. */
+	heldBy?: string;
 	/** Set while a new commit has no checks yet, though the one before it had some. */
 	awaitingChecksSince?: number;
 	/** What ran on the commit before, while this commit's checks report. */

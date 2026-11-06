@@ -23,7 +23,7 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 - The factory sends one stage per agent turn, so a hold takes effect at the next step.
 - Closing a work order deletes its worktree and branch. The source error stays in the queue.
 - Closing a PR keeps the branch on GitHub and closes its work order.
-- A PR belongs to the work order whose branch it's on from the moment GitHub shows it, so merging refuses while that agent is still working.
+- A PR belongs to the work order whose branch it's on from the moment GitHub shows it, so merging refuses while that agent is still working, and while changes you asked for are waiting, failed, or never pushed. Try again or Close is the way past it.
 - Closing a work order closes its PR first. If GitHub refuses, nothing else changes.
 - Merging is refused when the factory hasn't read the project from GitHub for 15 minutes. Merge without me also waits for that, and for a paused project.
 
@@ -57,6 +57,7 @@ Typecheck, Tests, Lint, Preview. Each is not set up, not started, running, passe
 - `Try again` after T3 failed resends the same turn, plus any note. If T3 no longer has the thread, the work order starts over from Intake.
 - Rebasing makes every gate out of date until it runs again. List rows and the page for a PR that needs a rebase or is stale show its gates as out of date.
 - A stale PR uses the rebase page.
+- A PR that falls behind again after its rebase finished goes back on the queue, and starting it sends the same agent another rebase turn.
 - Merge requires no conflicts, and no gate failed, running, not started, or out of date. `Not set up` doesn't block a manual merge.
 
 ## Approvals
@@ -82,7 +83,7 @@ Off by default and built last.
 
 - The scaffold script is `scripts/new-project.mjs` in this repo, not the toolkit. Moving it upstream is a follow-up.
 - `Remove what was created` needs `gh`'s `delete_repo` rights. Without them the removal fails, and the page says so.
-- A red baseline offers `Start work order` and a new baseline run. It has no `Open in T3`, because no thread exists yet.
+- A red baseline still commits and pushes what it set up, so an agent's branch has CI. It offers `Start work order`, a new baseline run, which first pulls `main`, and `Remove what was created`. It has no `Open in T3`, because no thread exists yet.
 
 ## Stopping
 

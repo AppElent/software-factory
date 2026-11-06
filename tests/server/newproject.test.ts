@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -216,5 +216,86 @@ describe("the scaffold script", () => {
 		);
 		expect(res.status).toBe(1);
 		expect(res.stderr.trim()).toBe("gh isn't installed, or the service can't find it.");
+	});
+
+	describe("a red baseline", () => {
+		const git = (cwd: string, ...args: string[]) =>
+			execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...args], {
+				cwd,
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+
+		it("still reaches main, so a fix has CI, and passes once the fix has merged", () => {
+			const root = mkdtempSync(join(tmpdir(), "sf-baseline-"));
+			const remote = join(root, "remote", "me", "fresh.git");
+			mkdirSync(remote, { recursive: true });
+			git(remote, "init", "--bare", "-b", "main");
+			const folder = join(root, "fresh");
+			mkdirSync(folder);
+			git(folder, "init", "-b", "main");
+			git(folder, "remote", "add", "origin", remote);
+			writeFileSync(join(folder, ".gitignore"), "node_modules\n");
+			writeFileSync(join(folder, "package.json"), JSON.stringify({ scripts: { test: "x" } }));
+			git(folder, "add", "-A");
+			git(folder, "commit", "-m", "Start");
+			git(folder, "push", "-u", "origin", "main");
+
+			const toolkit = join(root, "toolkit");
+			mkdirSync(join(toolkit, "scripts"), { recursive: true });
+			writeFileSync(join(toolkit, "scripts", "baseline.mjs"), "");
+			const bin = join(root, "bin");
+			mkdirSync(bin);
+			writeFileSync(
+				join(bin, "pnpm"),
+				'#!/bin/sh\nif [ "$1" = test ] && [ ! -f fixed ]; then echo "1 test failed" >&2; exit 1; fi\nexit 0\n',
+			);
+			chmodSync(join(bin, "pnpm"), 0o755);
+
+			const baseline = () =>
+				spawnSync(
+					process.execPath,
+					[
+						"scripts/new-project.mjs",
+						"--step",
+						"baseline",
+						"--repo",
+						"me/fresh",
+						"--folder",
+						folder,
+						"--toolkit",
+						toolkit,
+					],
+					{
+						encoding: "utf8",
+						env: {
+							PATH: `${bin}:${process.env.PATH}`,
+							GIT_AUTHOR_NAME: "t",
+							GIT_AUTHOR_EMAIL: "t@example.test",
+							GIT_COMMITTER_NAME: "t",
+							GIT_COMMITTER_EMAIL: "t@example.test",
+						},
+					},
+				);
+
+			const red = baseline();
+			expect(red.status).toBe(1);
+			expect(red.stderr.trim()).toBe("1 test failed");
+			expect(git(remote, "ls-tree", "-r", "--name-only", "main")).toContain(".github/workflows/ci.yml");
+
+			// The agent's fix merges on GitHub, while the folder here still has the old main.
+			const elsewhere = join(root, "elsewhere");
+			git(root, "clone", remote, elsewhere);
+			writeFileSync(join(elsewhere, "fixed"), "");
+			git(elsewhere, "add", "-A");
+			git(elsewhere, "commit", "-m", "Fix it");
+			git(elsewhere, "push", "origin", "main");
+
+			const green = baseline();
+			expect(green.stderr).toBe("");
+			expect(green.status).toBe(0);
+			expect(existsSync(join(folder, "fixed"))).toBe(true);
+			rmSync(root, { recursive: true, force: true });
+		});
 	});
 });

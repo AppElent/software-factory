@@ -275,8 +275,7 @@ export class Poller {
 				}>
 			).map((r) => [r.id, r]),
 		);
-		store.db.prepare("DELETE FROM errors WHERE project = ?").run(p.slug);
-		const insert = store.db.prepare("INSERT INTO errors (id, project, json, detail) VALUES (?, ?, ?, ?)");
+		const rows: Array<[string, string, string, string | null]> = [];
 		for (const issue of issues) {
 			const prev = previous.get(issue.id);
 			const detailJson = prev?.detail ?? null;
@@ -324,7 +323,11 @@ export class Poller {
 			};
 			if (!regressed && prev)
 				item.kind = (JSON.parse(prev.json) as ErrorItem).kind === "new" ? "new" : "ongoing";
-			insert.run(issue.id, p.slug, JSON.stringify(item), detail ? JSON.stringify(detail) : null);
+			rows.push([issue.id, p.slug, JSON.stringify(item), detail ? JSON.stringify(detail) : null]);
 		}
+		// Reading took a while. Swap in one go, so nothing reads an empty list in between.
+		store.db.prepare("DELETE FROM errors WHERE project = ?").run(p.slug);
+		const insert = store.db.prepare("INSERT INTO errors (id, project, json, detail) VALUES (?, ?, ?, ?)");
+		for (const row of rows) insert.run(...row);
 	}
 }

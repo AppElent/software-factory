@@ -219,7 +219,10 @@ function readItems(store: Store): QueueItem[] {
 	}
 
 	const rebasing = new Set(
-		open.filter((w) => w.source.kind === "rebase_pr").map((w) => `${w.project}:${w.prNumber}`),
+		// One that finished has nothing left to do, so a PR that fell behind again is news.
+		open
+			.filter((w) => w.source.kind === "rebase_pr" && w.state !== "ready")
+			.map((w) => `${w.project}:${w.prNumber}`),
 	);
 	for (const pr of store.prs()) {
 		const base = {

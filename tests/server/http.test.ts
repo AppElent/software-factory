@@ -6,7 +6,7 @@ import { createApp } from "../../src/server/app.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Cli } from "../../src/server/cli.ts";
 import type { Config } from "../../src/server/config.ts";
-import { readNeverTouch, writeNeverTouch } from "../../src/server/config.ts";
+import { filterNeverTouch, readNeverTouch, writeNeverTouch } from "../../src/server/config.ts";
 import { kvSet, openDb } from "../../src/server/db.ts";
 import { Engine } from "../../src/server/engine.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
@@ -315,6 +315,27 @@ describe("a symlink to a Never touch folder", () => {
 			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
 			.run("fairway", "me/fairway", "fairway", "", join(clones, "fairway"), store.iso());
 		expect(store.projects()).toEqual([]);
+	});
+});
+
+describe("a new project and Never touch", () => {
+	it("refuses a matching name before asking GitHub about it", async () => {
+		writeNeverTouch(dir, ["*client-secret*"]);
+		const res = await app.request("/api/new-project/check", {
+			method: "POST",
+			headers: SESSION,
+			body: JSON.stringify({ name: "client-secret-app" }),
+		});
+		expect((await res.json()).problem).toMatch(/Never touch/);
+	});
+
+	it("follows a symlinked clone folder to where a new folder would land", () => {
+		const secret = join(dir, "client-secret");
+		mkdirSync(secret);
+		const link = join(dir, "clones-link");
+		symlinkSync(secret, link);
+		const { kept } = filterNeverTouch(["*client-secret*"], [{ repo: "me/app", path: join(link, "app") }]);
+		expect(kept).toEqual([]);
 	});
 });
 

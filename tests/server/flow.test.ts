@@ -8,7 +8,7 @@ import { ActionError, Engine, OBSERVE_MS } from "../../src/server/engine.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
 import { ExecutorError } from "../../src/server/executor/types.ts";
 import { planPrompt } from "../../src/server/playbooks/index.ts";
-import { findRegressions, readQueue, triageBaseline } from "../../src/server/read.ts";
+import { findRegressions, readItemsForNotify, readQueue, triageBaseline } from "../../src/server/read.ts";
 import { Store } from "../../src/server/store.ts";
 import { awaitChecks, NO_CHECKS_MS, noGates, REGRESSION_GRACE_MS } from "../../src/shared/rules.ts";
 import type { CheckRun, PullRequest, WorkOrder } from "../../src/shared/types.ts";
@@ -1263,6 +1263,123 @@ describe("merging a stale PR", () => {
 		const res = await engine.merge("fairway", 9);
 		expect(res.ok).toBe(false);
 		expect(res.reason).toMatch(/stale/);
+		expect(mergeCalls()).toEqual([]);
+	});
+});
+
+describe("changes that never arrived", () => {
+	const refused = async () => {
+		expect(store.pr("fairway", 5)?.group).toBe("running");
+		expect(store.pr("fairway", 5)?.heldBy).toBeTruthy();
+		expect(readItemsForNotify(store).some((i) => i.kind === "ready_pr")).toBe(false);
+		const res = await engine.merge("fairway", 5);
+		expect(res.ok).toBe(false);
+		expect(mergeCalls()).toEqual([]);
+	};
+
+	it("holds a PR with no work order while its changes wait for an agent", async () => {
+		putPr(5);
+		kvSet(store.db, "settings:agents", {
+			agentsAtOnce: 1,
+			pauseOnReview: false,
+			retries: 1,
+			agent: "claude",
+		});
+		start({ type: "Chore", title: "taking the only slot" });
+		await settle();
+		const { workOrderId } = await engine.requestChanges("fairway", 5, "Rename it");
+		await settle();
+		expect(wo(workOrderId).state).toBe("waiting");
+		await refused();
+	});
+
+	it("holds a PR when the run with its changes failed, until a new commit arrives", async () => {
+		const id = await toReview();
+		await engine.requestChanges("fairway", 5, "Rename it");
+		exec.fail(threadOf(id), "It fell over.");
+		await settle();
+		expect(wo(id).state).toBe("run_failed");
+		await refused();
+
+		// Asking again is still one of the ways past it.
+		await engine.requestChanges("fairway", 5, "Rename it, please");
+		expect(wo(id).state).toBe("retrying");
+
+		putPr(5, { headSha: "pushed" });
+		expect(store.pr("fairway", 5)?.heldBy).toBe("The agent is still working on this PR.");
+	});
+
+	it("holds a PR when the retry pushed nothing, and closing a rebase lets it go", async () => {
+		putPr(9, { title: "A person's feature" });
+		const id = start({
+			type: "Chore",
+			title: "Rebase #9",
+			source: { kind: "rebase_pr", fingerprint: "rebase:fairway:9", prNumber: 9 },
+			prNumber: 9,
+		});
+		await settle();
+		exec.finish(threadOf(id), "Nothing to push.");
+		await settle();
+		clock += 60 * 60_000;
+		await settle();
+		expect(wo(id).state).toBe("failed");
+		expect((await engine.merge("fairway", 9)).ok).toBe(false);
+		await engine.close(id);
+		expect(store.pr("fairway", 9)?.group).toBe("ready");
+		expect((await engine.merge("fairway", 9)).ok).toBe(true);
+	});
+
+	it("leaves a PR alone when a failed run isn't about its current commit", async () => {
+		const id = await toReview();
+		store.patchWorkOrder(id, { state: "run_failed", failed_sha: "older" });
+		expect(store.pr("fairway", 5)?.group).toBe("ready");
+		expect(store.pr("fairway", 5)?.heldBy).toBeUndefined();
+	});
+});
+
+describe("a rebase, again", () => {
+	it("sends the same agent back when the PR falls behind a second time", async () => {
+		putPr(9, { mergeState: "BEHIND", group: "rebase", title: "A person's feature" });
+		const id = await engine.rebasePr("fairway", 9);
+		await settle();
+		const kinds = () => readItemsForNotify(store).map((i) => i.kind);
+		expect(kinds()).not.toContain("rebase_pr");
+
+		putPr(9, { title: "A person's feature", headSha: "rebased" });
+		exec.finish(threadOf(id), "Pushed.");
+		await settle();
+		await settle();
+		expect(wo(id).state).toBe("ready");
+
+		putPr(9, { mergeState: "BEHIND", group: "rebase", title: "A person's feature", headSha: "rebased" });
+		expect(kinds()).toContain("rebase_pr");
+		const sent = exec.threads.get(threadOf(id))?.sent.length as number;
+		expect(await engine.rebasePr("fairway", 9)).toBe(id);
+		expect(exec.threads.get(threadOf(id))?.sent).toHaveLength(sent + 1);
+		expect(wo(id).state).toBe("retrying");
+		expect(kinds()).not.toContain("rebase_pr");
+	});
+
+	it("leaves a rebase that's still working alone", async () => {
+		putPr(9, { mergeState: "BEHIND", group: "rebase" });
+		const id = await engine.rebasePr("fairway", 9);
+		await settle();
+		const sent = exec.threads.get(threadOf(id))?.sent.length;
+		expect(await engine.rebasePr("fairway", 9)).toBe(id);
+		expect(exec.threads.get(threadOf(id))?.sent).toHaveLength(sent as number);
+	});
+});
+
+describe("Merge without me, on an old PR", () => {
+	it("doesn't merge a stale PR when its project resumes", async () => {
+		setApprovals({ mergeWithoutMe: { ...store.settings().approvals.mergeWithoutMe, Chore: true } });
+		store.db.prepare("UPDATE projects SET paused = 1 WHERE slug = 'fairway'").run();
+		const id = start({ type: "Chore" });
+		store.db.prepare("UPDATE projects SET paused = 0 WHERE slug = 'fairway'").run();
+		await settle();
+		store.patchWorkOrder(id, { stage: "Review", state: "ready", pr_number: 5 });
+		putPr(5, { group: "stale" });
+		await settle();
 		expect(mergeCalls()).toEqual([]);
 	});
 });

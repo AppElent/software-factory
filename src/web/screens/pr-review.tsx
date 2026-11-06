@@ -95,6 +95,9 @@ function statusOf(pr: PrDetail): { glyph: GlyphKind; text: string } {
 		return { glyph: "idle", text: `Needs rebase · ${spanWords(pr.updatedAt)} behind` };
 	if (pr.group === "stale")
 		return { glyph: "idle", text: `Stale · no activity for ${spanWords(pr.updatedAt)}` };
+	// Gates that are running say it plainly. A hold only needs saying when the gates look finished.
+	const running = GATE_NAMES.some((n) => pr.gates[n] === "running" || pr.gates[n] === "not_started");
+	if (pr.heldBy && !running) return { glyph: pr.workOrder?.failure ? "fail" : "run", text: pr.heldBy };
 	return pr.isDraft
 		? { glyph: "idle", text: "Draft · can't merge yet" }
 		: { glyph: "run", text: "Checks running" };

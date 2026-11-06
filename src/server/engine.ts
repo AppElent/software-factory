@@ -604,6 +604,7 @@ export class Engine {
 		if (
 			!project ||
 			project.paused ||
+			pr.group === "stale" ||
 			this.staleRead(project) ||
 			this.store.line().stopped ||
 			!mayMergeAlone({
@@ -866,6 +867,40 @@ export class Engine {
 		this.pollSoon();
 	}
 
+	/** A rebase that finished and fell behind again goes back to the agent that has the branch checked out. */
+	async rebasePr(project: string, number: number) {
+		const pr = this.store.pr(project, number);
+		if (!pr) throw new ActionError("That PR isn't open.", 404);
+		const fingerprint = `rebase:${project}:${number}`;
+		const idle = this.store.db
+			.prepare("SELECT id FROM work_orders WHERE fingerprint = ? AND state = 'ready'")
+			.get(fingerprint) as { id: number } | undefined;
+		if (!idle)
+			return this.create({
+				project,
+				type: "Chore",
+				title: `Rebase #${number} ${pr.title}`,
+				description: `Rebase PR #${number} on its base branch and resolve any conflicts.`,
+				source: { kind: "rebase_pr", fingerprint, prNumber: number },
+				prNumber: number,
+			});
+		return this.locked(idle.id, async () => {
+			const wo = this.store.workOrder(idle.id);
+			const current = this.store.pr(project, number);
+			if (!wo || !current || wo.state !== "ready" || !wo.threadId) return idle.id;
+			await this.sendOrThrow(wo.id, wo.threadId, rebasePrompt(number));
+			this.store.addActivity(wo.id, "You asked for another rebase");
+			this.patch(wo.id, {
+				stage: "Verify",
+				state: "retrying",
+				first_try: 0,
+				failed_sha: current.headSha,
+				gates: JSON.stringify(noGates("running")),
+			});
+			return idle.id;
+		});
+	}
+
 	async requestChanges(project: string, number: number, note: string) {
 		const proj = this.store.project(project);
 		if (!proj) throw new ActionError("That project isn't in the factory.", 404);
@@ -875,7 +910,9 @@ export class Engine {
 			if (!pr) throw new ActionError("That PR isn't open.", 404);
 			const wo = pr.workOrderId ? this.store.workOrder(pr.workOrderId) : null;
 			if (wo) {
-				const busy = this.agentBusy(wo, pr);
+				// A run that failed isn't busy. Asking again is one of the ways past it.
+				const stuck = wo.state === "failed" || wo.state === "run_failed";
+				const busy = stuck ? null : this.agentBusy(wo, pr);
 				if (busy) throw new ActionError(busy);
 				if (!wo.threadId)
 					throw new ActionError("This PR's work order hasn't started yet. Try again once it has.");

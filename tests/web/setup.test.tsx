@@ -347,6 +347,11 @@ describe("NLBaseline", () => {
 		await waitFor(() => expect(path(h)).toMatch(/^\/work-orders\/\d+/));
 	});
 
+	it("can remove the project instead", async () => {
+		await renderApp(`${NEW}/baseline?run=3`, "new_project_runs");
+		expect(await screen.findByRole("button", { name: "Remove what was created" })).toBeInTheDocument();
+	});
+
 	it("can run the baseline again", async () => {
 		const user = userEvent.setup();
 		const h = await renderApp(`${NEW}/baseline?run=3`, "new_project_runs");

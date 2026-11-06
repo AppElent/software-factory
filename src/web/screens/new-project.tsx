@@ -432,9 +432,8 @@ const STEP_WORD: Record<string, string> = {
 	t3: "T3",
 };
 
-function Failed({ run }: { run: NewProjectRun }) {
+function RemoveRun({ run }: { run: NewProjectRun }) {
 	const navigate = useNavigate();
-	const retry = useAction(() => api.post(`/api/new-project/${run.id}/retry`));
 	const remove = useAction(
 		async () => {
 			const res = await api.post<{ ok: boolean; reason?: string }>(`/api/new-project/${run.id}/remove`);
@@ -442,6 +441,40 @@ function Failed({ run }: { run: NewProjectRun }) {
 		},
 		{ onSuccess: () => void navigate({ to: "/projects" }) },
 	);
+	const hasRepo = run.created.some((c) => c.startsWith("repo:"));
+	const hasFolder = run.created.some((c) => c.startsWith("folder:"));
+	const unsure = Boolean(run.claimed?.length);
+	const deletes = [
+		hasRepo ? `the ${run.repo} repo on GitHub` : null,
+		hasFolder ? `the ${run.localPath} folder` : null,
+	].filter(Boolean);
+	return (
+		<InlineConfirm
+			grow={false}
+			label="Remove what was created"
+			title={
+				<div className="flex flex-col gap-2">
+					<strong>Remove {run.name}?</strong>
+					<p className="m-0 text-text-muted [overflow-wrap:anywhere]">
+						{deletes.length > 0
+							? `This deletes ${deletes.join(" and ")}. It can't be undone.`
+							: unsure
+								? `This deletes nothing outside this app. Check GitHub for ${run.repo} and ${run.localPath} yourself, since the restart may have left them.`
+								: "Nothing was created outside this app, so nothing else is deleted."}
+					</p>
+				</div>
+			}
+			keep="Keep it"
+			confirm={hasRepo && hasFolder ? "Remove repo and folder" : hasRepo ? "Remove repo" : "Remove"}
+			pending={remove.pending}
+			onConfirm={() => void remove.run()}
+			error={remove.error && `Couldn't remove this. ${remove.error}`}
+		/>
+	);
+}
+
+function Failed({ run }: { run: NewProjectRun }) {
+	const retry = useAction(() => api.post(`/api/new-project/${run.id}/retry`));
 	const step = run.log.find((l) => l.state === "failed")?.step ?? "template";
 	const hasRepo = run.created.some((c) => c.startsWith("repo:"));
 	const hasFolder = run.created.some((c) => c.startsWith("folder:"));
@@ -455,10 +488,6 @@ function Failed({ run }: { run: NewProjectRun }) {
 				: unsure
 					? "The service restarted partway, so you can retry from here."
 					: "Nothing was created, so you can retry from here.";
-	const deletes = [
-		hasRepo ? `the ${run.repo} repo on GitHub` : null,
-		hasFolder ? `the ${run.localPath} folder` : null,
-	].filter(Boolean);
 	return (
 		<Setup
 			step="failed"
@@ -473,27 +502,7 @@ function Failed({ run }: { run: NewProjectRun }) {
 				<Button variant="primary" disabled={retry.pending} onClick={() => void retry.run()}>
 					Retry this step
 				</Button>
-				<InlineConfirm
-					grow={false}
-					label="Remove what was created"
-					title={
-						<div className="flex flex-col gap-2">
-							<strong>Remove {run.name}?</strong>
-							<p className="m-0 text-text-muted [overflow-wrap:anywhere]">
-								{deletes.length > 0
-									? `This deletes ${deletes.join(" and ")}. It can't be undone.`
-									: unsure
-										? `This deletes nothing outside this app. Check GitHub for ${run.repo} and ${run.localPath} yourself, since the restart may have left them.`
-										: "Nothing was created outside this app, so nothing else is deleted."}
-							</p>
-						</div>
-					}
-					keep="Keep it"
-					confirm={hasRepo && hasFolder ? "Remove repo and folder" : hasRepo ? "Remove repo" : "Remove"}
-					pending={remove.pending}
-					onConfirm={() => void remove.run()}
-					error={remove.error && `Couldn't remove this. ${remove.error}`}
-				/>
+				<RemoveRun run={run} />
 			</div>
 		</Setup>
 	);
@@ -526,7 +535,7 @@ function Baseline({ run }: { run: NewProjectRun }) {
 			</div>
 			<InlineError>{start.error && "Couldn't start this. Try again."}</InlineError>
 			<InlineError>{retry.error && "Couldn't retry this. Try again."}</InlineError>
-			<div className="flex flex-wrap gap-2">
+			<div className="flex flex-wrap items-center gap-2">
 				<Button
 					variant="primary"
 					disabled={start.pending || !run.projectSlug}
@@ -537,6 +546,7 @@ function Baseline({ run }: { run: NewProjectRun }) {
 				<Button disabled={retry.pending} onClick={() => void retry.run()}>
 					Run the baseline again
 				</Button>
+				<RemoveRun run={run} />
 			</div>
 		</Setup>
 	);

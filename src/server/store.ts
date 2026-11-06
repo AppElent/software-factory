@@ -212,6 +212,7 @@ export class Store {
 				return {
 					...pr,
 					group: held && pr.group === "ready" ? "running" : pr.group,
+					heldBy: held || undefined,
 					project: r.project,
 					projectName: names.get(r.project) ?? r.project,
 					workOrderId: link?.id ?? null,
@@ -283,7 +284,11 @@ export class Store {
 		const rec = this.triageRecord(fp);
 		const held =
 			rec &&
-			triageHides(rec, { events: e.events, users: e.users, release: e.firstRelease }, this.now().getTime());
+			triageHides(
+				rec,
+				{ events: e.events, users: e.users, release: e.latestRelease ?? e.firstRelease },
+				this.now().getTime(),
+			);
 		return { ...e, projectName, workOrderId: owner, triage: held ? this.triage(fp) : null };
 	}
 

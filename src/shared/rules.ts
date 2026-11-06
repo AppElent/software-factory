@@ -334,6 +334,12 @@ export function agentHoldsMerge(
 		return wo.failedSha === headSha
 			? "The agent's changes haven't reached this PR yet."
 			: "The factory is still checking this PR's gates.";
+	// Asked for changes that never came. What's on the PR is still the commit you wanted changed.
+	if (wo.failedSha === headSha) {
+		if (wo.state === "waiting") return "The agent hasn't started on this PR's changes yet.";
+		if (wo.state === "failed" || wo.state === "run_failed")
+			return "The agent's changes haven't reached this PR. Try again from its work order, or close it.";
+	}
 	return null;
 }
 

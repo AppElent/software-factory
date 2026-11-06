@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { applyNeverTouch } from "../shared/rules.ts";
 
 export interface Config {
@@ -36,11 +36,13 @@ function sessionToken(dataDir: string): string {
 	return token;
 }
 
-const realOr = (path: string) => {
+const realOr = (path: string): string => {
 	try {
 		return realpathSync(path);
 	} catch {
-		return path;
+		// Not there yet. Where it will land still depends on the folders above it.
+		const parent = dirname(path);
+		return parent === path ? path : join(realOr(parent), basename(path));
 	}
 };
 

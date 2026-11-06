@@ -54,6 +54,8 @@ export const realCli: Cli = (cmd, args, opts = {}) =>
 				clearTimeout(timer);
 				resolve({ code: code ?? 1, stdout: scrub(stdout), stderr: scrub(stderr) });
 			});
+			// A child that exits before reading all of it isn't a reason to take the service down.
+			child.stdin.on("error", () => {});
 			child.stdin.end(opts.stdin);
 			return;
 		}

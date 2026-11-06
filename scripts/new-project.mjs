@@ -147,27 +147,36 @@ const steps = {
 	},
 	baseline() {
 		assertOrigin();
+		// A fix may have merged since the last try.
+		run("git", ["pull", "--ff-only", "origin", "main"]);
 		const script =
 			template === "expo" ? "baseline-mobile.mjs" : template === "vite" ? "baseline-web.mjs" : "baseline.mjs";
 		run("node", [join(toolkit, "scripts", script), "--path", folder, "--apply"], process.cwd());
 		const pkg = existsSync(join(folder, "package.json"));
+		let red = null;
 		if (pkg) {
 			if (!dry) mkdirSync(join(folder, ".github", "workflows"), { recursive: true });
 			write(".github/workflows/ci.yml", ciWorkflow(template === "node" ? 26 : 22));
-			run("pnpm", ["install"]);
-			for (const s of ["typecheck", "test", "check"]) {
-				const scripts = dry
-					? {}
-					: (JSON.parse(readFileSync(join(folder, "package.json"), "utf8")).scripts ?? {});
-				if (scripts[s]) run("pnpm", [s]);
+			try {
+				run("pnpm", ["install"]);
+				for (const s of ["typecheck", "test", "check"]) {
+					const scripts = dry
+						? {}
+						: (JSON.parse(readFileSync(join(folder, "package.json"), "utf8")).scripts ?? {});
+					if (scripts[s]) run("pnpm", [s]);
+				}
+			} catch (e) {
+				red = e;
 			}
 		}
+		// Red or green, it goes up. An agent fixing a red baseline needs the CI and the files on main.
 		run("git", ["add", "-A"]);
 		const status = dry ? "x" : run("git", ["status", "--porcelain"]);
 		if (status.trim()) {
 			run("git", ["commit", "-m", "Add the toolkit baseline"]);
 			run("git", ["push", "origin", "HEAD"]);
 		}
+		if (red) throw red;
 	},
 	t3() {
 		run("t3", ["project", "add", folder, "--title", name], process.cwd());
