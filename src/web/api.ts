@@ -55,7 +55,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 	try {
 		res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
 	} catch {
-		connection.setOffline(true);
+		// A failed action keeps the page and what's typed on it. The next read decides if the service is gone.
+		if (method === "GET") connection.setOffline(true);
 		throw new ApiFailure("The service isn't reachable.", 0);
 	}
 	connection.setOffline(false);

@@ -15,34 +15,50 @@ import { GATE_NAMES } from "./types.ts";
 /* ---------- never touch ---------- */
 
 const escapeRe = (s: string) => s.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-const globRe = (rule: string) =>
-	new RegExp(`^${escapeRe(rule).replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+const globBody = (rule: string) => escapeRe(rule).replace(/\*/g, ".*").replace(/\?/g, ".");
+
+/** Removes `.`, `..`, doubled slashes, and a trailing slash, so a path can't step around a rule. */
+function cleanPath(path: string): string {
+	const out: string[] = [];
+	for (const part of path.split("/")) {
+		if (part === "" || part === ".") continue;
+		if (part === "..") out.pop();
+		else out.push(part);
+	}
+	return `${path.startsWith("/") ? "/" : ""}${out.join("/")}`;
+}
 
 /**
- * A rule matches a repo name, `owner/name`, or any single folder in a path.
- * Rules with a slash match the whole `owner/name` or path instead.
+ * How a rule reads a path. Every form covers everything beneath the folder it names:
+ * `/abs/folder`, `~/folder` (any home, since this module can't know the real one), or a relative `folder` or
+ * `a/b`, which matches those folders anywhere in the path. Overmatching is the safe way to be wrong here.
  */
+function pathRe(rule: string): RegExp {
+	if (rule.startsWith("~/")) return new RegExp(`^/.*/${globBody(rule.slice(2))}(/.*)?$`, "i");
+	if (rule.startsWith("/")) return new RegExp(`^${globBody(rule)}(/.*)?$`, "i");
+	return new RegExp(`(^|/)${globBody(rule)}(/|$)`, "i");
+}
+
+/** A rule matches a repo name, an owner, `owner/name`, or a folder and everything beneath it. */
 export function matchesNeverTouch(
 	rules: string[],
 	candidate: { repo?: string; path?: string | null },
 ): boolean {
-	const targets: string[] = [];
+	const repos: string[] = [];
 	if (candidate.repo) {
-		targets.push(candidate.repo);
+		repos.push(candidate.repo);
 		const name = candidate.repo.split("/").pop();
-		if (name) targets.push(name);
+		if (name) repos.push(name);
 		const owner = candidate.repo.split("/")[0];
-		if (owner && candidate.repo.includes("/")) targets.push(owner);
+		if (owner && candidate.repo.includes("/")) repos.push(owner);
 	}
-	if (candidate.path) {
-		targets.push(candidate.path);
-		targets.push(...candidate.path.split("/").filter(Boolean));
-	}
+	const path = candidate.path ? cleanPath(candidate.path) : null;
 	return rules.some((raw) => {
-		const rule = raw.trim();
+		const rule = raw.trim().replace(/\/+$/, "");
 		if (!rule) return false;
-		const re = globRe(rule);
-		return targets.some((t) => re.test(t));
+		const repoRe = new RegExp(`^${globBody(rule)}$`, "i");
+		if (repos.some((t) => repoRe.test(t))) return true;
+		return path != null && pathRe(rule).test(path);
 	});
 }
 
@@ -197,10 +213,20 @@ export const verifyHasRoom = (l: Pick<Limits, "verify" | "agents">) => l.verify 
 export const isFirstTry = (wo: { retries: number; gatesPassedAtSomePoint: boolean }) =>
 	wo.retries === 0 && wo.gatesPassedAtSomePoint;
 
-/** An error is a regression when a work order that fixed its fingerprint shipped, and it was seen after that. */
-export function isRegression(error: { lastSeen: string }, fix: { mergedAt: string | null } | null): boolean {
+/** A deploy takes time to land, so events this soon after a merge say nothing about the fix. */
+export const REGRESSION_GRACE_MS = 3_600_000;
+
+/**
+ * An error is a regression when its fix merged, the grace period passed, and it was seen after that.
+ * When both releases are known, an event from the release that had the bug is an old build still running.
+ */
+export function isRegression(
+	error: { lastSeen: string; release?: string | null },
+	fix: { mergedAt: string | null; release?: string | null } | null,
+): boolean {
 	if (!fix?.mergedAt) return false;
-	return Date.parse(error.lastSeen) > Date.parse(fix.mergedAt);
+	if (Date.parse(error.lastSeen) <= Date.parse(fix.mergedAt) + REGRESSION_GRACE_MS) return false;
+	return !(error.release && fix.release && error.release === fix.release);
 }
 
 export interface Record_ {
@@ -215,6 +241,9 @@ export function qualifies(rec: Record_, t: { runs: number; firstTryPct: number }
 	return (rec.firstTry / rec.runs) * 100 >= t.firstTryPct;
 }
 
+/** Work orders on a PR the factory didn't open. Its branch and its merge belong to whoever opened it. */
+export const ownsNoPr = (kind: string) => kind === "rebase_pr" || kind === "pr_changes";
+
 export function mayMergeAlone(input: {
 	on: boolean;
 	projectMerging: "follow" | "ask";
@@ -222,10 +251,27 @@ export function mayMergeAlone(input: {
 	mergeable: string;
 	mergeState: string;
 	isDraft: boolean;
+	hold: boolean;
+	sourceKind: string;
 }): boolean {
 	if (!input.on || input.projectMerging === "ask") return false;
+	if (input.hold || ownsNoPr(input.sourceKind)) return false;
 	if (!allFourPassed(input.gates)) return false;
+	if (input.mergeState !== "CLEAN") return false;
 	return mergeBlockers(input).length === 0;
+}
+
+/** While the agent has work in progress, the PR's gates describe code that's about to change. */
+export function agentHoldsMerge(
+	wo: { state: string; failedSha?: string | null } | null,
+	headSha: string,
+): string | null {
+	if (!wo) return null;
+	if (["planning", "building", "retrying", "rebasing", "waiting_in_t3", "question"].includes(wo.state))
+		return "The agent is still working on this PR.";
+	if (wo.state === "verifying" && wo.failedSha === headSha)
+		return "The agent's changes haven't reached this PR yet.";
+	return null;
 }
 
 /* ---------- triage ---------- */

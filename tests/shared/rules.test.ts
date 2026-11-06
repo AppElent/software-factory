@@ -3,6 +3,7 @@ import {
 	applyNeverTouch,
 	gatesClear,
 	gatesPassed,
+	isRegression,
 	mapGates,
 	matchesNeverTouch,
 	mayMergeAlone,
@@ -11,6 +12,7 @@ import {
 	parseReply,
 	prGroup,
 	qualifies,
+	REGRESSION_GRACE_MS,
 	rankQueue,
 	snoozeUntil,
 	startBlock,
@@ -117,6 +119,59 @@ describe("starting work", () => {
 	});
 });
 
+describe("never touch, by rule shape", () => {
+	const path = "/Users/me/Developer/Secret/app";
+	it.each([
+		"Secret",
+		"Secret/",
+		"secret*",
+		"~/Developer/Secret",
+		"~/Developer/Secret/",
+		"~/Developer/Secret/*",
+		"/Users/me/Developer/Secret",
+		"/Users/me/Developer/Secret/",
+		"/Users/me/Developer/Secret/*",
+		"Developer/Secret",
+		"*/Secret/*",
+	])("%s covers a folder and everything beneath it", (rule) => {
+		expect(matchesNeverTouch([rule], { repo: "me/app", path })).toBe(true);
+		expect(matchesNeverTouch([rule], { path: `${path}/deep/er/` })).toBe(true);
+	});
+	it.each(["/Users/me/Developer/Sec", "~/Developer/Other", "Secre", "Developer/Other"])(
+		"%s leaves the folder alone",
+		(rule) => {
+			expect(matchesNeverTouch([rule], { path })).toBe(false);
+		},
+	);
+	it("can't be walked around with dots", () => {
+		expect(matchesNeverTouch(["/a/Secret"], { path: "/a/x/../Secret/./app" })).toBe(true);
+		expect(matchesNeverTouch(["/a/Secret"], { path: "/a/Secret/../Open" })).toBe(false);
+	});
+	it("still reads a trailing slash on a repo rule", () => {
+		expect(matchesNeverTouch(["Secret/"], { repo: "me/Secret" })).toBe(true);
+	});
+});
+
+describe("regressions", () => {
+	const merged = "2026-11-06T12:00:00Z";
+	const past = (ms: number) => new Date(Date.parse(merged) + ms).toISOString();
+	it("ignores events inside the grace period", () => {
+		expect(isRegression({ lastSeen: past(60_000) }, { mergedAt: merged })).toBe(false);
+		expect(isRegression({ lastSeen: past(REGRESSION_GRACE_MS + 1) }, { mergedAt: merged })).toBe(true);
+	});
+	it("treats the release that had the bug as an old build, when both are known", () => {
+		const late = past(REGRESSION_GRACE_MS + 1);
+		const fix = { mergedAt: merged, release: "1.4.2" };
+		expect(isRegression({ lastSeen: late, release: "1.4.2" }, fix)).toBe(false);
+		expect(isRegression({ lastSeen: late, release: "1.4.3" }, fix)).toBe(true);
+		expect(isRegression({ lastSeen: late, release: null }, fix)).toBe(true);
+	});
+	it("needs a merged fix", () => {
+		expect(isRegression({ lastSeen: past(1) }, null)).toBe(false);
+		expect(isRegression({ lastSeen: past(1) }, { mergedAt: null })).toBe(false);
+	});
+});
+
 describe("merge without me", () => {
 	const base = {
 		on: true,
@@ -125,9 +180,16 @@ describe("merge without me", () => {
 		mergeable: "MERGEABLE",
 		mergeState: "CLEAN",
 		isDraft: false,
+		hold: false,
+		sourceKind: "person",
 	};
 	it("needs every gate passed, the setting on, and the project following", () => {
 		expect(mayMergeAlone(base)).toBe(true);
+		expect(mayMergeAlone({ ...base, hold: true })).toBe(false);
+		expect(mayMergeAlone({ ...base, sourceKind: "rebase_pr" })).toBe(false);
+		expect(mayMergeAlone({ ...base, sourceKind: "pr_changes" })).toBe(false);
+		expect(mayMergeAlone({ ...base, mergeState: "UNSTABLE" })).toBe(false);
+		expect(mayMergeAlone({ ...base, mergeState: "BLOCKED" })).toBe(false);
 		expect(mayMergeAlone({ ...base, on: false })).toBe(false);
 		expect(mayMergeAlone({ ...base, projectMerging: "ask" })).toBe(false);
 		expect(mayMergeAlone({ ...base, gates: { ...base.gates, Preview: "not_set_up" } })).toBe(false);

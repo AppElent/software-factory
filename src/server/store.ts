@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { TriageRecord } from "../shared/rules.ts";
-import { applyNeverTouch, noGates, triageHides } from "../shared/rules.ts";
+import { agentHoldsMerge, applyNeverTouch, noGates, triageHides } from "../shared/rules.ts";
 import type {
 	ActivityEntry,
 	AgentSettings,
@@ -171,14 +171,22 @@ export class Store {
 
 	/* ---------- PRs ---------- */
 
+	/** A PR the agent is still changing can't read as ready, wherever it's shown. */
 	prs(project?: string): PullRequest[] {
 		const visible = this.projects();
 		const names = new Map(visible.map((p) => [p.slug, p.name]));
 		const links = this.db
 			.prepare(
-				`SELECT id, project, pr_number, type FROM work_orders WHERE pr_number IS NOT NULL AND ${OPEN_FILTER}`,
+				`SELECT id, project, pr_number, type, state, failed_sha FROM work_orders WHERE pr_number IS NOT NULL AND ${OPEN_FILTER}`,
 			)
-			.all() as Array<{ id: number; project: string; pr_number: number; type: WorkType }>;
+			.all() as Array<{
+			id: number;
+			project: string;
+			pr_number: number;
+			type: WorkType;
+			state: string;
+			failed_sha: string | null;
+		}>;
 		const rows = this.db.prepare("SELECT project, json FROM prs").all() as Array<{
 			project: string;
 			json: string;
@@ -191,8 +199,10 @@ export class Store {
 					"project" | "projectName" | "workOrderId" | "workType"
 				>;
 				const link = links.find((l) => l.project === r.project && l.pr_number === pr.number);
+				const held = link && agentHoldsMerge({ state: link.state, failedSha: link.failed_sha }, pr.headSha);
 				return {
 					...pr,
+					group: held && pr.group === "ready" ? "running" : pr.group,
 					project: r.project,
 					projectName: names.get(r.project) ?? r.project,
 					workOrderId: link?.id ?? null,
@@ -207,6 +217,11 @@ export class Store {
 	}
 
 	/* ---------- errors ---------- */
+
+	/** The release an error was on when its fix merged. */
+	fixRelease(workOrderId: number): string | null {
+		return kvGet<string>(this.db, `fix_release:${workOrderId}`);
+	}
 
 	errors(project?: string): ErrorItem[] {
 		const visible = new Map(this.projects().map((p) => [p.slug, p]));
@@ -233,7 +248,8 @@ export class Store {
 		const fp = `error:${e.id}`;
 		const open = this.db
 			.prepare(
-				`SELECT id FROM work_orders WHERE fingerprint = ? AND ${OPEN_FILTER} AND stage NOT IN ('Observe')`,
+				// A fix being observed still owns its error, until the error comes back.
+				`SELECT id FROM work_orders WHERE fingerprint = ? AND ${OPEN_FILTER}${e.kind === "regression" ? " AND stage <> 'Observe'" : ""}`,
 			)
 			.get(fp) as { id: number } | undefined;
 		// A snooze that woke, or a dismissal that got worse, no longer counts as triaged.

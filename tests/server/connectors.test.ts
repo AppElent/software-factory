@@ -112,4 +112,22 @@ describe("T3 responses", () => {
 		expect(start?.args).toContain("--provider");
 		expect(start?.args).toContain("--model");
 	});
+
+	it("still reports a started thread when the read after it fails", async () => {
+		const cli: Cli = async (_cmd, args) => {
+			if (args[1] === "start") return ok(JSON.stringify({ threadId: "T1", runId: "r" }));
+			if (args[1] === "show") return ok("", 1, "server busy");
+			return ok("");
+		};
+		await expect(
+			t3Executor(cli).start({
+				projectPath: "/tmp/x",
+				title: "t",
+				baseBranch: "main",
+				branch: "factory/wo-1",
+				prompt: "p",
+				agent: "claude",
+			}),
+		).resolves.toEqual({ threadId: "T1", link: null });
+	});
 });

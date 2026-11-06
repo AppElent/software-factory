@@ -809,7 +809,8 @@ function ProjectsSection() {
 			<section aria-label="Never touch" className="flex max-w-[560px] flex-col gap-2">
 				<SectionLabel>Never touch</SectionLabel>
 				<p className="m-0 text-meta text-text-muted">
-					Repos and folders that match are never cloned, read, or given to an agent. Use * as a wildcard.
+					Repos and folders that match are never cloned, read, or given to an agent. A folder rule covers
+					everything inside it. Use * as a wildcard.
 				</p>
 				{p.neverTouch.length > 0 && (
 					<ul className="m-0 list-none p-0">

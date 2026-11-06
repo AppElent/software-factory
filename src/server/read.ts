@@ -3,6 +3,7 @@ import {
 	isNeedsYou,
 	isRegression,
 	median,
+	ownsNoPr,
 	qualifies,
 	rankQueue,
 	triageHides,
@@ -359,7 +360,7 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 		(store.db.prepare("SELECT regressed FROM work_orders WHERE id = ?").get(w.id) as { regressed: number })
 			.regressed === 1;
 	const byType: WorkTypeHealth[] = WORK_TYPES.map((type: WorkType) => {
-		const runs = merged.filter((w) => w.type === type);
+		const runs = merged.filter((w) => w.type === type && !ownsNoPr(w.source.kind));
 		const first = runs.filter((w) => w.firstTry).length;
 		const regressions = runs.filter(regressed).length;
 		return {
@@ -416,6 +417,8 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 	};
 }
 
+const fixedError = (e: ErrorItem) => ({ lastSeen: e.lastSeen, release: e.latestRelease ?? null });
+
 /** Marks shipped fixes whose error came back. Returns the work orders newly regressed. */
 export function findRegressions(
 	store: Store,
@@ -429,7 +432,8 @@ export function findRegressions(
 			.get(`error:${e.id}`) as
 			| { id: number; type: WorkType; pr_number: number | null; merged_at: string; regressed: number }
 			| undefined;
-		if (!fix || !isRegression(e, { mergedAt: fix.merged_at })) continue;
+		if (!fix || !isRegression(fixedError(e), { mergedAt: fix.merged_at, release: store.fixRelease(fix.id) }))
+			continue;
 		if (fix.regressed) continue;
 		store.db
 			.prepare(

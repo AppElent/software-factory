@@ -24,7 +24,12 @@ Decided while building. These win over the rest of this file, the boards, and th
 
 - **Cost:** no cost UI anywhere, because T3 exposes no cost source. A plan `Estimate` keeps time only.
 - **Questions:** native questions in T3 can't be answered over the CLI. Agents use `factory-question` blocks. A native request shows `waiting_in_t3` with `Open in T3`.
-- **Stop:** there's no CLI interrupt, so Stop keeps its wording: `Stopping at the agent's next step.` A held work order has `Restart this work order` (Resume).
+- **Stop:** there's no CLI interrupt, so Stop keeps its wording: `Stopping at the agent's next step.` A held work order has `Restart this work order` (Resume). Running and Stopping also offer `Close work order`, so a turn that never ends can't keep its Build slot.
+- **Agent at work on a PR:** while a linked work order's agent is working, or its push hasn't arrived, the PR reads as running and merge refuses: `The agent is still working on this PR.` or `The agent's changes haven't reached this PR yet.`
+- **Review:** a gate that fails or restarts during Review returns the work order to Verify (`A gate failed during review`, `New gates started during review`).
+- **Someone else's PR:** a rebase or requested change on a PR the factory didn't open never merges alone, and closing that work order leaves the PR open: `This deletes the worktree. PR #N stays open.`
+- **Refused merge:** when GitHub refuses a Merge without me, the activity says `GitHub refused to merge this without you` with its reason. The factory doesn't ask again until a new commit.
+- **Errors in Observe:** an error whose fix is being observed stays off the queue and links to that work order, until it counts as a regression.
 - **Live output:** the agent's assistant messages.
 - **Never touch:** `/api/repos` and reading send only a count of skips, never names. `2 repos match a Never touch rule, so nothing in them was opened.`
 - **Gates:** `Not set up` doesn't block a manual merge. Merge without me requires all four gates passed. A PR with no CI goes to Review after 5 minutes (`No gates set up`).
@@ -220,7 +225,7 @@ gates, agent, worktree, and time.
 | Plan ready | `Plan ready for you` | Approve plan, Change plan, Reject plan, Open in T3 | WOPlan |
 | Change plan | Same | Textarea and `Send to agent`; then `Agent is rewriting the plan. You'll see it here and in the queue.` | WOPlan (`change`, `sent`) |
 | Running | `Agent working · 6m` | Stop this work order (inline confirm), Open in T3. Activity feed plus live output | WORunning, WORun211 |
-| Stopping | `Stopping at the agent's next step.` | None | WORunning (`stopped`) |
+| Stopping | `Stopping at the agent's next step.` | `Close work order` | WORunning (`stopped`) |
 | Question | `Waiting for your answer · 8m` | Agent's question, options, optional note, `Answer`; then `Answer sent. The agent is continuing.` | WOQuestion |
 | Gate failed | `Tests failed twice` | Failure text, note for the agent, Retry with this note, Take over in T3, Close work order (inline confirm) | WOFailed |
 | Line stopped | `Stopped with the line at 14:02` | Restart the line, Take over in T3 | WOStopped |

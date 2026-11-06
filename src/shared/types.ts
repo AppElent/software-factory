@@ -32,7 +32,7 @@ export type WorkOrderState =
 	| "closed";
 
 export interface WorkOrderSource {
-	kind: "person" | "error" | "red_main" | "stale_pr" | "rebase_pr" | "toolkit" | "new_project";
+	kind: "person" | "error" | "red_main" | "stale_pr" | "rebase_pr" | "pr_changes" | "toolkit" | "new_project";
 	fingerprint?: string;
 	/** Text from outside the factory. Reaches the agent only as delimited data. */
 	data?: string;
@@ -203,6 +203,8 @@ export interface ErrorItem {
 	histogram: number[];
 	environment: string | null;
 	firstRelease: string | null;
+	/** The release of its latest event. Only read once a fix has merged. */
+	latestRelease?: string | null;
 	kind: "new" | "regression" | "ongoing";
 	regressionOf: { workOrderId: number; prNumber: number | null; fixedAt: string | null } | null;
 	triage: TriageState | null;

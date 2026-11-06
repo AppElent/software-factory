@@ -1220,7 +1220,7 @@ export function installDemo(store: Store) {
 				store.db.prepare("UPDATE projects SET read_at = ? WHERE read_at IS NULL").run(store.iso());
 				return { ...answer, code: 0, stdout: '{"data":{}}', missing: false };
 			}
-			if (cmd === "gh" && args.join(" ") === `pr merge 31 -R ${OWNER}/satisfactory --squash`) {
+			if (cmd === "gh" && args.join(" ").startsWith(`pr merge 31 -R ${OWNER}/satisfactory --squash`)) {
 				// The base moved while it waited: it stays open and needs a rebase.
 				store.db
 					.prepare(

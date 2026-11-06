@@ -16,6 +16,8 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 
 - Sources: a person, a production error, a CI failure, a stale or conflicted PR, or toolkit drift.
 - Observe watches for new errors after shipping. An error feeds a new work order back to Intake, carrying the earlier fix as context when it's a regression.
+- An error is a regression when it's seen more than an hour after its fix merged, unless its latest event is from the release it was on when the fix merged, which means an old build is still running.
+- Every merge names the commit its gates were read for, and refuses while the agent is changing the PR. A gate that fails or restarts during Review returns the work order to Verify.
 - Observe traces an error to a work order when the error is untriaged, in the same project, and first seen after the merge.
 - Each work order has one worktree, branch, and T3 thread. One open work order per error fingerprint.
 - The factory sends one stage per agent turn, so a hold takes effect at the next step.
@@ -67,6 +69,7 @@ Off by default and built last.
 - Qualifying changes nothing. Merging stays yours until you turn it on for that work type.
 - Once on: a PR with all four gates passed merges and ships alone, and shows on the floor. `Not set up` isn't passed. A project set to Always ask me is exempt.
 - One regression turns it off for that work type.
+- It merges only with all four gates passed and GitHub calling the PR `CLEAN`. It never merges a work order you stopped, or a rebase or requested change on a PR the factory didn't open. If GitHub refuses, it says so on the work order and doesn't ask again until a new commit.
 
 ### New project
 
@@ -105,7 +108,7 @@ Off by default and built last.
 
 ## Boundaries
 
-- **Never touch:** matching repos and folders are filtered before any clone, read, or agent. The rules are private config outside this repo. Every listing starts by applying them, and tests cover it. `/api/repos` and reading send only a count of skips, never names: `2 repos match a Never touch rule, so nothing in them was opened.`
+- **Never touch:** matching repos and folders are filtered before any clone, read, or agent. The rules are private config outside this repo. Every listing starts by applying them, and tests cover it. `/api/repos` and reading send only a count of skips, never names: `2 repos match a Never touch rule, so nothing in them was opened.` A folder rule covers everything beneath it, written as an absolute path, a `~/` path, or a relative one that matches anywhere in the path.
 - **Removing** a project stops watching it. The repo, folder, and services stay. A project with open work orders can't be removed.
 - **Diffs** stay on GitHub. The factory shows a summary, files, and size, and links out.
 - **Notifications** go out through macOS, grouped within a minute, once per error and once per red main. The queue is the only inbox, and notifying only when the app isn't in front is on by default. `terminal-notifier` exit 3 means macOS blocks them, so `lastTest` is `ok`, `failed`, or `blocked`.

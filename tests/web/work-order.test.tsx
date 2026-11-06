@@ -164,10 +164,20 @@ describe("work order", () => {
 		expect(within(pane()).getByRole("button", { name: "Keep running" })).toBeInTheDocument();
 	});
 
-	it("Stopping: a held run shows no actions in the pane", async () => {
+	it("Stopping: closing is the only action, so a turn that never ends can't hold its slot", async () => {
 		await openOrder("Stopping at the next step", "wo_states");
 		expect(paneStatus()).toHaveTextContent("Stopping at the agent's next step.");
-		expect(within(pane()).queryByRole("button")).not.toBeInTheDocument();
+		expect(
+			within(pane())
+				.getAllByRole("button")
+				.map((b) => b.textContent),
+		).toEqual(["Close work order"]);
+	});
+
+	it("WORunning: closing is on offer when the agent never finishes", async () => {
+		await openOrder("Guard the scorecard loader");
+		expect(within(pane()).getByRole("button", { name: "Stop this work order" })).toBeInTheDocument();
+		expect(within(pane()).getByRole("button", { name: "Close work order" })).toBeInTheDocument();
 	});
 
 	it("Held: Restart this work order resumes it", async () => {

@@ -81,6 +81,7 @@ export class Poller {
 		const now = store.now();
 		const busy = store.workOrders("state IN ('verifying', 'retrying', 'ready', 'shipping')").length > 0;
 		let delay = busy ? GITHUB_BUSY_MS : GITHUB_MS;
+		let gone: string[] = [];
 		try {
 			if (projects.length) {
 				const read = await readRepos(
@@ -88,6 +89,7 @@ export class Poller {
 					projects.map((p) => p.repo),
 					now.getTime(),
 				);
+				gone = read.missing;
 				for (const r of read.repos) {
 					const project = projects.find((p) => p.repo.toLowerCase() === r.repo.toLowerCase());
 					if (!project) continue;
@@ -101,10 +103,10 @@ export class Poller {
 			this.githubFails = 0;
 			store.setHealth({
 				source: "GitHub",
-				ok: true,
+				ok: gone.length === 0,
 				lastOk: store.iso(),
-				error: null,
-				fix: null,
+				error: gone.length ? `GitHub can't find ${gone.join(", ")}. It may be renamed or deleted.` : null,
+				fix: gone.length ? `gh repo view ${gone[0]}` : null,
 				nextCheckAt: new Date(now.getTime() + delay).toISOString(),
 			});
 		} catch (e) {
@@ -239,13 +241,29 @@ export class Poller {
 					"SELECT id, pr_number, merged_at FROM work_orders WHERE fingerprint = ? AND merged_at IS NOT NULL ORDER BY id DESC",
 				)
 				.get(`error:${issue.id}`) as { id: number; pr_number: number | null; merged_at: string } | undefined;
-			const regressed = fix && isRegression({ lastSeen: issue.lastSeen }, { mergedAt: fix.merged_at });
+			const before = prev ? (JSON.parse(prev.json) as ErrorItem) : null;
+			let latestRelease = before?.latestRelease ?? null;
+			if (fix && before?.lastSeen !== issue.lastSeen) {
+				// Only a fixed error needs this read: which build is still sending it decides if the fix failed.
+				const fresh = await readDetail(cli, issue.id);
+				if (fresh) {
+					detail = { ...fresh, release: detail?.release ?? fresh.release };
+					latestRelease = fresh.release;
+				}
+			}
+			const regressed =
+				fix &&
+				isRegression(
+					{ lastSeen: issue.lastSeen, release: latestRelease },
+					{ mergedAt: fix.merged_at, release: store.fixRelease(fix.id) },
+				);
 			const item: ErrorItem = {
 				...issue,
 				project: p.slug,
 				projectName: p.name,
 				environment: detail?.environment ?? null,
 				firstRelease: detail?.release ?? null,
+				latestRelease,
 				kind: regressed ? "regression" : prev ? "ongoing" : "new",
 				regressionOf: regressed
 					? { workOrderId: fix.id, prNumber: fix.pr_number, fixedAt: fix.merged_at }

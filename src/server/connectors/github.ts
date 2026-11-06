@@ -357,13 +357,16 @@ export async function mergePr(
 	cli: Cli,
 	repo: string,
 	number: number,
+	headSha: string,
 ): Promise<{ ok: boolean; reason: string }> {
-	const first = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--squash"], {
+	// GitHub refuses if the PR moved on from the commit the gates were read for.
+	const pinned = ["--match-head-commit", headSha];
+	const first = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--squash", ...pinned], {
 		timeoutMs: 90_000,
 	});
 	if (first.code === 0) return { ok: true, reason: "" };
 	if (/squash merges? (are )?not allowed|not allowed to.*squash/i.test(first.stderr)) {
-		const second = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--merge"], {
+		const second = await cli("gh", ["pr", "merge", String(number), "-R", repo, "--merge", ...pinned], {
 			timeoutMs: 90_000,
 		});
 		if (second.code === 0) return { ok: true, reason: "" };

@@ -51,8 +51,9 @@ export function t3Executor(cli: Cli): Executor {
 			if (res.code !== 0) throw new ExecutorError(res.stderr.trim() || `t3 exited with ${res.code}`);
 			const parsed = StartOut.safeParse(JSON.parse(res.stdout));
 			if (!parsed.success) throw new ExecutorError("t3 returned an unexpected response.");
-			const state = await this.status(parsed.data.threadId);
-			return { threadId: parsed.data.threadId, link: state.link };
+			// The thread exists now. Failing here would make Try again start a second one on the same branch.
+			const state = await this.status(parsed.data.threadId).catch(() => null);
+			return { threadId: parsed.data.threadId, link: state?.link ?? null };
 		},
 		async status(threadId) {
 			const res = await cli("t3", ["thread", "show", threadId, "--messages", "12", "--json"], {
