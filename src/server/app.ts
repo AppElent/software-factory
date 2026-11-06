@@ -7,7 +7,7 @@ import { backup } from "node:sqlite";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { applyNeverTouch, mergeBlockers, originIs, qualifies, snoozeUntil } from "../shared/rules.ts";
+import { mergeBlockers, originIs, qualifies, snoozeUntil } from "../shared/rules.ts";
 import type {
 	BackSummary,
 	BulkMergeResult,
@@ -24,7 +24,7 @@ import type { Bus } from "./bus.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import type { Config } from "./config.ts";
-import { NeverTouchError, writeNeverTouch } from "./config.ts";
+import { filterNeverTouch, NeverTouchError, writeNeverTouch } from "./config.ts";
 import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
 import { checkTools, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
@@ -129,7 +129,7 @@ export function createApp(d: AppDeps): Hono {
 	function addProject(repo: string, localPath: string | null): string {
 		if (!REPO_RE.test(repo)) throw new ActionError("That isn't a GitHub repo.", 400);
 		const rules = store.neverTouch();
-		const { kept } = applyNeverTouch(rules, [{ repo, path: localPath }]);
+		const { kept } = filterNeverTouch(rules, [{ repo, path: localPath }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
 		const name = repo.split("/")[1] ?? repo;
 		const slug = name.toLowerCase();
@@ -170,7 +170,7 @@ export function createApp(d: AppDeps): Hono {
 			throw new ActionError(scrub(e.message), 502);
 		});
 		// Rules run on the names first. Nothing about a skipped repo goes further than this line.
-		const { kept, skipped } = applyNeverTouch(
+		const { kept, skipped } = filterNeverTouch(
 			rules,
 			listed.map((r) => ({
 				...r,
@@ -209,7 +209,7 @@ export function createApp(d: AppDeps): Hono {
 		const { cloneFolder } = store.settings().projects;
 		const dest = join(cloneFolder, repo.split("/")[1] ?? "");
 		// The rule check comes before the clone.
-		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo, path: dest }]);
+		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo, path: dest }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
 		const found = await findFolder(repo, cloneFolder);
 		if (found) return c.json({ ok: true, path: shortPath(found) });
@@ -234,7 +234,7 @@ export function createApp(d: AppDeps): Hono {
 			}
 			const dest = join(cloneFolder, repo.split("/")[1] ?? "");
 			// The rule check comes before the clone.
-			const { kept } = applyNeverTouch(store.neverTouch(), [{ repo, path: dest }]);
+			const { kept } = filterNeverTouch(store.neverTouch(), [{ repo, path: dest }]);
 			if (kept.length === 0) {
 				failed.push({ repo, reason: "A Never touch rule matches that repo." });
 				continue;
@@ -362,7 +362,7 @@ export function createApp(d: AppDeps): Hono {
 		const p = needProject(slug);
 		// The repo's name, not the display name: that comes from a file in the repo.
 		const dest = p.localPath ?? join(store.settings().projects.cloneFolder, p.repo.split("/")[1] ?? slug);
-		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo: p.repo, path: dest }]);
+		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo: p.repo, path: dest }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that folder.", 403);
 		const res = await cloneRepo(cli, p.repo, dest);
 		audit(store.db, "clone repo", p.repo, "you", res.code === 0 ? null : res.stderr, store.now());
@@ -382,7 +382,7 @@ export function createApp(d: AppDeps): Hono {
 		if (!existsSync(join(typed, ".git"))) throw new ActionError("That folder isn't a git checkout.", 400);
 		// The real path too, or a symlink could lead around a rule.
 		const path = realpathSync(typed);
-		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo: p.repo, path }]);
+		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo: p.repo, path }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that folder.", 403);
 		if (!(await isCheckoutOf(path, p.repo)))
 			throw new ActionError(`That folder isn't a checkout of ${p.repo}.`, 400);
@@ -917,7 +917,7 @@ export function createApp(d: AppDeps): Hono {
 		const { cloneFolder } = store.settings().projects;
 		const problem = await newProjects.validate(owner, input.name, join(cloneFolder, input.name));
 		if (problem) throw new ActionError(problem, 400);
-		const { kept } = applyNeverTouch(store.neverTouch(), [
+		const { kept } = filterNeverTouch(store.neverTouch(), [
 			{ repo: `${owner}/${input.name}`, path: join(cloneFolder, input.name) },
 		]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that name.", 403);

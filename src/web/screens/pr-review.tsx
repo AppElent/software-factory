@@ -80,6 +80,8 @@ function PrBody({ text }: { text: string }) {
 }
 
 const failedGates = (pr: PrDetail): GateName[] => GATE_NAMES.filter((n) => pr.gates[n] === "failed");
+/** A check with no gate of its own can fail with every gate clear. */
+const whatFailed = (pr: PrDetail) => (failedGates(pr).length ? list(failedGates(pr)) : "A check");
 
 function statusOf(pr: PrDetail): { glyph: GlyphKind; text: string } {
 	if (pr.group === "ready") {
@@ -88,8 +90,7 @@ function statusOf(pr: PrDetail): { glyph: GlyphKind; text: string } {
 			? { glyph: "pass", text: "All gates passed · ready to merge" }
 			: { glyph: "pass", text: `Ready to merge · ${list(notSetUp)} not set up` };
 	}
-	if (pr.group === "failed")
-		return { glyph: "fail", text: `${list(failedGates(pr))} failed · can't merge yet` };
+	if (pr.group === "failed") return { glyph: "fail", text: `${whatFailed(pr)} failed · can't merge yet` };
 	if (pr.group === "rebase")
 		return { glyph: "idle", text: `Needs rebase · ${spanWords(pr.updatedAt)} behind` };
 	if (pr.group === "stale")
@@ -103,7 +104,7 @@ function FailedBanner({ pr }: { pr: PrDetail }) {
 	const failed = failedGates(pr);
 	const log = pr.checks.find((c) => c.bucket === "fail" && c.url)?.url;
 	const title =
-		failed.length === 1 && failed[0] === "Preview" ? "Preview build failed" : `${list(failed)} failed`;
+		failed.length === 1 && failed[0] === "Preview" ? "Preview build failed" : `${whatFailed(pr)} failed`;
 	const cause = pr.workOrder?.failure?.split("\n")[0];
 	return (
 		<Banner
@@ -177,7 +178,6 @@ function PrReview({ pr }: { pr: PrDetail }) {
 		wasChanging.current = changing;
 	}, [changing]);
 
-	const failed = failedGates(pr);
 	const isBehind = pr.group === "rebase" || pr.group === "stale";
 	const refusedBehind = refused != null && needsRebase(refused);
 	const canMerge = pr.group === "ready" && !refusedBehind;
@@ -219,7 +219,9 @@ function PrReview({ pr }: { pr: PrDetail }) {
 						variant="primary"
 						grow
 						disabled={change.pending}
-						onClick={() => void change.run(`${list(failed)} failed on this PR. Fix it and push to this PR.`)}
+						onClick={() =>
+							void change.run(`${whatFailed(pr)} failed on this PR. Fix it and push to this PR.`)
+						}
 					>
 						Send back to the agent
 					</Button>

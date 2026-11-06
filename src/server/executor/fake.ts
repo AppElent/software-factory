@@ -48,7 +48,7 @@ export class FakeExecutor implements Executor {
 
 	async send(threadId: string, prompt: string) {
 		const t = this.threads.get(threadId);
-		if (!t) throw new ExecutorError(`No thread ${threadId}`);
+		if (!t) throw new ExecutorError(`Thread ${threadId} is no longer available.`, true);
 		t.sent.push(prompt);
 		t.state = { ...t.state, status: "running", lastReply: null };
 		if (this.autoReply) this.finish(threadId, this.autoReply(prompt, t));

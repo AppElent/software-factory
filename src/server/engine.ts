@@ -102,7 +102,7 @@ export type EngineEvent =
 
 const realGit = (cwd: string, args: string[]) =>
 	new Promise<void>((resolve) => {
-		execFile("git", args, { cwd }, () => resolve());
+		execFile("git", args, { cwd, timeout: 60_000 }, () => resolve());
 	});
 
 export class Engine {
@@ -919,6 +919,11 @@ export class Engine {
 		try {
 			await this.sendTurn(id, threadId, prompt);
 		} catch (e) {
+			if (e instanceof ExecutorError && e.gone) {
+				const wo = this.store.workOrder(id);
+				if (wo) this.runFailed(wo, wo.stage, e);
+				throw new ActionError("T3 no longer has this agent's thread. Try again starts it over.", 502);
+			}
 			if (e instanceof ExecutorError) throw new ActionError(`T3 couldn't take this: ${e.message}`, 502);
 			throw e;
 		}
@@ -937,7 +942,8 @@ export class Engine {
 			const stale = this.staleRead(proj)
 				? "The factory hasn't read this PR from GitHub lately. Try again once it has."
 				: null;
-			const blockers = busy ? [busy] : stale ? [stale] : mergeBlockers(pr);
+			const old = pr.group === "stale" ? "This PR is stale, so rebase it first." : null;
+			const blockers = busy ? [busy] : stale ? [stale] : old ? [old] : mergeBlockers(pr);
 			if (blockers.length) return { ok: false, reason: blockers.join(" ") };
 			const res = await mergePr(this.cli, proj.repo, number, pr.headSha);
 			audit(this.store.db, "merge PR", `${proj.repo}#${number}`, "you", res.reason || null, this.store.now());

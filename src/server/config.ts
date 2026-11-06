@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { applyNeverTouch } from "../shared/rules.ts";
 
 export interface Config {
 	dataDir: string;
@@ -33,6 +34,28 @@ function sessionToken(dataDir: string): string {
 	writeFileSync(file, token, { mode: 0o600 });
 	chmodSync(file, 0o600);
 	return token;
+}
+
+const realOr = (path: string) => {
+	try {
+		return realpathSync(path);
+	} catch {
+		return path;
+	}
+};
+
+/** Never touch judges both the path given and where it really leads, so a symlink can't lead around a rule. */
+export function filterNeverTouch<T extends { repo?: string; path?: string | null }>(
+	rules: string[],
+	items: T[],
+) {
+	const { kept, skipped } = applyNeverTouch(rules, items);
+	const out: { kept: T[]; skipped: T[] } = { kept: [], skipped };
+	for (const item of kept) {
+		const real = item.path ? { ...item, path: realOr(item.path) } : item;
+		(applyNeverTouch(rules, [real]).kept.length ? out.kept : out.skipped).push(item);
+	}
+	return out;
 }
 
 /** The rules can't be read, so nothing can be shown or done safely until the file is fixed. */

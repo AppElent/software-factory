@@ -26,6 +26,7 @@ Decided while building. These win over the rest of this file, the boards, and th
 - **New project:** the name check also refuses a folder with files in it. The run never adopts a repo or folder it didn't make, so `Remove` can't delete anything else.
 - **New project restart:** a run the service stopped midway goes to the Failed screen with Retry and Remove. Remove deletes only what the run proved it made, and says what to check by hand.
 - **Queue:** a failed new project shows under Needs you, with `Open setup`. A skipped service shows under Later.
+- **Baseline:** NLBaseline drops "won't take other work until the baseline is green", because nothing enforces it.
 - **Folders:** a project's folder must be a checkout of its repo, checked by origin. Never touch also checks the folder's real path.
 - **Fixed errors:** a merged fix keeps its error off the queue until the error returns on a new release, not only during Observe.
 - **Observe:** the closing line says how many new errors appeared since the change shipped.

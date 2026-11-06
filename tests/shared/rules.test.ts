@@ -61,6 +61,19 @@ describe("checks with no gate of their own", () => {
 		expect(mapGates([check("pytest", "pass")]).Tests).toBe("passed");
 	});
 
+	it("reads running checks as running, though GitHub says UNSTABLE while they run", () => {
+		const pr = {
+			isDraft: false,
+			gates: { ...noGates("passed"), Tests: "running" as const },
+			mergeable: "MERGEABLE",
+			mergeState: "UNSTABLE",
+			updatedAt: "2026-11-06T00:00:00Z",
+			now: Date.parse("2026-11-06T12:00:00Z"),
+		};
+		expect(prGroup(pr)).toBe("running");
+		expect(mergeBlockers(pr)).toEqual(["Gates are still running."]);
+	});
+
 	it("doesn't call an UNSTABLE merge state ready, whatever the gates say", () => {
 		const pr = { isDraft: false, gates: noGates("passed"), mergeable: "MERGEABLE", mergeState: "UNSTABLE" };
 		expect(prGroup(pr as never)).toBe("failed");

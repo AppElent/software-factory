@@ -7,7 +7,7 @@ import { Bus } from "../../src/server/bus.ts";
 import type { Cli } from "../../src/server/cli.ts";
 import type { Config } from "../../src/server/config.ts";
 import { readNeverTouch, writeNeverTouch } from "../../src/server/config.ts";
-import { openDb } from "../../src/server/db.ts";
+import { kvSet, openDb } from "../../src/server/db.ts";
 import { Engine } from "../../src/server/engine.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
 import { Notifier } from "../../src/server/notify.ts";
@@ -291,6 +291,30 @@ describe("choosing a project's folder", () => {
 		symlinkSync(real, link);
 		writeNeverTouch(dir, ["*client-secret*"]);
 		expect((await choose(link)).status).toBe(403);
+	});
+});
+
+describe("a symlink to a Never touch folder", () => {
+	it("is refused when adding a project, and hides a project already pointing there", async () => {
+		origin = "git@github.com:me/fairway.git\n";
+		const clones = join(dir, "clones");
+		mkdirSync(clones);
+		kvSet(store.db, "settings:cloneFolder", clones);
+		const secret = join(dir, "client-secret");
+		mkdirSync(join(secret, ".git"), { recursive: true });
+		symlinkSync(secret, join(clones, "fairway"));
+		writeNeverTouch(dir, ["*client-secret*"]);
+		const res = await app.request("/api/projects", {
+			method: "POST",
+			headers: SESSION,
+			body: JSON.stringify({ repos: [{ repo: "me/fairway", clone: false }] }),
+		});
+		expect((await res.json()).added).toEqual([]);
+		expect(store.projects()).toEqual([]);
+		store.db
+			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("fairway", "me/fairway", "fairway", "", join(clones, "fairway"), store.iso());
+		expect(store.projects()).toEqual([]);
 	});
 });
 

@@ -519,7 +519,7 @@ function Baseline({ run }: { run: NewProjectRun }) {
 		<Setup
 			step="baseline"
 			title="The baseline is red"
-			lead="The template built, but a check failed. An agent can fix it. The project won't take other work until the baseline is green."
+			lead="The template built, but a check failed. An agent can fix it."
 		>
 			<div className="flex flex-col">
 				<LogRows run={run} lines={run.log.filter((l) => l.state !== "pending")} />

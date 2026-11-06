@@ -345,7 +345,9 @@ function WorkOrderPage({
 					<span className="text-meta text-text-muted">
 						{ownsNoPr(wo.source.kind)
 							? `This deletes the worktree. PR #${wo.prNumber} stays open.`
-							: "This deletes the worktree and the branch."}
+							: wo.prNumber
+								? `This closes PR #${wo.prNumber} and deletes the worktree and the branch.`
+								: "This deletes the worktree and the branch."}
 						{wo.source.kind === "error" && " The original error stays in the queue."}
 					</span>
 				</span>

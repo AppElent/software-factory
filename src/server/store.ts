@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { TriageRecord } from "../shared/rules.ts";
-import { agentHoldsMerge, applyNeverTouch, isRegression, noGates, triageHides } from "../shared/rules.ts";
+import { agentHoldsMerge, isRegression, noGates, triageHides } from "../shared/rules.ts";
 import type {
 	ActivityEntry,
 	AgentSettings,
@@ -20,7 +20,7 @@ import type {
 	WorkType,
 } from "../shared/types.ts";
 import { scrub } from "./cli.ts";
-import { readNeverTouch } from "./config.ts";
+import { filterNeverTouch, readNeverTouch } from "./config.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
 
@@ -117,7 +117,7 @@ export class Store {
 			.prepare("SELECT * FROM projects WHERE removed_at IS NULL ORDER BY name COLLATE NOCASE")
 			.all() as unknown as ProjectRow[];
 		const candidates = rows.map((r) => ({ row: r, repo: r.repo, path: r.local_path }));
-		const { kept } = applyNeverTouch(this.neverTouch(), candidates);
+		const { kept } = filterNeverTouch(this.neverTouch(), candidates);
 		return kept.map(({ row }) => this.toProject(row));
 	}
 
@@ -178,12 +178,13 @@ export class Store {
 		const names = new Map(visible.map((p) => [p.slug, p.name]));
 		const links = this.db
 			.prepare(
-				`SELECT id, project, pr_number, type, state, failed_sha FROM work_orders WHERE pr_number IS NOT NULL AND ${OPEN_FILTER}`,
+				`SELECT id, project, pr_number, branch, type, state, failed_sha FROM work_orders WHERE (pr_number IS NOT NULL OR branch IS NOT NULL) AND ${OPEN_FILTER}`,
 			)
 			.all() as Array<{
 			id: number;
 			project: string;
-			pr_number: number;
+			pr_number: number | null;
+			branch: string | null;
 			type: WorkType;
 			state: string;
 			failed_sha: string | null;
@@ -199,7 +200,10 @@ export class Store {
 					PullRequest,
 					"project" | "projectName" | "workOrderId" | "workType"
 				>;
-				const linked = links.filter((l) => l.project === r.project && l.pr_number === pr.number);
+				// The agent opens its PR mid-turn, before the factory knows the number. Its branch says whose it is.
+				const linked = links.filter(
+					(l) => l.project === r.project && (l.pr_number === pr.number || l.branch === pr.headRef),
+				);
 				const holds = (l: (typeof links)[number]) =>
 					agentHoldsMerge({ state: l.state, failedSha: l.failed_sha }, pr.headSha);
 				// A rebase can run on a PR that has its own work order. Whichever is busy is the one that counts.

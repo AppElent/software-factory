@@ -1207,3 +1207,62 @@ describe("a project's name in a prompt", () => {
 		expect(planPrompt(wo(id))).toContain("Project: fairway");
 	});
 });
+
+describe("a PR the agent opened mid-turn", () => {
+	it("is held from the first read, before the agent's turn ends", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		const branch = wo(id).branch as string;
+		expect(branch).toBeTruthy();
+		putPr(21, { headRef: branch, gates: noGates("not_set_up"), group: "ready" });
+		const pr = store.pr("fairway", 21);
+		expect(pr?.group).toBe("running");
+		expect(pr?.workOrderId).toBe(id);
+		expect((await engine.merge("fairway", 21)).ok).toBe(false);
+		expect(mergeCalls()).toEqual([]);
+		expect(readQueue(store, engine).needsYou.filter((i) => i.kind === "ready_pr")).toEqual([]);
+	});
+});
+
+describe("a thread T3 lost while waiting on you", () => {
+	it("says so, and Try again starts it over", async () => {
+		const id = start({ type: "Bug fix" });
+		await settle();
+		exec.finish(threadOf(id), planBlock);
+		await settle();
+		expect(wo(id).state).toBe("plan_ready");
+		exec.threads.delete(threadOf(id));
+		await engine.approve(id);
+		await settle();
+		expect(wo(id).state).toBe("run_failed");
+		expect(wo(id).threadId).toBeNull();
+		await engine.retry(id, null);
+		await settle();
+		expect(wo(id).threadId).not.toBeNull();
+	});
+});
+
+describe("a thread T3 lost before you answered it", () => {
+	it("refuses the answer and hands it back", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		store.patchWorkOrder(id, {
+			state: "question",
+			question: JSON.stringify({ text: "Which?", options: [] }),
+		});
+		exec.threads.delete(threadOf(id));
+		await expect(engine.answer(id, "This one", null)).rejects.toThrow(/no longer has/);
+		expect(wo(id).state).toBe("run_failed");
+		expect(wo(id).threadId).toBeNull();
+	});
+});
+
+describe("merging a stale PR", () => {
+	it("is refused on the server, whatever the page offers", async () => {
+		putPr(9, { group: "stale" });
+		const res = await engine.merge("fairway", 9);
+		expect(res.ok).toBe(false);
+		expect(res.reason).toMatch(/stale/);
+		expect(mergeCalls()).toEqual([]);
+	});
+});

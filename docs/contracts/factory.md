@@ -23,6 +23,7 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 - The factory sends one stage per agent turn, so a hold takes effect at the next step.
 - Closing a work order deletes its worktree and branch. The source error stays in the queue.
 - Closing a PR keeps the branch on GitHub and closes its work order.
+- A PR belongs to the work order whose branch it's on from the moment GitHub shows it, so merging refuses while that agent is still working.
 - Closing a work order closes its PR first. If GitHub refuses, nothing else changes.
 - Merging is refused when the factory hasn't read the project from GitHub for 15 minutes. Merge without me also waits for that, and for a paused project.
 

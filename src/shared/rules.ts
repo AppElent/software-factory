@@ -224,9 +224,10 @@ export function prGroup(pr: {
 	if (ageDays >= STALE_DAYS) return "stale";
 	if (pr.mergeable === "CONFLICTING" || pr.mergeState === "DIRTY" || pr.mergeState === "BEHIND")
 		return "rebase";
-	if (anyGate(pr.gates, "failed") || pr.mergeState === "UNSTABLE") return "failed";
+	if (anyGate(pr.gates, "failed")) return "failed";
 	if (pr.isDraft || !gatesClear(pr.gates)) return "running";
-	return "ready";
+	// GitHub also says UNSTABLE while checks run, so it only means failed once every gate is clear.
+	return pr.mergeState === "UNSTABLE" ? "failed" : "ready";
 }
 
 /** Why a PR can't merge right now. Empty means it can. Checked on the server before every merge. */
@@ -242,7 +243,8 @@ export function mergeBlockers(pr: {
 		out.push("It conflicts with the base branch.");
 	if (pr.mergeState === "BEHIND") out.push("The base branch moved on, so it needs a rebase.");
 	if (anyGate(pr.gates, "failed")) out.push("A gate failed.");
-	else if (pr.mergeState === "UNSTABLE") out.push("GitHub says a check on this PR isn't passing.");
+	else if (pr.mergeState === "UNSTABLE" && gatesClear(pr.gates))
+		out.push("GitHub says a check on this PR isn't passing.");
 	if (anyGate(pr.gates, "running")) out.push("Gates are still running.");
 	if (anyGate(pr.gates, "out_of_date")) out.push("Gates are out of date.");
 	if (anyGate(pr.gates, "not_started")) out.push("Gates haven't started.");
