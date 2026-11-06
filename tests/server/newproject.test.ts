@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
+import { writeNeverTouch } from "../../src/server/config.ts";
 import { openDb } from "../../src/server/db.ts";
 import { NewProjects } from "../../src/server/newproject.ts";
 import { readItemsForNotify } from "../../src/server/read.ts";
@@ -18,6 +19,7 @@ let viewError: string;
 const deleted: string[] = [];
 
 const cli: Cli = async (cmd, args) => {
+	if (cmd === "gh" && args[1] === "delete") deleted.push(args[2] as string);
 	if (cmd === "gh" && args[0] === "api")
 		return { code: 0, stdout: "me", stderr: "", timedOut: false, missing: false };
 	return {
@@ -40,6 +42,7 @@ beforeEach(() => {
 	repoExists = false;
 	viewError = "GraphQL: Could not resolve to a Repository with the name 'me/fresh'. (repository)";
 	ran = [];
+	deleted.length = 0;
 	projects = new NewProjects({
 		store,
 		cli,
@@ -106,6 +109,46 @@ describe("New project never adopts what it didn't make", () => {
 		await projects.scaffold(id);
 		expect(projects.get(id)?.step).toBe("connect");
 		expect((await projects.remove(id)).ok).toBe(false);
+	});
+
+	it("fails the run when a Never touch rule refuses the project at the end", async () => {
+		const refusing = new NewProjects({
+			store,
+			cli,
+			publish: () => {},
+			addProject: () => {
+				throw new Error("A Never touch rule matches this.");
+			},
+			runner: async () => ({ ok: true }),
+		});
+		const id = await refusing.create(input);
+		await refusing.scaffold(id);
+		expect(refusing.get(id)?.step).toBe("failed");
+		expect(refusing.get(id)?.failure).toBe("A Never touch rule matches this.");
+	});
+
+	it("finishes removing when the repo was already deleted by hand", async () => {
+		const id = await projects.create(input);
+		const run = projects.get(id) as NonNullable<ReturnType<NewProjects["get"]>>;
+		store.db
+			.prepare("UPDATE new_projects SET json = ? WHERE id = ?")
+			.run(JSON.stringify({ ...run, step: "failed", created: ["repo:me/fresh"] }), id);
+		expect(await projects.remove(id)).toEqual({ ok: true });
+		expect(projects.get(id)).toBeFalsy();
+	});
+
+	it("deletes nothing when a Never touch rule has come to match it", async () => {
+		const id = await projects.create(input);
+		const run = projects.get(id) as NonNullable<ReturnType<NewProjects["get"]>>;
+		store.db
+			.prepare("UPDATE new_projects SET json = ? WHERE id = ?")
+			.run(JSON.stringify({ ...run, step: "failed", created: ["repo:me/fresh"] }), id);
+		writeNeverTouch(dir, ["me/fresh"]);
+		const before = deleted.length;
+		expect(readItemsForNotify(store).filter((i) => i.kind === "new_project")).toEqual([]);
+		expect(await projects.remove(id)).toEqual({ ok: true });
+		expect(deleted).toHaveLength(before);
+		expect(projects.get(id)).toBeFalsy();
 	});
 
 	it("won't remove a project an agent is still working on", async () => {

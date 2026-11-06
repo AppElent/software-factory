@@ -342,3 +342,22 @@ describe("agent replies", () => {
 		expect(r.plan).toBeNull();
 	});
 });
+
+describe("a Never touch rule pasted as a URL", () => {
+	it.each([
+		"https://github.com/me/x",
+		"https://github.com/me/x/",
+		"https://github.com/me/x.git",
+		"github.com/me/x",
+		"git@github.com:me/x.git",
+		"ssh://git@github.com/me/x.git",
+		"me/x.git",
+	])("%s counts as the repo", (rule) => {
+		expect(matchesNeverTouch([rule], { repo: "me/x" })).toBe(true);
+		expect(matchesNeverTouch([rule], { repo: "me/x-2" })).toBe(false);
+	});
+
+	it("leaves a folder rule as it is", () => {
+		expect(matchesNeverTouch(["/work/x.git"], { repo: "me/x", path: "/work/x" })).toBe(false);
+	});
+});

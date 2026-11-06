@@ -605,6 +605,8 @@ export class Engine {
 			!project ||
 			project.paused ||
 			pr.group === "stale" ||
+			// Another work order can be busy on this PR, such as a rebase.
+			pr.heldBy ||
 			this.staleRead(project) ||
 			this.store.line().stopped ||
 			!mayMergeAlone({

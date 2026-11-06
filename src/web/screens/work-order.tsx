@@ -87,7 +87,7 @@ function statusOf(wo: WorkOrder, view: View, stoppedAt: string | null): { glyph:
 		case "failed":
 			return { glyph: "fail", text: `${gate} ${failedAgain(wo.retries)}` };
 		case "run_failed":
-			return { glyph: "fail", text: "T3 couldn't start this run." };
+			return { glyph: "fail", text: "This run failed." };
 		case "in_t3":
 			return { glyph: "ask", text: "Agent is waiting in T3" };
 		case "ready":
@@ -517,6 +517,8 @@ function WorkOrderPage({
 							</ButtonLink>
 						)}
 						{openInT3}
+						{/* Someone else's PR stays open, so this only ends the work order. */}
+						{ownsNoPr(wo.source.kind) && closeControl}
 					</>
 				);
 			default:

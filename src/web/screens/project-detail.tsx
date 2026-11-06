@@ -50,7 +50,7 @@ const WORK_ORDER_WORDS: Record<WorkOrderState, [GlyphKind, string]> = {
 	build_done: ["idle", "Build · finished"],
 	question: ["ask", "Waiting for your answer"],
 	waiting_in_t3: ["ask", "Waiting in T3"],
-	run_failed: ["fail", "T3 couldn't start this run"],
+	run_failed: ["fail", "This run failed"],
 	verifying: ["run", "Verify · gates running"],
 	retrying: ["run", "Verify · agent fixing a gate"],
 	failed: ["fail", "Verify · gates failed"],

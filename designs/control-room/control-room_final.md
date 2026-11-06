@@ -27,6 +27,7 @@ Decided while building. These win over the rest of this file, the boards, and th
 - **New project restart:** a run the service stopped midway goes to the Failed screen with Retry and Remove. Remove deletes only what the run proved it made, and says what to check by hand.
 - **Queue:** a failed new project shows under Needs you, with `Open setup`. A skipped service shows under Later.
 - **Baseline:** NLBaseline drops "won't take other work until the baseline is green", because nothing enforces it. A red baseline still pushes what it set up, so a fix has CI. It also offers `Remove what was created`.
+- **Failed run:** the status reads `This run failed.`, since a run can also fail after it started. The activity line says when T3 couldn't start it.
 - **Open question:** an agent question with no options takes a typed answer, and every question view can close the work order.
 - **PR status:** when the agent holds a PR with its gates finished, the status names the hold instead of `Checks running`.
 - **Folders:** a project's folder must be a checkout of its repo, checked by origin. Never touch also checks the folder's real path.

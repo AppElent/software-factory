@@ -40,6 +40,15 @@ function pathRe(rule: string): RegExp {
 	return new RegExp(`(^|/)${globBody(rule)}(/|$)`, "i");
 }
 
+/** People paste what's in front of them, so a repo's URL counts as the repo. */
+function cleanRule(raw: string) {
+	const rule = raw.trim().replace(/\/+$/, "");
+	if (rule.startsWith("/") || rule.startsWith("~")) return rule;
+	return rule
+		.replace(/^(?:(?:https?|ssh):\/\/)?(?:[\w-]+@)?(?:www\.)?github\.com[/:]/i, "")
+		.replace(/\.git$/i, "");
+}
+
 /** A rule matches a repo name, an owner, `owner/name`, or a folder and everything beneath it. */
 export function matchesNeverTouch(
 	rules: string[],
@@ -55,7 +64,7 @@ export function matchesNeverTouch(
 	}
 	const path = candidate.path ? cleanPath(candidate.path) : null;
 	return rules.some((raw) => {
-		const rule = raw.trim().replace(/\/+$/, "");
+		const rule = cleanRule(raw);
 		if (!rule) return false;
 		const repoRe = new RegExp(`^${globBody(rule)}$`, "i");
 		if (repos.some((t) => repoRe.test(t))) return true;

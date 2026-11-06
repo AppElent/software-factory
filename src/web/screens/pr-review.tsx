@@ -228,7 +228,7 @@ function PrReview({ pr }: { pr: PrDetail }) {
 					>
 						Send back to the agent
 					</Button>
-					{!changing && <InlineError>{change.error && "Couldn't send this. Try again."}</InlineError>}
+					{!changing && <InlineError>{change.error && `Couldn't send this. ${change.error}`}</InlineError>}
 				</>
 			)}
 			{!merged && isBehind && (

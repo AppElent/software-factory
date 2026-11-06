@@ -422,7 +422,7 @@ function RunFailedPane({ item, w }: { item: QueueItem; w: WorkOrder }) {
 	return (
 		<>
 			<Heading meta={workOrderMeta(item, w)} title={w.title} />
-			<FailureLine>T3 couldn't start this run.</FailureLine>
+			<FailureLine>This run failed.</FailureLine>
 			{w.failure && <CodeBlock>{w.failure}</CodeBlock>}
 			<Button variant="primary" grow disabled={retry.pending} onClick={() => void retry.run()}>
 				Try again

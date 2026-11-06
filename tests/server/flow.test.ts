@@ -1370,6 +1370,21 @@ describe("a rebase, again", () => {
 	});
 });
 
+describe("Merge without me, with another agent on the PR", () => {
+	it("waits for a rebase that's still building", async () => {
+		setApprovals(CHORE_ALONE);
+		const id = await toReview({ mergeState: "BEHIND", group: "rebase" });
+		expect(wo(id).state).toBe("ready");
+		const rebase = await engine.rebasePr("fairway", 5);
+		await settle();
+		expect(wo(rebase).state).toBe("building");
+		putPr(5, {});
+		await settle();
+		expect(store.pr("fairway", 5)?.heldBy).toBeTruthy();
+		expect(mergeCalls()).toEqual([]);
+	});
+});
+
 describe("Merge without me, on an old PR", () => {
 	it("doesn't merge a stale PR when its project resumes", async () => {
 		setApprovals({ mergeWithoutMe: { ...store.settings().approvals.mergeWithoutMe, Chore: true } });

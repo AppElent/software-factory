@@ -365,7 +365,7 @@ describe("work order", () => {
 		const user = userEvent.setup();
 		const { h, id } = await openOrder("Run that T3 couldn't start", "wo_states");
 		const alert = within(pane()).getByRole("alert");
-		expect(alert).toHaveTextContent("T3 couldn't start this run.");
+		expect(alert).toHaveTextContent("This run failed.");
 		const failure = screen.getByRole("region", { name: "Failure" });
 		expect(failure.querySelector("pre")).toHaveTextContent("worktree already exists");
 		expect(within(pane()).getByRole("link", { name: "Open in T3" })).toBeInTheDocument();
@@ -375,7 +375,7 @@ describe("work order", () => {
 
 	it("run_failed: with no thread there's no link to T3", async () => {
 		await openOrder("Run with no thread", "wo_states");
-		expect(within(pane()).getByRole("alert")).toHaveTextContent("T3 couldn't start this run.");
+		expect(within(pane()).getByRole("alert")).toHaveTextContent("This run failed.");
 		expect(screen.queryByRole("link", { name: "Open in T3" })).not.toBeInTheDocument();
 		expect(within(pane()).getByRole("button", { name: "Try again" })).toBeInTheDocument();
 	});

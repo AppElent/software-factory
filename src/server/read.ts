@@ -26,6 +26,7 @@ import type {
 	WorkTypeHealth,
 } from "../shared/types.ts";
 import { STAGES, WORK_TYPES } from "../shared/types.ts";
+import { filterNeverTouch } from "./config.ts";
 import { kvGet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import type { Store } from "./store.ts";
@@ -183,6 +184,8 @@ function readItems(store: Store): QueueItem[] {
 	}>;
 	for (const row of runs) {
 		const run = { ...JSON.parse(row.json), id: row.id } as NewProjectRun;
+		if (!filterNeverTouch(store.neverTouch(), [{ repo: run.repo, path: run.localPath }]).kept.length)
+			continue;
 		const project = run.projectSlug ? store.project(run.projectSlug) : null;
 		if (run.step === "failed" || run.step === "baseline") {
 			items.push({

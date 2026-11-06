@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { NewProjectLogLine, NewProjectRun, ToolStatus } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { cliEnv, scrub } from "./cli.ts";
+import { filterNeverTouch } from "./config.ts";
 import { checkTools } from "./connectors/tools.ts";
 import { audit } from "./db.ts";
 import type { Store } from "./store.ts";
@@ -215,7 +216,7 @@ export class NewProjects {
 				run.step = step === "baseline" ? "baseline" : "failed";
 				run.failedAt = this.store.iso();
 				// The template built, so the project exists and an agent can be given the fix.
-				if (step === "baseline") run.projectSlug = this.addProject(run.repo, run.localPath);
+				if (step === "baseline") this.addTo(run);
 				this.save(run);
 				return;
 			}
@@ -225,7 +226,7 @@ export class NewProjects {
 			audit(this.store.db, `new project: ${step}`, run.repo, "you", null, this.store.now());
 			this.save(run);
 		}
-		run.projectSlug = this.addProject(run.repo, run.localPath);
+		if (!this.addTo(run)) return;
 		const tools = await checkTools(this.cli);
 		const has = (n: string): ToolStatus | undefined => tools.find((t) => t.name === n);
 		run.serviceTools = Object.fromEntries(
@@ -244,6 +245,20 @@ export class NewProjects {
 		};
 		run.step = "connect";
 		this.save(run);
+	}
+
+	/** A Never touch rule added while this ran refuses the project, and the page has to hear about it. */
+	private addTo(run: NewProjectRun) {
+		try {
+			run.projectSlug = this.addProject(run.repo, run.localPath);
+			return true;
+		} catch (e) {
+			run.step = "failed";
+			run.failure = scrub(e instanceof Error ? e.message : String(e));
+			run.failedAt = this.store.iso();
+			this.save(run);
+			return false;
+		}
 	}
 
 	async connect(id: number, service: string): Promise<{ ok: boolean; reason?: string }> {
@@ -315,11 +330,14 @@ export class NewProjects {
 				.prepare("SELECT 1 FROM work_orders WHERE project = ? AND state NOT IN ('done', 'closed') LIMIT 1")
 				.get(run.projectSlug);
 		if (open) return { ok: false, reason: "This project has open work orders. Close them first." };
-		for (const item of run.created) {
+		// A rule added since then wins. The run goes, and what it made stays out of the factory's hands.
+		const { kept } = filterNeverTouch(this.store.neverTouch(), [{ repo: run.repo, path: run.localPath }]);
+		for (const item of kept.length ? run.created : []) {
 			if (item.startsWith("repo:")) {
 				const res = await this.cli("gh", ["repo", "delete", item.slice(5), "--yes"]);
 				audit(this.store.db, "delete repo", item.slice(5), "you", res.stderr || null, this.store.now());
-				if (res.code !== 0) {
+				// Deleted on GitHub by hand, which is what the missing scope asks people to do.
+				if (res.code !== 0 && !/could not resolve to a repository/i.test(res.stderr)) {
 					const scope = /delete_repo/.test(res.stderr);
 					return {
 						ok: false,
