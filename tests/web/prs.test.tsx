@@ -124,7 +124,10 @@ describe("pull requests list", () => {
 
 		const banner = await screen.findByText("2 merged. #31 couldn't merge.");
 		const status = banner.closest('[role="status"]') as HTMLElement;
-		expect(status).toHaveTextContent(/Foundry #168 and Arcade Club #62 are shipping now\./);
+		// Rows sort by age, and seeded PRs can share a millisecond.
+		expect(status).toHaveTextContent(
+			/(Foundry #168 and Arcade Club #62|Arcade Club #62 and Foundry #168) are shipping now\./,
+		);
 		expect(status).toHaveTextContent(/satisfactory moved on while #31 waited, so it needs a rebase\./);
 		const merge = h.mutations.find((m) => m.startsWith("POST /api/prs/merge"));
 		expect(merge).toContain('"number":168');
