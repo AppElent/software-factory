@@ -414,14 +414,21 @@ export async function cloneRepo(cli: Cli, repo: string, dest: string) {
 }
 
 /** The last lines of a failed job's log, or null. Output is untrusted and only ever shown as text. */
+/** `gh run view --log-failed` prefixes each line with job, step, and time, and keeps the terminal's colours. */
+export function cleanLog(raw: string): string {
+	return raw
+		.trim()
+		.split("\n")
+		.map((line) => line.split("\t").slice(2).join("\t") || line)
+		.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, ""))
+		.slice(-40)
+		.join("\n");
+}
+
 export async function failedLog(cli: Cli, repo: string, url: string | null): Promise<string | null> {
 	const run = url?.match(/\/actions\/runs\/(\d+)/)?.[1];
 	if (!run) return null;
 	const res = await cli("gh", ["run", "view", run, "-R", repo, "--log-failed"], { timeoutMs: 60_000 });
 	if (res.code !== 0) return null;
-	const lines = res.stdout
-		.trim()
-		.split("\n")
-		.map((l) => l.split("\t").slice(2).join("\t") || l);
-	return lines.slice(-40).join("\n");
+	return cleanLog(res.stdout);
 }

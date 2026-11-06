@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
-import { GithubError, readRepos } from "../../src/server/connectors/github.ts";
+import { cleanLog, GithubError, readRepos } from "../../src/server/connectors/github.ts";
 import { parseDetail, readIssues, SentryError } from "../../src/server/connectors/sentry.ts";
 import { parseShow, t3Executor } from "../../src/server/executor/t3.ts";
 
@@ -129,5 +129,13 @@ describe("T3 responses", () => {
 				agent: "claude",
 			}),
 		).resolves.toEqual({ threadId: "T1", link: null });
+	});
+});
+
+describe("a failed CI log", () => {
+	it("loses the job, the step, the time, and the terminal colours", () => {
+		const raw =
+			"verify\tRun tests\t2026-11-06T14:38:02.1856700Z \u001b[36;1mpnpm test\u001b[0m\nverify\tRun tests\t2026-11-06T14:38:03.0000000Z not ok 1";
+		expect(cleanLog(raw)).toBe("pnpm test\nnot ok 1");
 	});
 });

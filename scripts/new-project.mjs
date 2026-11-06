@@ -71,6 +71,34 @@ const TEMPLATES = {
 	bare: () => {},
 };
 
+/** The factory's gates read this. Its job name, `verify`, stands for typecheck, tests, and lint. */
+const ciWorkflow = (node) => `name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ci-\${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${node}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run --if-present check
+      - run: pnpm run --if-present typecheck
+      - run: pnpm run --if-present test
+      - run: pnpm run --if-present build
+`;
+
 const steps = {
 	repo() {
 		try {
@@ -106,6 +134,8 @@ const steps = {
 		run("node", [join(toolkit, "scripts", script), "--path", folder, "--apply"], process.cwd());
 		const pkg = existsSync(join(folder, "package.json"));
 		if (pkg) {
+			if (!dry) mkdirSync(join(folder, ".github", "workflows"), { recursive: true });
+			write(".github/workflows/ci.yml", ciWorkflow(template === "node" ? 26 : 22));
 			run("pnpm", ["install"]);
 			for (const s of ["typecheck", "test", "check"]) {
 				const scripts = dry

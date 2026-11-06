@@ -18,3 +18,23 @@ Revision `d52c3d1` on `v1` by commit times, with the blocked check from `c2da2fd
 - **The read worked.** A real read of 4 repos: 27 listed, 2 skipped by a Never touch rule. Only the count went further.
 - **Notifications are blocked on this Mac.** `terminal-notifier` exits 3 because notifications are turned off for it. A real delivery and click-to-open weren't verified.
 - **Not covered:** a real Sentry error to a merged PR, a real project reaching green CI through the factory, and a real Toolkit sync.
+
+## Second real run: new project, failed gate, retry, merge
+
+A private throwaway repo, `factory-sandbox`, went through the real flow on 2026-11-06, using the real `gh`, `t3`, and GitHub Actions.
+
+| Step | Result |
+| --- | --- |
+| New project, Node template, through the API | All five steps passed. Repo private, added to T3 and to the factory |
+| Scaffold CI | **Bug found.** The scaffold added no workflow, so gates never ran. The baseline step now writes `.github/workflows/ci.yml` |
+| Bug fix work order: Intake to a real plan | 30 seconds. The `factory-plan` block parsed |
+| Approve, Build, PR | 45 seconds. PR found by branch |
+| First push fails CI | Detected, the retry sent with the log, gates went back to running on the new commit |
+| Retry passes | Gates passed, Review, not the first try |
+| Merge through the app | `--match-head-commit` accepted, GitHub says merged, then Ship and Observe |
+| `t3 thread send`, then `show` | `running` immediately, so the engine can't read the previous reply as this turn's |
+
+It also found three smaller things, all fixed: a job that stands for several gates reported a test failure as `Typecheck failed`, the failure log kept timestamps and terminal colours, and `Shipped` appeared before CI on main had started.
+
+Still not exercised on real services: a Sentry error through to a merged fix, Merge without me, a real toolkit sync, delivered notifications.
+

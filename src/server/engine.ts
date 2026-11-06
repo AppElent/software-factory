@@ -7,6 +7,7 @@ import {
 	failedGate,
 	gatesClear,
 	gatesPassed,
+	gateValues,
 	mayMergeAlone,
 	mergeBlockers,
 	noGates,
@@ -67,6 +68,8 @@ const QuestionShape = z.object({
 const PUSH_WAIT_MS = 10 * 60_000;
 /** A PR with no checks at all goes to Review after this long. */
 const NO_CHECKS_MS = 5 * 60_000;
+/** Main's CI on the merge commit takes a moment to show up. Until then, main's state is about the commit before. */
+const SHIP_MIN_MS = 2 * 60_000;
 const SHIP_MAX_MS = 30 * 60_000;
 export const OBSERVE_MS = 24 * 3_600_000;
 
@@ -513,17 +516,18 @@ export class Engine {
 				this.store.patchWorkOrder(wo.id, { held_by_line: this.store.line().stopped ? 1 : 0 });
 			return;
 		}
-		const gate = failedGate(pr.gates);
+		// One CI job can stand for several gates, and then its failure doesn't say which of them it was.
+		const gate =
+			gateValues(pr.gates).filter((g) => g === "failed").length === 1 ? failedGate(pr.gates) : null;
 		const project = this.store.project(wo.project);
 		const check = pr.checks.find((c) => c.bucket === "fail");
+		const label = gate ?? check?.name ?? "A gate";
 		const log = project && check ? await failedLog(this.cli, project.repo, check.url) : null;
 		if (held()) return;
-		const text =
-			log ??
-			(samePush ? "The agent's retry pushed no new commit." : `${check?.name ?? gate ?? "A gate"} failed.`);
+		const text = log ?? (samePush ? "The agent's retry pushed no new commit." : `${label} failed.`);
 		const { retries } = this.store.settings().agents;
 		if (wo.retries < retries && wo.threadId && !samePush) {
-			this.store.addActivity(wo.id, `${gate ?? "A gate"} failed`, text);
+			this.store.addActivity(wo.id, `${label} failed`, text);
 			this.patch(wo.id, {
 				state: "retrying",
 				retries: wo.retries + 1,
@@ -538,7 +542,7 @@ export class Engine {
 			}
 			return;
 		}
-		this.store.addActivity(wo.id, `${gate ?? "A gate"} failed after retries`, text);
+		this.store.addActivity(wo.id, `${label} failed after retries`, text);
 		this.patch(wo.id, { state: "failed", failed_gate: gate, failure: text, first_try: 0 });
 	}
 
@@ -603,9 +607,7 @@ export class Engine {
 	private async ship(wo: WorkOrder) {
 		const main = this.store.main(wo.project);
 		const elapsed = this.store.now().getTime() - Date.parse(wo.stageAt);
-		// Main as last read is from before the merge, so it says nothing about this change yet.
-		const readAt = this.store.project(wo.project)?.readAt;
-		if (readAt && Date.parse(readAt) < Date.parse(wo.stageAt) && elapsed < SHIP_MAX_MS) return;
+		if (elapsed < SHIP_MIN_MS) return;
 		if (main?.state === "running" && elapsed < SHIP_MAX_MS) return;
 		if (main?.state === "red" && elapsed < SHIP_MAX_MS) return;
 		this.store.addActivity(wo.id, main?.state === "red" ? "Main is red after shipping" : "Shipped");

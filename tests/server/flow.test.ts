@@ -136,6 +136,7 @@ describe("a work order's path", () => {
 		expect(merged.ok).toBe(true);
 		expect(wo(id)).toMatchObject({ stage: "Ship", state: "shipping" });
 
+		clock += 2 * 60_000;
 		await settle();
 		expect(wo(id)).toMatchObject({ stage: "Observe", state: "observing" });
 
@@ -593,6 +594,35 @@ describe("merging is checked against now", () => {
 	});
 });
 
+describe("a failure in one CI job", () => {
+	it("doesn't name a gate when the job stands for several", async () => {
+		kvSet(store.db, "settings:agents", { ...store.settings().agents, retries: 0 });
+		const id = start({ type: "Chore" });
+		await settle();
+		store.patchWorkOrder(id, { pr_number: 5 });
+		putPr(5, {
+			gates: { Typecheck: "failed", Tests: "failed", Lint: "failed", Preview: "not_set_up" },
+			checks: [{ name: "verify", workflow: null, bucket: "fail", url: null }] as CheckRun[],
+		});
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		expect(wo(id)).toMatchObject({ state: "failed", failedGate: null });
+		expect(wo(id).activity.map((a) => a.text)).toContain("verify failed after retries");
+	});
+});
+
+describe("Ship", () => {
+	it("doesn't call it shipped before main's CI can have started", async () => {
+		const id = await toReview();
+		await engine.merge("fairway", 5);
+		await settle();
+		expect(wo(id).state).toBe("shipping");
+		clock += 2 * 60_000;
+		await settle();
+		expect(wo(id).state).toBe("observing");
+	});
+});
+
 describe("gates after a retry", () => {
 	it("doesn't take a new commit with no checks yet as passing", async () => {
 		const id = start({ type: "Chore" });
@@ -795,6 +825,7 @@ describe("an error after its fix merged", () => {
 		exec.finish(threadOf(id), "Opened the PR.");
 		await settle();
 		await engine.merge("fairway", 5);
+		clock += 2 * 60_000;
 		await settle();
 		expect(wo(id).state).toBe("observing");
 		return id;
