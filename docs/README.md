@@ -9,3 +9,5 @@
 | [Control room companion](../designs/control-room/control-room_final.md) | Building any screen                                                               |
 | [Design system](../DESIGN_SYSTEM.md)                                    | Using tokens or recording an exception                                            |
 | [Glossary](../GLOSSARY.md)                                              | Naming anything                                                                   |
+
+`docs/records` holds dated notes from real runs.
