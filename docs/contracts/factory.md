@@ -54,7 +54,8 @@ Typecheck, Tests, Lint, Preview. Each is not set up, not started, running, passe
 - A check that ran on the commit before and hasn't reported on this one hasn't passed. Its gate reads not started for up to 5 minutes, and merging waits.
 - Only a job named exactly `check`, `checks`, `verify`, or `ci` counts as typecheck, tests, and lint together. `build`, `EAS Build`, or `Spell check` passing proves none of them.
 - A failing or running check with no gate of its own counts against Tests. A passing one is ignored. A cancelled or stale run counts as failed.
-- `Try again` after T3 failed resends the same turn, plus any note. If T3 no longer has the thread, the work order starts over from Intake.
+- `Try again` after T3 failed resends the same turn, plus any note. If T3 no longer has the thread, the work order starts over from Intake on a new branch, and any PR it had stays open as yours.
+- A work order starts from the default branch's latest commit on origin, fetched first. If the fetch fails, the run fails and says so.
 - Rebasing makes every gate out of date until it runs again. List rows and the page for a PR that needs a rebase or is stale show its gates as out of date.
 - A stale PR uses the rebase page.
 - A PR that falls behind again after its rebase finished goes back on the queue, and starting it sends the same agent another rebase turn.

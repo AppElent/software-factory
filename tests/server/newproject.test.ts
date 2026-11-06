@@ -111,6 +111,16 @@ describe("New project never adopts what it didn't make", () => {
 		expect((await projects.remove(id)).ok).toBe(false);
 	});
 
+	it("stops before any step when a rule was added after the approval", async () => {
+		const id = await projects.create(input);
+		writeNeverTouch(dir, ["me/fresh"]);
+		await projects.scaffold(id);
+		expect(ran).toEqual([]);
+		expect(projects.get(id)?.step).toBe("failed");
+		expect(projects.get(id)?.failure).toMatch(/Never touch/);
+		expect((await projects.connect(id, "sentry")).ok).toBe(false);
+	});
+
 	it("fails the run when a Never touch rule refuses the project at the end", async () => {
 		const refusing = new NewProjects({
 			store,

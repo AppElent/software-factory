@@ -100,6 +100,11 @@ export type EngineEvent =
 	| { kind: "shipped"; workOrder: WorkOrder }
 	| { kind: "slots_full"; agents: number; waiting: number };
 
+const nextBranch = (branch: string) => {
+	const tried = /^(.*)-try(\d+)$/.exec(branch);
+	return tried ? `${tried[1]}-try${Number(tried[2]) + 1}` : `${branch}-try2`;
+};
+
 const realGit = (cwd: string, args: string[]) =>
 	new Promise<void>((resolve) => {
 		execFile("git", args, { cwd, timeout: 60_000 }, () => resolve());
@@ -253,19 +258,31 @@ export class Engine {
 		const needsPlan = review === "always" && !ownsNoPr(wo.source.kind) && wo.source.kind !== "toolkit";
 		const stage = needsPlan ? "Plan" : "Build";
 		const prompt = needsPlan ? planPrompt(wo) : this.directPrompt(wo);
-		const branch = `factory/wo-${wo.id}-${slugify(wo.title, 32)}`;
+		// T3 can't start on a branch that already exists, so starting over after a lost thread takes a new one.
+		const branch = wo.branch ? nextBranch(wo.branch) : `factory/wo-${wo.id}-${slugify(wo.title, 32)}`;
 		try {
 			this.store.patchWorkOrder(wo.id, { pending_send: prompt });
+			// Merges happen on GitHub, so the folder's own branch falls behind. Work starts from what's on origin.
+			const fetched = await this.cli("git", ["fetch", "origin", base], {
+				cwd: localPath,
+				timeoutMs: 60_000,
+			});
+			if (fetched.code !== 0)
+				throw new Error(`Couldn't fetch ${base} from origin. ${fetched.stderr.trim()}`.trim());
+			const latest = await this.cli("git", ["rev-parse", "FETCH_HEAD"], { cwd: localPath });
 			const { threadId, link } = await this.executor.start({
 				projectPath: localPath,
 				title: `WO-${wo.id} ${wo.title}`,
 				prompt,
-				baseBranch: base,
+				baseBranch: latest.stdout.trim() || base,
 				branch,
 				agent: this.store.settings().agents.agent,
 			});
 			const state = await this.executor.status(threadId).catch(() => null);
 			this.store.addActivity(wo.id, "Created worktree and branch");
+			// The new branch gets its own PR. The one from the lost thread is yours to merge or close.
+			const leftPr = wo.branch && wo.prNumber && !ownsNoPr(wo.source.kind) ? wo.prNumber : null;
+			if (leftPr) this.store.addActivity(wo.id, `Started over on a new branch. PR #${leftPr} stays open.`);
 			audit(this.store.db, "start agent", `WO-${wo.id}`, "factory", branch, this.store.now());
 			this.patch(wo.id, {
 				stage,
@@ -275,6 +292,7 @@ export class Engine {
 				thread_link: link,
 				branch,
 				worktree: state?.worktree ?? null,
+				...(leftPr ? { pr_number: null, failed_sha: null } : {}),
 			});
 		} catch (e) {
 			this.runFailed(wo, stage, e);

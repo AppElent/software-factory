@@ -318,6 +318,30 @@ describe("a symlink to a Never touch folder", () => {
 	});
 });
 
+describe("two repos with the same name", () => {
+	const add = async (...repos: string[]) =>
+		(
+			await app.request("/api/projects", {
+				method: "POST",
+				headers: SESSION,
+				body: JSON.stringify({ repos: repos.map((repo) => ({ repo, clone: false })) }),
+			})
+		).json();
+
+	it("stay two projects, each acting on its own repo", async () => {
+		expect((await add("client/app", "me/app")).added).toEqual(["app", "me-app"]);
+		expect(store.project("app")?.repo).toBe("client/app");
+		expect(store.project("me-app")?.repo).toBe("me/app");
+	});
+
+	it("still treats adding the same repo again as the same project", async () => {
+		await add("client/app", "me/app");
+		expect((await add("me/app")).added).toEqual(["me-app"]);
+		expect((await add("Client/App")).added).toEqual(["app"]);
+		expect(store.projects()).toHaveLength(2);
+	});
+});
+
 describe("a new project and Never touch", () => {
 	it("refuses a matching name before asking GitHub about it", async () => {
 		writeNeverTouch(dir, ["*client-secret*"]);

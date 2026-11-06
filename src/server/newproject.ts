@@ -195,6 +195,16 @@ export class NewProjects {
 		const startedAt = this.store.now().getTime();
 		for (const line of run.log) {
 			if (line.state === "done") continue;
+			// A rule can be added between approving and any step. It wins, before this touches anything.
+			if (this.neverTouched(run)) {
+				line.state = "failed";
+				line.detail = "A Never touch rule matches this project, so this stopped.";
+				run.failure = line.detail;
+				run.step = "failed";
+				run.failedAt = this.store.iso();
+				this.save(run);
+				return;
+			}
 			line.state = "running";
 			line.detail = undefined;
 			this.save(run);
@@ -247,6 +257,11 @@ export class NewProjects {
 		this.save(run);
 	}
 
+	private neverTouched(run: NewProjectRun) {
+		const { kept } = filterNeverTouch(this.store.neverTouch(), [{ repo: run.repo, path: run.localPath }]);
+		return kept.length === 0;
+	}
+
 	/** A Never touch rule added while this ran refuses the project, and the page has to hear about it. */
 	private addTo(run: NewProjectRun) {
 		try {
@@ -264,6 +279,7 @@ export class NewProjects {
 	async connect(id: number, service: string): Promise<{ ok: boolean; reason?: string }> {
 		const run = this.get(id);
 		if (!run) return { ok: false, reason: "Not found" };
+		if (this.neverTouched(run)) return { ok: false, reason: "A Never touch rule matches this project." };
 		const name = run.name;
 		const folder = run.localPath;
 		let res: { code: number; stderr: string } | null = null;
@@ -331,8 +347,7 @@ export class NewProjects {
 				.get(run.projectSlug);
 		if (open) return { ok: false, reason: "This project has open work orders. Close them first." };
 		// A rule added since then wins. The run goes, and what it made stays out of the factory's hands.
-		const { kept } = filterNeverTouch(this.store.neverTouch(), [{ repo: run.repo, path: run.localPath }]);
-		for (const item of kept.length ? run.created : []) {
+		for (const item of this.neverTouched(run) ? [] : run.created) {
 			if (item.startsWith("repo:")) {
 				const res = await this.cli("gh", ["repo", "delete", item.slice(5), "--yes"]);
 				audit(this.store.db, "delete repo", item.slice(5), "you", res.stderr || null, this.store.now());

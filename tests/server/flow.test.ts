@@ -1398,3 +1398,49 @@ describe("Merge without me, on an old PR", () => {
 		expect(mergeCalls()).toEqual([]);
 	});
 });
+
+describe("where a work order starts", () => {
+	it("starts from the latest commit on origin, since merges never move the folder's main", async () => {
+		cliResult["rev-parse FETCH_HEAD"] = { code: 0, stdout: "abc123\n" };
+		const id = start({ type: "Chore" });
+		await settle();
+		expect(calls).toContain("git fetch origin main");
+		expect(exec.threads.get(threadOf(id))?.req.baseBranch).toBe("abc123");
+	});
+
+	it("fails the run and says why when it can't fetch, and Try again can recover", async () => {
+		cliResult["git fetch"] = { code: 1, stderr: "fatal: could not read from remote" };
+		const id = start({ type: "Chore" });
+		await settle();
+		expect(wo(id).state).toBe("run_failed");
+		expect(wo(id).failure).toContain("could not read from remote");
+		expect(exec.threads.size).toBe(0);
+
+		delete cliResult["git fetch"];
+		await engine.retry(id, null);
+		await settle();
+		expect(wo(id).state).toBe("building");
+	});
+
+	it("takes a new branch when it starts over after T3 lost the thread", async () => {
+		const id = await toReview();
+		const first = wo(id).branch as string;
+		store.patchWorkOrder(id, { state: "run_failed", stage: "Intake", thread_id: null, thread_link: null });
+		await engine.retry(id, null);
+		await settle();
+		expect(wo(id).branch).toBe(`${first}-try2`);
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).activity.map((a) => a.text)).toContain("Started over on a new branch. PR #5 stays open.");
+		expect(store.pr("fairway", 5)?.workOrderId).toBeNull();
+	});
+
+	it("keeps its PR when it starts over on someone else's", async () => {
+		putPr(9, { mergeState: "BEHIND", group: "rebase" });
+		const id = await engine.rebasePr("fairway", 9);
+		await settle();
+		store.patchWorkOrder(id, { state: "run_failed", stage: "Intake", thread_id: null, thread_link: null });
+		await engine.retry(id, null);
+		await settle();
+		expect(wo(id).prNumber).toBe(9);
+	});
+});

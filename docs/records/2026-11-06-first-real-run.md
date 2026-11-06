@@ -38,3 +38,15 @@ It also found three smaller things, all fixed: a job that stands for several gat
 
 Still not exercised on real services: a Sentry error through to a merged fix, Merge without me, a real toolkit sync, delivered notifications.
 
+
+## Two dependent work orders
+
+A review found that work orders started from the folder's local `main`, which merges on GitHub never move. The fix fetches first and starts from that commit. Two Chore work orders then ran for real on the sandbox repo:
+
+- WO-3 added a note file and merged as PR #2.
+- WO-4 was told to stop if that file was missing. The folder's `main` was behind, but WO-4 found the file, added a line, and merged as PR #3.
+
+T3 also confirmed two facts on this run:
+
+- `--worktree <commit>` creates the branch with no upstream, so an agent's push can't reach the default branch by accident.
+- A second thread on a branch that already exists ends with status `failed` and no worktree. Starting over after T3 loses a thread therefore takes a new branch.

@@ -126,13 +126,26 @@ export function createApp(d: AppDeps): Hono {
 
 	/* ---------- projects ---------- */
 
+	/** One repo, one project. Two repos with the same name must never share a row, or actions reach the wrong repo. */
+	function slugFor(repo: string, name: string) {
+		const ownerOf = (slug: string) =>
+			store.db.prepare("SELECT repo FROM projects WHERE slug = ?").get(slug) as { repo: string } | undefined;
+		const candidates = [name.toLowerCase(), repo.replace("/", "-").toLowerCase()];
+		const free = candidates.find((slug) => {
+			const held = ownerOf(slug);
+			return !held || held.repo.toLowerCase() === repo.toLowerCase();
+		});
+		if (!free) throw new ActionError(`Another repo is already using the name ${name}.`, 409);
+		return free;
+	}
+
 	function addProject(repo: string, localPath: string | null): string {
 		if (!REPO_RE.test(repo)) throw new ActionError("That isn't a GitHub repo.", 400);
 		const rules = store.neverTouch();
 		const { kept } = filterNeverTouch(rules, [{ repo, path: localPath }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
 		const name = repo.split("/")[1] ?? repo;
-		const slug = name.toLowerCase();
+		const slug = slugFor(repo, name);
 		store.db
 			.prepare(
 				`INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)
