@@ -25,6 +25,8 @@ Both links are private. The approved design and tokens are copied here so anyone
 | Inputs are 16px on mobile (typography) | Every input below 760px | Inputs stay 13px | Desktop tool on this Mac. Phone width is usable, not a target |
 | Support each theme a user expects      | Whole app               | Dark only        | One user, one direction, chosen in the study                  |
 
+Stack exceptions, including `radix-ui` and `cmdk` in place of Base UI, are in [CODING_STANDARDS.md](CODING_STANDARDS.md#exceptions).
+
 The boards load IBM Plex from Google Fonts. The app self-hosts it, because its CSP allows no third-party origins.
 
 ## Proposed for the shared standards

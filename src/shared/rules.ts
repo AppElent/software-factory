@@ -125,6 +125,14 @@ export function gatesPassed(g: Gates): boolean {
 export const gatesClear = (g: Gates) =>
 	!anyGate(g, "failed") && !anyGate(g, "running") && !anyGate(g, "out_of_date") && !anyGate(g, "not_started");
 
+/** Says what a ready PR's gates really did. A repo with no CI hasn't passed anything. */
+export function gateSummary(gates: Gates): string {
+	const passed = GATE_NAMES.filter((n) => gates[n] === "passed").length;
+	if (passed === GATE_NAMES.length) return "All gates passed";
+	if (passed === 0) return "No gates set up";
+	return `${passed} of ${GATE_NAMES.length} gates passed`;
+}
+
 /** All four gates passed. `Not set up` blocks merging without you. */
 export const allFourPassed = (g: Gates) => gateValues(g).every((s) => s === "passed");
 

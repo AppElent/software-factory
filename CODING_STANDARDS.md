@@ -47,3 +47,10 @@ Read only what the task needs; never preload every standard.
 
 Project decisions below select implementations and explain deviations from shared defaults.
 <!-- appelent-standards:end -->
+
+## Exceptions
+
+| Rule | Scope | Replacement | Reason |
+| --- | --- | --- | --- |
+| [Web baseline](docs/standards/web-baseline.md): TanStack Start with file-based TanStack Router, generated route trees, on Cloudflare Workers | `src/web` | Code-based TanStack Router routes in `src/web/router.tsx`, in a Vite app the local service serves | It runs on one Mac behind loopback, with no server rendering or Workers ([ADR 0001](docs/adr/0001-local-service.md)), so Start adds nothing and a short route list needs no generator |
+| [Web baseline](docs/standards/web-baseline.md): Base UI for accessible primitives | Dialogs and the command menu in `src/web` | `AlertDialog` and `Dialog` from `radix-ui`, `Command.Dialog` from `cmdk` | The approved [companion](designs/control-room/control-room_final.md#components) binds these. `cmdk`'s dialog is built on Radix, so this keeps one dialog family. Other controls stay native |

@@ -1,3 +1,4 @@
+import { gateSummary } from "../shared/rules.ts";
 import type { NotificationEvent, QueueItem } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { audit, kvSet } from "./db.ts";
@@ -48,7 +49,7 @@ export function noteFor(item: QueueItem): Note | null {
 				key: item.fingerprint,
 				event,
 				title: `${who}: PR ready to merge`,
-				message: `#${item.pr?.number} ${item.pr?.title}. All gates passed.`,
+				message: `#${item.pr?.number} ${item.pr?.title}. ${item.pr ? gateSummary(item.pr.gates) : "All gates passed"}.`,
 				path: item.href,
 			};
 		case "failed_gates":

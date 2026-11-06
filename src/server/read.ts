@@ -1,4 +1,12 @@
-import { isNeedsYou, isRegression, median, qualifies, rankQueue, triageHides } from "../shared/rules.ts";
+import {
+	gateSummary,
+	isNeedsYou,
+	isRegression,
+	median,
+	qualifies,
+	rankQueue,
+	triageHides,
+} from "../shared/rules.ts";
 import type {
 	BackSummary,
 	DailyNumbers,
@@ -184,7 +192,7 @@ function readItems(store: Store): QueueItem[] {
 				...base,
 				kind: "ready_pr",
 				title,
-				meta: "All gates passed · ready to merge",
+				meta: `${gateSummary(pr.gates)} · ready to merge`,
 				since: pr.updatedAt,
 			});
 		} else if (rebasing.has(`${pr.project}:${pr.number}`)) {
