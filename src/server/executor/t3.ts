@@ -19,7 +19,9 @@ const ShowOut = z.object({
 
 /** Provider ids T3 needs alongside a model. Empty agent means the project's default. */
 function agentFlags(agent: string): string[] {
-	if (agent === "codex") return ["--provider", "codex"];
+	// T3 only takes a provider together with a model, and it has no command that lists models.
+	if (agent === "codex")
+		return ["--provider", "codex", "--model", process.env.SF_CODEX_MODEL ?? "gpt-6.1-terra"];
 	return [];
 }
 

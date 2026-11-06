@@ -88,7 +88,7 @@ export function Root() {
 	return (
 		<>
 			<Outlet />
-			<GlobalKeys hasProjects={!!shell.data?.hasProjects} />
+			<GlobalKeys hasProjects={shell.data?.hasProjects !== false} />
 		</>
 	);
 }

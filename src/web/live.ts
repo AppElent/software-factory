@@ -12,7 +12,11 @@ const ALSO: Record<string, string[]> = {
 
 /** Keeps the page current: listens for changes, reports presence, and notices a newer build. */
 export function startLive(client: QueryClient) {
-	void api.post("/api/visit").then(() => client.invalidateQueries({ queryKey: ["queue"] }));
+	void api
+		.post("/api/visit")
+		.then(() => client.invalidateQueries({ queryKey: ["queue"] }))
+		// The shell's own request shows the offline page.
+		.catch(() => {});
 
 	const source = new EventSource("/api/events");
 	source.addEventListener("hello", (e) => {

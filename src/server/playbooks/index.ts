@@ -90,7 +90,7 @@ Stop after pushing.`;
 }
 
 export function rebasePrompt(prNumber: number): string {
-	return `Rebase PR #${prNumber} onto the latest default branch, resolve conflicts, and force-push with lease. Keep the PR's intent and change nothing else. Don't merge. Stop after pushing.`;
+	return `Check out PR #${prNumber} with \`gh pr checkout ${prNumber}\`, rebase it onto the latest default branch, resolve conflicts, and force-push with lease. Keep the PR's intent and change nothing else. Don't merge. Stop after pushing.`;
 }
 
 export function syncPrompt(): string {
