@@ -479,7 +479,8 @@ export class Engine {
 		const fingerprint = wo.source.fingerprint;
 		if (fingerprint?.startsWith("error:")) {
 			const error = this.store.error(fingerprint.slice(6));
-			const release = error?.latestRelease ?? error?.firstRelease;
+			const release =
+				error?.latestRelease ?? this.store.errorDetail(error?.id)?.release ?? error?.firstRelease;
 			if (release) kvSet(this.store.db, `fix_release:${wo.id}`, release);
 		}
 		this.patch(wo.id, { stage: "Ship", state: "shipping", stage_at: at, merged_at: at });

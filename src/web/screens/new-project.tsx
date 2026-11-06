@@ -445,12 +445,16 @@ function Failed({ run }: { run: NewProjectRun }) {
 	const step = run.log.find((l) => l.state === "failed")?.step ?? "template";
 	const hasRepo = run.created.some((c) => c.startsWith("repo:"));
 	const hasFolder = run.created.some((c) => c.startsWith("folder:"));
+	// A step that was running when the service stopped may have made something this run can't prove is its own.
+	const unsure = Boolean(run.claimed?.length);
 	const exists =
 		hasRepo && hasFolder
 			? "The repo and folder exist, so you can retry from here."
 			: hasRepo
 				? "The repo exists, so you can retry from here."
-				: "Nothing was created, so you can retry from here.";
+				: unsure
+					? "The service restarted partway, so you can retry from here."
+					: "Nothing was created, so you can retry from here.";
 	const deletes = [
 		hasRepo ? `the ${run.repo} repo on GitHub` : null,
 		hasFolder ? `the ${run.localPath} folder` : null,
@@ -478,7 +482,9 @@ function Failed({ run }: { run: NewProjectRun }) {
 							<p className="m-0 text-text-muted [overflow-wrap:anywhere]">
 								{deletes.length > 0
 									? `This deletes ${deletes.join(" and ")}. It can't be undone.`
-									: "Nothing was created outside this app, so nothing else is deleted."}
+									: unsure
+										? `This deletes nothing outside this app. Check GitHub for ${run.repo} and ${run.localPath} yourself, since the restart may have left them.`
+										: "Nothing was created outside this app, so nothing else is deleted."}
 							</p>
 						</div>
 					}

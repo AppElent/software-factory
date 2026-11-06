@@ -6,6 +6,7 @@ import type {
 	Gates,
 	Limits,
 	PrGroup,
+	PullRequest,
 	QueueItem,
 	QueueKind,
 	StartBlock,
@@ -78,8 +79,11 @@ const TYPECHECK = /type-?check|\btsc\b|\btypes\b/i;
 const TESTS = /\btests?\b|vitest|jest|pytest|rspec|\bunit\b|\be2e\b|maestro/i;
 const LINT = /\blint\b|biome|eslint/i;
 const PREVIEW = /preview|\bdeploy\b|vercel|pages/i;
-/** The toolkit's CI runs typecheck, tests, and lint in one job called `check` or `verify`. */
-const COMBINED = /(^|[\s/])(check|checks|verify|ci|build)$/i;
+/**
+ * The toolkit's CI runs typecheck, tests, and lint in one job called `check` or `verify`. Only a job with exactly
+ * that name counts. `Spell check` and `EAS Build` pass without running a single test.
+ */
+const COMBINED = /^(?:[\w-]+\s*\/\s*)?(?:check|checks|verify|ci)$/i;
 
 function combine(states: GateState[]): GateState {
 	if (states.length === 0) return "not_set_up";
@@ -147,24 +151,52 @@ export const gatesClear = (g: Gates) =>
 /** A PR with no checks at all has this long for some to appear. */
 export const NO_CHECKS_MS = 5 * 60_000;
 
+type PushedPr = Pick<PullRequest, "headSha" | "checks" | "awaitingChecksSince" | "expectedChecks">;
+type AwaitedPr = PushedPr & Pick<PullRequest, "gates" | "group">;
+
 /**
- * Right after a push, GitHub has no checks for the new commit. If the commit before had some, this one will
- * too, so it hasn't passed anything yet. It gets a limit in case this push really runs none.
+ * Right after a push, GitHub has few or no checks for the new commit. Whatever ran on the commit before will run
+ * on this one too, so until it reports, its gate hasn't passed. The limit covers a push that really doesn't run it.
  */
-export function awaitChecks<
-	T extends {
-		headSha: string;
-		checks: CheckRun[];
-		gates: Gates;
-		group: PrGroup;
-		awaitingChecksSince?: number;
-	},
->(previous: Pick<T, "headSha" | "checks" | "awaitingChecksSince"> | null, pr: T, now: number): T {
-	if (pr.checks.length > 0 || !previous) return pr;
-	const pushed = previous.headSha !== pr.headSha && previous.checks.length > 0;
-	const since = pushed ? now : previous.headSha === pr.headSha ? previous.awaitingChecksSince : undefined;
+export function awaitChecks<T extends AwaitedPr>(previous: PushedPr | null, pr: T, now: number): T {
+	if (!previous) return pr;
+	const samePush = previous.headSha === pr.headSha;
+	const since = samePush ? previous.awaitingChecksSince : now;
 	if (since === undefined || now - since >= NO_CHECKS_MS) return pr;
-	return { ...pr, gates: noGates("not_started"), group: "running", awaitingChecksSince: since };
+	const expected = samePush
+		? (previous.expectedChecks ?? [])
+		: [
+				...(previous.expectedChecks ?? []),
+				...previous.checks
+					.filter((c) => c.bucket !== "skipped")
+					.map((c) => ({ ...c, bucket: "running" as const })),
+			];
+	const reported = new Set(pr.checks.map((c) => c.name));
+	const waiting = mapGates(expected.filter((c) => !reported.has(c.name)));
+	const held = GATE_NAMES.filter(
+		(n) => waiting[n] === "running" && (pr.gates[n] === "passed" || pr.gates[n] === "not_set_up"),
+	);
+	if (held.length === 0) return pr;
+	const gates = { ...pr.gates };
+	for (const n of held) gates[n] = "not_started";
+	return {
+		...pr,
+		gates,
+		group: pr.group === "ready" ? "running" : pr.group,
+		awaitingChecksSince: since,
+		expectedChecks: expected,
+	};
+}
+
+/** Agents commit and push from a project's folder, so it has to be a checkout of that project's repo. */
+export function originIs(url: string, repo: string): boolean {
+	const clean = url
+		.trim()
+		.replace(/\/$/, "")
+		.replace(/\.git$/, "")
+		.toLowerCase();
+	const want = repo.toLowerCase();
+	return clean.endsWith(`/${want}`) || clean.endsWith(`:${want}`);
 }
 
 /** Says what a ready PR's gates really did. A repo with no CI hasn't passed anything. */
@@ -349,6 +381,7 @@ const NEEDS_YOU_ORDER: QueueKind[] = [
 	"plan",
 	"waiting_in_t3",
 	"run_failed",
+	"new_project",
 	"red_main",
 	"failed_gates",
 	"ready_pr",
@@ -360,7 +393,7 @@ export const isNeedsYou = (k: QueueKind) => NEEDS_YOU_ORDER.includes(k);
 function groupRank(kind: QueueKind): number {
 	// Questions and plans share a rank in the contract, and so do the T3 waits that behave like them.
 	if (kind === "question" || kind === "plan" || kind === "waiting_in_t3") return 1;
-	if (kind === "run_failed") return 3;
+	if (kind === "run_failed" || kind === "new_project") return 3;
 	const n = NEEDS_YOU_ORDER.indexOf(kind);
 	if (n >= 0) return n;
 	return 100 + LATER_ORDER.indexOf(kind);

@@ -1,13 +1,13 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join, normalize, resolve } from "node:path";
 import { backup } from "node:sqlite";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { applyNeverTouch, mergeBlockers, qualifies, snoozeUntil } from "../shared/rules.ts";
+import { applyNeverTouch, mergeBlockers, originIs, qualifies, snoozeUntil } from "../shared/rules.ts";
 import type {
 	BackSummary,
 	BulkMergeResult,
@@ -24,7 +24,7 @@ import type { Bus } from "./bus.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import type { Config } from "./config.ts";
-import { writeNeverTouch } from "./config.ts";
+import { NeverTouchError, writeNeverTouch } from "./config.ts";
 import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
 import { checkTools, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
@@ -119,6 +119,7 @@ export function createApp(d: AppDeps): Hono {
 
 	app.onError((e, c) => {
 		if (e instanceof ActionError) return c.json({ error: e.message }, e.status as 400);
+		if (e instanceof NeverTouchError) return c.json({ error: e.message }, 503);
 		console.error(scrub(e instanceof Error ? (e.stack ?? e.message) : String(e)));
 		return c.json({ error: "Something went wrong in the service." }, 500);
 	});
@@ -150,9 +151,16 @@ export function createApp(d: AppDeps): Hono {
 	const shortPath = (path: string | null) =>
 		path?.startsWith(`${homedir()}/`) ? `~${path.slice(homedir().length)}` : path;
 
-	const findFolder = (repo: string, cloneFolder: string) => {
+	const isCheckoutOf = async (path: string, repo: string) => {
+		if (!existsSync(join(path, ".git"))) return false;
+		if (config.demo) return true;
+		const res = await cli("git", ["remote", "get-url", "origin"], { cwd: path });
+		return res.code === 0 && originIs(res.stdout, repo);
+	};
+
+	const findFolder = async (repo: string, cloneFolder: string) => {
 		const path = join(cloneFolder, repo.split("/")[1] ?? "");
-		return existsSync(join(path, ".git")) ? path : null;
+		return (await isCheckoutOf(path, repo)) ? path : null;
 	};
 
 	app.get("/api/repos", async (c) => {
@@ -172,20 +180,22 @@ export function createApp(d: AppDeps): Hono {
 		);
 		const added = new Set(store.projects().map((p) => p.repo.toLowerCase()));
 		const res: RepoListResponse = {
-			repos: kept
-				.map((r) => {
-					const name = r.repo.split("/")[1] ?? r.repo;
-					return {
-						repo: r.repo,
-						slug: name.toLowerCase(),
-						name,
-						pushedAt: r.pushedAt,
-						isPrivate: r.isPrivate,
-						localPath: shortPath(findFolder(r.repo, cloneFolder)),
-						added: added.has(r.repo.toLowerCase()),
-					};
-				})
-				.sort((a, b) => Date.parse(b.pushedAt ?? "0") - Date.parse(a.pushedAt ?? "0")),
+			repos: (
+				await Promise.all(
+					kept.map(async (r) => {
+						const name = r.repo.split("/")[1] ?? r.repo;
+						return {
+							repo: r.repo,
+							slug: name.toLowerCase(),
+							name,
+							pushedAt: r.pushedAt,
+							isPrivate: r.isPrivate,
+							localPath: shortPath(await findFolder(r.repo, cloneFolder)),
+							added: added.has(r.repo.toLowerCase()),
+						};
+					}),
+				)
+			).sort((a, b) => Date.parse(b.pushedAt ?? "0") - Date.parse(a.pushedAt ?? "0")),
 			skipped: skipped.length,
 			cloneFolder,
 		};
@@ -201,7 +211,7 @@ export function createApp(d: AppDeps): Hono {
 		// The rule check comes before the clone.
 		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo, path: dest }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
-		const found = findFolder(repo, cloneFolder);
+		const found = await findFolder(repo, cloneFolder);
 		if (found) return c.json({ ok: true, path: shortPath(found) });
 		const res = await cloneRepo(cli, repo, dest);
 		audit(store.db, "clone repo", repo, "you", res.code === 0 ? null : res.stderr, store.now());
@@ -229,7 +239,7 @@ export function createApp(d: AppDeps): Hono {
 				failed.push({ repo, reason: "A Never touch rule matches that repo." });
 				continue;
 			}
-			let path = findFolder(repo, cloneFolder);
+			let path = await findFolder(repo, cloneFolder);
 			if (!path && clone) {
 				const res = await cloneRepo(cli, repo, dest);
 				audit(store.db, "clone repo", repo, "you", res.code === 0 ? null : res.stderr, store.now());
@@ -350,7 +360,8 @@ export function createApp(d: AppDeps): Hono {
 	app.post("/api/projects/:slug/clone", async (c) => {
 		const slug = c.req.param("slug");
 		const p = needProject(slug);
-		const dest = p.localPath ?? join(store.settings().projects.cloneFolder, p.name);
+		// The repo's name, not the display name: that comes from a file in the repo.
+		const dest = p.localPath ?? join(store.settings().projects.cloneFolder, p.repo.split("/")[1] ?? slug);
 		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo: p.repo, path: dest }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that folder.", 403);
 		const res = await cloneRepo(cli, p.repo, dest);
@@ -367,10 +378,14 @@ export function createApp(d: AppDeps): Hono {
 		const p = needProject(slug);
 		const input = await body(c.req, z.object({ path: z.string().min(1) }));
 		// Paths from here go straight to git and the file system, which don't expand a typed ~.
-		const path = input.path.replace(/^~(?=$|\/)/, homedir());
+		const typed = input.path.replace(/^~(?=$|\/)/, homedir());
+		if (!existsSync(join(typed, ".git"))) throw new ActionError("That folder isn't a git checkout.", 400);
+		// The real path too, or a symlink could lead around a rule.
+		const path = realpathSync(typed);
 		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo: p.repo, path }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that folder.", 403);
-		if (!existsSync(join(path, ".git"))) throw new ActionError("That folder isn't a git checkout.", 400);
+		if (!(await isCheckoutOf(path, p.repo)))
+			throw new ActionError(`That folder isn't a checkout of ${p.repo}.`, 400);
 		store.db.prepare("UPDATE projects SET local_path = ? WHERE slug = ?").run(path, slug);
 		bus.publish(["projects", `project:${slug}`, "floor", "shell"]);
 		void engine.tick();

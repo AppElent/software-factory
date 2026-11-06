@@ -316,6 +316,25 @@ function ToolPane({ item, actions }: { item: QueueItem; actions: PaneActions }) 
 	);
 }
 
+function NewProjectPane({ item }: { item: QueueItem }) {
+	const run = item.newProject;
+	if (!run) return null;
+	return (
+		<>
+			<Heading meta={item.meta} title={item.title} />
+			<ButtonLink
+				variant="primary"
+				to="/projects/new/$step"
+				params={{ step: run.step }}
+				search={{ run: run.id } as never}
+				grow
+			>
+				Open setup
+			</ButtonLink>
+		</>
+	);
+}
+
 /* ---------- work orders waiting on you ---------- */
 
 function OpenWorkOrder({ item, primary }: { item: QueueItem; primary?: boolean }) {
@@ -438,6 +457,8 @@ function PaneBody({ item, actions }: { item: QueueItem; actions: PaneActions }) 
 			return <ToolkitPane item={item} actions={actions} />;
 		case "tool":
 			return <ToolPane item={item} actions={actions} />;
+		case "new_project":
+			return <NewProjectPane item={item} />;
 		case "question":
 			return w ? <QuestionPane item={item} w={w} /> : null;
 		case "plan":

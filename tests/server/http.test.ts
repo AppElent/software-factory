@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -23,10 +23,13 @@ let dir: string;
 let store: Store;
 let calls: string[];
 let notifyCode = 0;
+let origin = "git@github.com:me/fairway.git\n";
 let app: ReturnType<typeof createApp>;
 
 const cli: Cli = async (cmd, args) => {
 	calls.push(`${cmd} ${args.join(" ")}`);
+	if (cmd === "git" && args[0] === "remote")
+		return { code: 0, stdout: origin, stderr: "", timedOut: false, missing: false };
 	if (cmd === "terminal-notifier")
 		return { code: notifyCode, stdout: "", stderr: "", timedOut: false, missing: false };
 	if (cmd === "gh" && args[1] === "list") {
@@ -241,5 +244,61 @@ describe("the Never touch file", () => {
 		}
 		writeFileSync(file, '["*x*"]');
 		expect(readNeverTouch(dir)).toEqual(["*x*"]);
+	});
+});
+
+describe("choosing a project's folder", () => {
+	const add = async () =>
+		app.request("/api/projects", {
+			method: "POST",
+			headers: SESSION,
+			body: JSON.stringify({ repos: [{ repo: "me/fairway", clone: false }] }),
+		});
+	const choose = (path: string) =>
+		app.request("/api/projects/fairway/folder", {
+			method: "POST",
+			headers: SESSION,
+			body: JSON.stringify({ path }),
+		});
+	const checkout = (name: string) => {
+		const path = join(dir, name);
+		mkdirSync(join(path, ".git"), { recursive: true });
+		return path;
+	};
+
+	beforeEach(() => {
+		origin = "git@github.com:me/fairway.git\n";
+		writeNeverTouch(dir, []);
+	});
+
+	it("takes a checkout of this repo", async () => {
+		await add();
+		expect((await choose(checkout("mine"))).status).toBe(200);
+	});
+
+	it("refuses a checkout of a different repo, since agents push from it", async () => {
+		await add();
+		origin = "git@github.com:me/something-else.git\n";
+		const res = await choose(checkout("other"));
+		expect(res.status).toBe(400);
+		expect((await res.json()).error).toContain("isn't a checkout of me/fairway");
+	});
+
+	it("follows a symlink before checking Never touch", async () => {
+		await add();
+		const real = checkout("client-secret");
+		const link = join(dir, "innocent");
+		symlinkSync(real, link);
+		writeNeverTouch(dir, ["*client-secret*"]);
+		expect((await choose(link)).status).toBe(403);
+	});
+});
+
+describe("a broken Never touch file, seen from the page", () => {
+	it("says what's wrong instead of a generic failure", async () => {
+		writeFileSync(join(dir, "never-touch.json"), "{broken");
+		const res = await app.request("/api/shell", { headers: HOST });
+		expect(res.status).toBe(503);
+		expect((await res.json()).error).toContain("must be a JSON list of strings");
 	});
 });

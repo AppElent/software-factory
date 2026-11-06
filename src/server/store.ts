@@ -425,6 +425,14 @@ export class Store {
 			.run(...(entries.map(([, v]) => v) as (string | number | null)[]), this.iso(), id);
 	}
 
+	errorDetail(id: string | undefined): { release?: string | null } | null {
+		if (!id) return null;
+		const row = this.db.prepare("SELECT detail FROM errors WHERE id = ?").get(id) as
+			| { detail: string | null }
+			| undefined;
+		return row?.detail ? JSON.parse(row.detail) : null;
+	}
+
 	addActivity(id: number, text: string, detail: string | null = null): void {
 		this.db
 			.prepare("INSERT INTO activity (work_order, at, text, detail) VALUES (?, ?, ?, ?)")

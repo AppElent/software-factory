@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NewProjectLogLine, NewProjectRun, ToolStatus } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
+import { cliEnv, scrub } from "./cli.ts";
 import { checkTools } from "./connectors/tools.ts";
 import { audit } from "./db.ts";
 import type { Store } from "./store.ts";
@@ -54,7 +55,7 @@ export const scriptRunner: ScaffoldRunner = (run, step) =>
 				"--description",
 				run.description,
 			],
-			{ timeout: 15 * 60_000, maxBuffer: 16 * 1024 * 1024 },
+			{ env: cliEnv(), timeout: 15 * 60_000, maxBuffer: 16 * 1024 * 1024 },
 			(err, stdout, stderr) => {
 				if (err) resolve({ ok: false, detail: `${stderr}\n${stdout}`.trim().slice(-2000) });
 				else resolve({ ok: true });
@@ -85,6 +86,26 @@ export class NewProjects {
 		this.runner = deps.runner ?? scriptRunner;
 		this.publish = deps.publish;
 		this.addProject = deps.addProject;
+		this.recover();
+	}
+
+	/** Nothing survives a restart mid-run, so a saved `scaffold` step stopped there. It goes back to the owner. */
+	private recover() {
+		const rows = this.store.db.prepare("SELECT id FROM new_projects").all() as Array<{ id: number }>;
+		for (const { id } of rows) {
+			const run = this.get(id);
+			if (run?.step !== "scaffold") continue;
+			const line = run.log.find((l) => l.state === "running") ?? run.log.find((l) => l.state !== "done");
+			const detail = "The service restarted during this step. Retry to pick up where it stopped.";
+			if (line) {
+				line.state = "failed";
+				line.detail = detail;
+			}
+			run.failure = detail;
+			run.step = "failed";
+			run.failedAt = this.store.iso();
+			this.save(run);
+		}
 	}
 
 	get(id: number): NewProjectRun | null {
@@ -96,7 +117,7 @@ export class NewProjects {
 
 	private save(run: NewProjectRun) {
 		this.store.db.prepare("UPDATE new_projects SET json = ? WHERE id = ?").run(JSON.stringify(run), run.id);
-		this.publish([`new-project:${run.id}`, "shell"]);
+		this.publish([`new-project:${run.id}`, "shell", "queue"]);
 	}
 
 	/** Blank name, a taken repo, a path in use. Returns a message, or null when it's fine. */
@@ -157,6 +178,9 @@ export class NewProjects {
 		if (step === "repo") {
 			const res = await this.cli("gh", ["repo", "view", run.repo, "--json", "name"]);
 			if (res.code === 0) return `${run.repo} already exists, and this run didn't make it.`;
+			// Only GitHub saying it's free counts. A failed look proves nothing.
+			if (!/could not resolve to a repository/i.test(res.stderr))
+				return `Couldn't check whether ${run.repo} exists. ${scrub(res.stderr).trim()}`.trim();
 		}
 		if (step === "folder" && folderInUse(run.localPath))
 			return `${run.localPath} already has files in it, and this run didn't put them there.`;
@@ -174,15 +198,22 @@ export class NewProjects {
 			line.detail = undefined;
 			this.save(run);
 			const step = line.step as ScaffoldStep;
-			const taken = await this.alreadyThere(run, step);
+			const taken = run.claimed?.includes(step) ? null : await this.alreadyThere(run, step);
+			if (!taken) {
+				run.claimed = [...new Set([...(run.claimed ?? []), step])];
+				this.save(run);
+			}
 			const result = taken ? { ok: false, detail: taken } : await this.runner(run, step, this.cli);
+			// A claim only outlives a restart. A step that ran and failed gets checked again.
+			if (taken || !result.ok) run.claimed = run.claimed?.filter((s) => s !== step);
 			const elapsed = Math.round((this.store.now().getTime() - startedAt) / 1000);
 			line.at = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
 			if (!result.ok) {
 				line.state = "failed";
-				line.detail = result.detail;
-				run.failure = result.detail ?? `${LABELS[step](run)} failed.`;
+				line.detail = result.detail && scrub(result.detail);
+				run.failure = line.detail ?? `${LABELS[step](run)} failed.`;
 				run.step = step === "baseline" ? "baseline" : "failed";
+				run.failedAt = this.store.iso();
 				// The template built, so the project exists and an agent can be given the fix.
 				if (step === "baseline") run.projectSlug = this.addProject(run.repo, run.localPath);
 				this.save(run);

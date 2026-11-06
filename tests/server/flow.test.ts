@@ -956,6 +956,42 @@ describe("a new commit with no checks yet", () => {
 		expect(awaitChecks(waiting, next(), clock + NO_CHECKS_MS).group).toBe("ready");
 	});
 
+	it("keeps waiting through a second push before anything reported", () => {
+		const first = awaitChecks(before, next(), clock);
+		const second = awaitChecks(first, next({ headSha: "sha3" }), clock + 20_000);
+		expect(second.group).toBe("running");
+		expect(second.gates.Tests).toBe("not_started");
+		expect(second.awaitingChecksSince).toBe(clock + 20_000);
+	});
+
+	it("waits for the checks that haven't reported when only some have", () => {
+		const all = ["check", "PR Preview"].map((name) => ({
+			name,
+			workflow: null,
+			bucket: "pass",
+			url: null,
+		})) as CheckRun[];
+		const vercel = [{ name: "Vercel", workflow: null, bucket: "pass", url: null }] as CheckRun[];
+		const pr = awaitChecks(
+			{ headSha: "sha1", checks: all },
+			next({ checks: vercel, gates: { ...noGates("not_set_up"), Preview: "passed" } }),
+			clock,
+		);
+		expect(pr.group).toBe("running");
+		expect(pr.gates.Tests).toBe("not_started");
+		expect(pr.gates.Lint).toBe("not_started");
+	});
+
+	it("never covers up a failure", () => {
+		const pr = awaitChecks(
+			before,
+			next({ gates: { ...noGates("not_set_up"), Tests: "failed" }, group: "failed" }),
+			clock,
+		);
+		expect(pr.gates.Tests).toBe("failed");
+		expect(pr.group).toBe("failed");
+	});
+
 	it("doesn't wait on a repo that never had checks", () => {
 		expect(awaitChecks({ headSha: "sha1", checks: [] } as never, next(), clock).group).toBe("ready");
 		expect(awaitChecks(null, next(), clock).group).toBe("ready");
@@ -1078,6 +1114,28 @@ describe("a shipped fix and its error", () => {
 		await settle();
 	};
 	const queued = () => readQueue(store, engine).needsYou.filter((i) => i.kind === "error");
+
+	it("remembers the release it merged on, not the release the error first appeared on", async () => {
+		const id = await (async () => {
+			putError({ firstRelease: "1.0.0", latestRelease: "3.0.0" });
+			const wid = start({ type: "Bug fix", source: { kind: "error", fingerprint: "error:88" } });
+			await settle();
+			exec.finish(threadOf(wid), planBlock);
+			await settle();
+			await engine.approve(wid);
+			await settle();
+			store.patchWorkOrder(wid, { pr_number: 5 });
+			putPr(5);
+			exec.finish(threadOf(wid), "Opened the PR.");
+			await settle();
+			await engine.merge("fairway", 5);
+			return wid;
+		})();
+		expect(store.fixRelease(id)).toBe("3.0.0");
+		clock += REGRESSION_GRACE_MS + 60_000;
+		putError({ firstRelease: "1.0.0", latestRelease: "3.0.0", lastSeen: new Date(clock).toISOString() });
+		expect(findRegressions(store)).toEqual([]);
+	});
 
 	it("stays off the queue after the watch ends, while it hasn't come back", async () => {
 		const id = await ship();

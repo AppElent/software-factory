@@ -61,7 +61,9 @@ const demoCli: Cli = async (cmd, args) => {
 	const line = `${cmd} ${args.join(" ")}`;
 	if (cmd === "gh" && args[0] === "api" && args[1] === "user") return ok(OWNER);
 	if (cmd === "gh" && args[0] === "repo" && args[1] === "view") {
-		return args[2]?.endsWith("/taken") ? ok("{}") : { ...ok(), code: 1, stderr: "not found" };
+		return args[2]?.endsWith("/taken")
+			? ok("{}")
+			: { ...ok(), code: 1, stderr: "GraphQL: Could not resolve to a Repository" };
 	}
 	if (cmd === "gh" && args[0] === "repo" && args[1] === "list") {
 		return ok(

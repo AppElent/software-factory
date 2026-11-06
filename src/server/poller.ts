@@ -51,7 +51,13 @@ export class Poller {
 	private schedule(kind: "github" | "sentry", ms: number) {
 		if (this.stopped) return;
 		const timer = setTimeout(async () => {
-			const next = kind === "github" ? await this.readGithub() : await this.readSentry();
+			let next = ms;
+			try {
+				next = kind === "github" ? await this.readGithub() : await this.readSentry();
+			} catch (e) {
+				// A read that dies must not end the polling for good.
+				console.error(scrub(e instanceof Error ? (e.stack ?? e.message) : String(e)));
+			}
 			this.schedule(kind, next);
 		}, ms);
 		timer.unref();
@@ -73,16 +79,27 @@ export class Poller {
 		this.timers.push(timer);
 	}
 
+	/** A read is reported by now. What follows it can't be allowed to take the read down with it. */
+	private async afterRead(step: () => Promise<void>) {
+		try {
+			await step();
+		} catch (e) {
+			console.error(scrub(e instanceof Error ? (e.stack ?? e.message) : String(e)));
+		}
+	}
+
 	async readGithub(): Promise<number> {
 		const { store, cli, publish } = this.d;
 		if (this.reading) return GITHUB_MS;
 		this.reading = true;
-		const projects = store.projects();
 		const now = store.now();
-		const busy = store.workOrders("state IN ('verifying', 'retrying', 'ready', 'shipping')").length > 0;
-		let delay = busy ? GITHUB_BUSY_MS : GITHUB_MS;
+		let delay = GITHUB_MS;
 		let gone: string[] = [];
 		try {
+			// Inside the try: these read the Never touch file, and a broken one stops reads loudly.
+			const busy = store.workOrders("state IN ('verifying', 'retrying', 'ready', 'shipping')").length > 0;
+			if (busy) delay = GITHUB_BUSY_MS;
+			const projects = store.projects();
 			if (projects.length) {
 				const read = await readRepos(
 					cli,
@@ -117,16 +134,18 @@ export class Poller {
 				source: "GitHub",
 				ok: false,
 				lastOk: prev?.lastOk ?? null,
-				error: scrub(e instanceof GithubError ? e.message : String(e)),
-				fix: "gh auth login",
+				error: scrub(e instanceof Error ? e.message : String(e)),
+				fix: e instanceof GithubError ? "gh auth login" : null,
 				nextCheckAt: new Date(now.getTime() + delay).toISOString(),
 			});
 		} finally {
 			this.reading = false;
 		}
 		publish(["queue", "shell", "prs", "floor", "projects", "work-orders"]);
-		this.d.onRead();
-		await this.d.engine().tick();
+		await this.afterRead(async () => {
+			this.d.onRead();
+			await this.d.engine().tick();
+		});
 		return delay;
 	}
 
@@ -174,9 +193,12 @@ export class Poller {
 		const { store, cli, publish } = this.d;
 		const now = store.now();
 		let delay = SENTRY_MS;
-		const projects = store.projects();
-		if (projects.every((p) => p.sentrySkipped)) return delay;
+		const failed: string[] = [];
+		let attempted = 0;
+		let lastError = "";
 		try {
+			const projects = store.projects();
+			if (projects.every((p) => p.sentrySkipped)) return delay;
 			const org = await this.sentryOrg();
 			const known = kvGet<string[]>(store.db, "sentry_projects") ?? (await readProjects(cli, org));
 			kvSet(store.db, "sentry_projects", known);
@@ -187,15 +209,25 @@ export class Poller {
 				if (!p.sentryProject) {
 					store.db.prepare("UPDATE projects SET sentry_project = ? WHERE slug = ?").run(slug, p.slug);
 				}
-				const issues = await readIssues(cli, org, slug);
-				await this.saveErrors(p, issues);
+				attempted += 1;
+				try {
+					await this.saveErrors(p, await readIssues(cli, org, slug));
+				} catch (e) {
+					// One mistyped name mustn't stop the other projects' errors.
+					failed.push(slug);
+					lastError = e instanceof Error ? e.message : String(e);
+				}
+			}
+			if (attempted > 0 && failed.length === attempted && !/not found|404/i.test(lastError)) {
+				throw new SentryError(lastError);
 			}
 			this.sentryFails = 0;
 			store.setHealth({
 				source: "Sentry",
-				ok: true,
+				ok: failed.length === 0,
 				lastOk: store.iso(),
-				error: null,
+				error: failed.length ? scrub(`Sentry couldn't read ${failed.join(", ")}. ${lastError}`) : null,
+				// A project Sentry doesn't know is a name to change on the project's page, not a login.
 				fix: null,
 				nextCheckAt: new Date(now.getTime() + delay).toISOString(),
 			});
@@ -208,13 +240,13 @@ export class Poller {
 				source: "Sentry",
 				ok: false,
 				lastOk: prev?.lastOk ?? null,
-				error: scrub(e instanceof SentryError ? e.message : String(e)),
-				fix: "sentry auth login",
+				error: scrub(e instanceof Error ? e.message : String(e)),
+				fix: e instanceof SentryError ? "sentry auth login" : null,
 				nextCheckAt: new Date(now.getTime() + delay).toISOString(),
 			});
 		}
 		publish(["queue", "shell", "errors", "projects"]);
-		this.d.onRead();
+		await this.afterRead(async () => this.d.onRead());
 		return delay;
 	}
 
@@ -257,8 +289,13 @@ export class Poller {
 				.get(`error:${issue.id}`) as { id: number; pr_number: number | null; merged_at: string } | undefined;
 			const before = prev ? (JSON.parse(prev.json) as ErrorItem) : null;
 			let latestRelease = before?.latestRelease ?? null;
-			if (fix && before?.lastSeen !== issue.lastSeen) {
-				// Only a fixed error needs this read: which build is still sending it decides if the fix failed.
+			const fp = `error:${issue.id}`;
+			const tracked = store.db
+				.prepare("SELECT 1 FROM work_orders WHERE fingerprint = ? AND state NOT IN ('done', 'closed')")
+				.get(fp);
+			const watched = fix || tracked || store.triageRecord(fp)?.action === "snooze";
+			if (watched && (before?.lastSeen !== issue.lastSeen || (tracked && !before?.latestRelease))) {
+				// Only these need the extra read. Which build is sending it decides if a fix failed or a snooze wakes.
 				const fresh = await readDetail(cli, issue.id);
 				if (fresh) {
 					detail = { ...fresh, release: detail?.release ?? fresh.release };

@@ -14,6 +14,7 @@ import type {
 	ErrorItem,
 	FloorResponse,
 	HealthResponse,
+	NewProjectRun,
 	ProjectDetail,
 	QueueItem,
 	QueueResponse,
@@ -175,6 +176,48 @@ function readItems(store: Store): QueueItem[] {
 		}
 	}
 
+	const SERVICE_NAMES: Record<string, string> = { sentry: "Sentry", eas: "EAS", infisical: "Infisical" };
+	const runs = store.db.prepare("SELECT id, json FROM new_projects").all() as Array<{
+		id: number;
+		json: string;
+	}>;
+	for (const row of runs) {
+		const run = { ...JSON.parse(row.json), id: row.id } as NewProjectRun;
+		const project = run.projectSlug ? store.project(run.projectSlug) : null;
+		if (run.step === "failed" || run.step === "baseline") {
+			items.push({
+				fingerprint: `new-project:${run.id}`,
+				kind: "new_project",
+				project: project?.slug ?? null,
+				projectName: run.name,
+				title:
+					run.step === "baseline" ? `The baseline is red on ${run.name}` : `${run.name} couldn't be built`,
+				meta: "New project",
+				since: run.failedAt ?? store.iso(),
+				users: 0,
+				href: `/projects/new/${run.step}?run=${run.id}`,
+				newProject: { id: run.id, step: run.step },
+			});
+		}
+		if (!project) continue;
+		for (const [service, state] of Object.entries(run.services)) {
+			if (state !== "skipped") continue;
+			const name = SERVICE_NAMES[service] ?? service;
+			items.push({
+				fingerprint: `tool:${run.id}:${service}`,
+				kind: "tool",
+				project: project.slug,
+				projectName: project.name,
+				title: `${name} isn't set up on ${project.name}`,
+				meta: "Skipped when you made it",
+				since: project.addedAt,
+				users: 0,
+				href: "/settings/tools",
+				tool: { name, fix: run.serviceTools[service]?.fix ?? null },
+			});
+		}
+	}
+
 	const rebasing = new Set(
 		open.filter((w) => w.source.kind === "rebase_pr").map((w) => `${w.project}:${w.prNumber}`),
 	);
@@ -215,7 +258,7 @@ function isTriaged(store: Store, item: QueueItem, now: number) {
 	const current = {
 		events: item.error?.events ?? 0,
 		users: item.error?.users ?? 0,
-		release: item.error?.firstRelease ?? item.main?.sha ?? null,
+		release: item.error?.latestRelease ?? item.error?.firstRelease ?? item.main?.sha ?? null,
 	};
 	return triageHides(rec, current, now);
 }
@@ -228,7 +271,7 @@ export function triageBaseline(store: Store, fingerprint: string) {
 	return {
 		events: item?.error?.events ?? 0,
 		users: item?.error?.users ?? 0,
-		release: item?.error?.firstRelease ?? item?.main?.sha ?? null,
+		release: item?.error?.latestRelease ?? item?.error?.firstRelease ?? item?.main?.sha ?? null,
 	};
 }
 

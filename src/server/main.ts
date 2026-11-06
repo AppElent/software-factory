@@ -58,6 +58,8 @@ const engine = new Engine({
 	publish: bus.publish,
 	pollSoon: () => poller?.soon(),
 	onEvent,
+	// The demo's folders are samples. Closing a sample work order touches nothing real.
+	git: demo ? async () => {} : undefined,
 });
 
 poller = new Poller({

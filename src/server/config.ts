@@ -35,13 +35,16 @@ function sessionToken(dataDir: string): string {
 	return token;
 }
 
+/** The rules can't be read, so nothing can be shown or done safely until the file is fixed. */
+export class NeverTouchError extends Error {}
+
 /** Never-touch rules are private config: a JSON file in the data folder, never in the repo or the database. */
 export function readNeverTouch(dataDir: string): string[] {
 	const file = join(dataDir, "never-touch.json");
 	if (!existsSync(file)) return [];
 	// A broken file must not silently allow everything through, or drop a rule it couldn't read.
 	const refuse = () =>
-		new Error(`${file} must be a JSON list of strings. Fix it before the factory reads any repo.`);
+		new NeverTouchError(`${file} must be a JSON list of strings. Fix it before the factory reads any repo.`);
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(readFileSync(file, "utf8"));

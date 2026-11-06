@@ -103,7 +103,13 @@ jobs:
 const assertOrigin = () => {
 	if (dry) return;
 	const url = execFileSync("git", ["remote", "get-url", "origin"], { cwd: folder, encoding: "utf8" });
-	if (!url.toLowerCase().includes(repo.toLowerCase())) {
+	const clean = url
+		.trim()
+		.replace(/\/$/, "")
+		.replace(/\.git$/, "")
+		.toLowerCase();
+	const want = repo.toLowerCase();
+	if (!clean.endsWith(`/${want}`) && !clean.endsWith(`:${want}`)) {
 		console.error(`${folder} is a checkout of ${url.trim()}, not ${repo}. Nothing was changed.`);
 		process.exit(1);
 	}
@@ -173,4 +179,13 @@ if (!step) {
 	console.error(`Unknown step: ${o.step}`);
 	process.exit(2);
 }
-step();
+try {
+	step();
+} catch (e) {
+	// The owner reads this on the Failed page, so no stack trace.
+	const said = `${e.stderr ?? ""}`.trim();
+	console.error(
+		e.code === "ENOENT" ? `${e.path} isn't installed, or the service can't find it.` : said || e.message,
+	);
+	process.exit(1);
+}

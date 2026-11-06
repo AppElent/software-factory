@@ -150,6 +150,8 @@ export type PrGroup = "ready" | "failed" | "running" | "rebase" | "stale";
 export interface PullRequest {
 	/** Set while a new commit has no checks yet, though the one before it had some. */
 	awaitingChecksSince?: number;
+	/** What ran on the commit before, while this commit's checks report. */
+	expectedChecks?: CheckRun[];
 	project: string;
 	projectName: string;
 	number: number;
@@ -249,7 +251,8 @@ export type QueueKind =
 	| "toolkit"
 	| "tool"
 	| "waiting_in_t3"
-	| "run_failed";
+	| "run_failed"
+	| "new_project";
 
 export interface QueueItem {
 	fingerprint: string;
@@ -267,6 +270,7 @@ export interface QueueItem {
 	main?: MainBranchState & { blocks: number };
 	toolkit?: ToolkitState;
 	tool?: { name: string; fix: string | null };
+	newProject?: { id: number; step: NewProjectStep };
 }
 
 export type StartBlock = "limit" | "review" | "stopped" | null;
@@ -520,4 +524,8 @@ export interface NewProjectRun {
 	serviceTools: Record<string, { installed: boolean; fix: string | null }>;
 	projectSlug: string | null;
 	workOrderId: number | null;
+	/** When it last needed you. */
+	failedAt?: string;
+	/** Checked as free, then started. After a restart mid-step, what's there may be this run's own. */
+	claimed?: string[];
 }

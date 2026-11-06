@@ -50,7 +50,8 @@ Typecheck, Tests, Lint, Preview. Each is not set up, not started, running, passe
 - Failing triggers automatic retries (default 1, range 0 to 2), then the work order stops and needs you.
 - Retrying with a note counts as a new retry and a miss for first try.
 - A PR with no CI goes to Review after 5 minutes, with the activity line `No gates set up`.
-- A new commit with no checks yet, on a PR that had some, hasn't passed anything. Its gates read not started for up to 5 minutes, and merging waits.
+- A check that ran on the commit before and hasn't reported on this one hasn't passed. Its gate reads not started for up to 5 minutes, and merging waits.
+- Only a job named exactly `check`, `checks`, `verify`, or `ci` counts as typecheck, tests, and lint together. `build`, `EAS Build`, or `Spell check` passing proves none of them.
 - A failing or running check with no gate of its own counts against Tests. A passing one is ignored. A cancelled or stale run counts as failed.
 - `Try again` after T3 failed resends the same turn, plus any note. If T3 no longer has the thread, the work order starts over from Intake.
 - Rebasing makes every gate out of date until it runs again. List rows and the page for a PR that needs a rebase or is stale show its gates as out of date.
@@ -91,9 +92,10 @@ Off by default and built last.
 ## Queue
 
 - **Needs you, in order:** production errors, then agent questions, plans, and requests waiting in T3, then failed runs, red CI on main, gates failed after retries, and PRs ready to merge.
+- A new project that failed or has a red baseline ranks with failed runs and opens its setup page.
 - **Later:** stale PRs, PRs needing a rebase, toolkit behind, tools and services you skipped.
 - Within a group: most users affected first, then oldest.
-- **Snooze:** until tomorrow at 09:00. Wakes early at 100 events or a new release with users.
+- **Snooze:** until tomorrow at 09:00. A snoozed error's release is read each time it gets a new event. Wakes early at 100 events or a new release with users.
 - **Dismiss:** returns only if it gets worse.
 - A failing source shows as stale with its age, never as empty.
 - An error with an open work order doesn't show in the queue.

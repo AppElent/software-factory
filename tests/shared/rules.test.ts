@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	allFourPassed,
 	applyNeverTouch,
 	gatesClear,
 	gatesPassed,
@@ -9,6 +10,7 @@ import {
 	mayMergeAlone,
 	mergeBlockers,
 	noGates,
+	originIs,
 	parseReply,
 	prGroup,
 	qualifies,
@@ -25,6 +27,30 @@ const check = (name: string, bucket: CheckRun["bucket"], workflow: string | null
 	bucket,
 	workflow,
 	url: null,
+});
+
+describe("a job's name as proof", () => {
+	it("doesn't take a build or a spell check for typecheck, tests, and lint", () => {
+		for (const name of ["build", "EAS Build", "Spell check", "Link check", "docs / verify docs"]) {
+			const g = mapGates([check(name, "pass")]);
+			expect(g.Tests, name).toBe("not_set_up");
+			expect(allFourPassed({ ...g, Preview: "passed" }), name).toBe(false);
+		}
+	});
+
+	it("takes the toolkit's one job for all three", () => {
+		for (const name of ["check", "verify", "ci", "CI / check"]) {
+			const g = mapGates([check(name, "pass")]);
+			expect([g.Typecheck, g.Tests, g.Lint], name).toEqual(["passed", "passed", "passed"]);
+		}
+	});
+
+	it("knows a checkout by its origin, not by a name that contains it", () => {
+		expect(originIs("git@github.com:me/fairway.git\n", "me/fairway")).toBe(true);
+		expect(originIs("https://github.com/Me/Fairway/", "me/fairway")).toBe(true);
+		expect(originIs("https://github.com/me/fairway-old.git", "me/fairway")).toBe(false);
+		expect(originIs("https://github.com/notme/fairway.git", "me/fairway")).toBe(false);
+	});
 });
 
 describe("checks with no gate of their own", () => {
