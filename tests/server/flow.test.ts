@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -19,6 +19,7 @@ let store: Store;
 let exec: FakeExecutor;
 let engine: Engine;
 let clock: number;
+let writeNeverTouchBroken: () => void;
 let calls: Calls;
 let cliResult: Record<string, { code: number; stdout?: string; stderr?: string }>;
 
@@ -90,6 +91,7 @@ const threadOf = (id: number) => wo(id).threadId as string;
 
 beforeEach(() => {
 	const dir = mkdtempSync(join(tmpdir(), "sf-"));
+	writeNeverTouchBroken = () => writeFileSync(join(dir, "never-touch.json"), "{broken");
 	clock = Date.parse("2026-11-06T12:00:00Z");
 	store = new Store(openDb(join(dir, "t.db")), dir, () => new Date(clock));
 	exec = new FakeExecutor();
@@ -1442,5 +1444,26 @@ describe("where a work order starts", () => {
 		await engine.retry(id, null);
 		await settle();
 		expect(wo(id).prNumber).toBe(9);
+	});
+});
+
+describe("a rebase whose PR left while it waited", () => {
+	it("ends without starting an agent or claiming to ship", async () => {
+		putPr(9, { mergeState: "BEHIND", group: "rebase" });
+		engine.setLine(true);
+		const id = await engine.rebasePr("fairway", 9);
+		await settle();
+		store.db.prepare("DELETE FROM prs WHERE project = 'fairway' AND number = 9").run();
+		engine.setLine(false);
+		await settle();
+		expect(wo(id).state).toBe("closed");
+		expect(exec.threads.size).toBe(0);
+	});
+});
+
+describe("a broken Never touch file", () => {
+	it("doesn't reject the tick that reads it", async () => {
+		writeNeverTouchBroken();
+		await expect(engine.tick()).resolves.toBeUndefined();
 	});
 });

@@ -31,6 +31,7 @@ import type {
 } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
+import { NeverTouchError } from "./config.ts";
 import { closePr, failedLog, mergePr, prByBranch, prState } from "./connectors/github.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Executor, ThreadState } from "./executor/types.ts";
@@ -202,6 +203,9 @@ export class Engine {
 				}
 				await this.startWaiting();
 			} while (this.tickAgain);
+		} catch (e) {
+			// A broken rules file stops the factory on purpose, and every page already says so.
+			if (!(e instanceof NeverTouchError)) throw e;
 		} finally {
 			this.ticking = false;
 		}
@@ -232,6 +236,11 @@ export class Engine {
 		}
 		if (wo.heldByLine) this.store.patchWorkOrder(wo.id, { held_by_line: 0 });
 		if (wo.hold) return false;
+		// The PR it was meant to work on merged or closed while this waited for a slot.
+		if (ownsNoPr(wo.source.kind) && wo.prNumber && !this.openPr(wo)) {
+			await this.closeOut(id, `PR #${wo.prNumber} is no longer open, so there's nothing to do`);
+			return false;
+		}
 		const project = this.store.project(wo.project);
 		if (!project || project.paused || project.folderMissing || !project.localPath) return false;
 		const open = this.store.workOrders();

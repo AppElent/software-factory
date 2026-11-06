@@ -1074,6 +1074,19 @@ export function installDemo(store: Store) {
 				)
 				.run("error:6003", snoozeUntil(store.now()).toISOString(), store.iso());
 		},
+		/** Stopped during Verify, and the gates passed anyway. */
+		held_in_review: () => {
+			baseProjects();
+			healthy();
+			seedWo({
+				project: "foundry",
+				title: "Passed while stopped",
+				stage: "Review",
+				state: "ready",
+				hold: true,
+				activity: [["You stopped this work order"], ["Gates passed"]],
+			});
+		},
 		/** The agent asked something with no options to pick from. */
 		open_question: () => {
 			baseProjects();

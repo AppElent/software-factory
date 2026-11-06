@@ -189,6 +189,13 @@ describe("work order", () => {
 		await waitFor(() => expect(paneStatus()).not.toHaveTextContent("You stopped this work order"));
 	});
 
+	it("Ready while stopped: offers Restart, so Merge without me can go on", async () => {
+		const user = userEvent.setup();
+		const { h, id } = await openOrder("Passed while stopped", "held_in_review");
+		await user.click(within(pane()).getByRole("button", { name: "Restart this work order" }));
+		await waitFor(() => expect(h.mutations).toContain(`POST /api/work-orders/${id}/resume {}`));
+	});
+
 	it("Held: a failed resume shows inline", async () => {
 		const user = userEvent.setup();
 		const { h } = await openOrder("Stopped and held", "wo_states");

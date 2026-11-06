@@ -516,6 +516,15 @@ function WorkOrderPage({
 								Review PR
 							</ButtonLink>
 						)}
+						{/* Stopped during Verify and passed anyway. Merge without me waits for this. */}
+						{wo.hold && (
+							<>
+								<Button grow disabled={resume.pending} onClick={() => void resume.run()}>
+									Restart this work order
+								</Button>
+								<Failed verb="restart" error={resume.error} />
+							</>
+						)}
 						{openInT3}
 						{/* Someone else's PR stays open, so this only ends the work order. */}
 						{ownsNoPr(wo.source.kind) && closeControl}

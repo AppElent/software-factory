@@ -120,3 +120,44 @@ describe("a broken Never touch file", () => {
 		expect(calls.some((c) => c.startsWith("gh api"))).toBe(true);
 	});
 });
+
+describe("a Never touch rule on the toolkit repo", () => {
+	it("stops the factory reading it for drift", async () => {
+		const read = JSON.parse(fixture("gh/repo-read.json"));
+		const node = Object.values(read.data).find((v) => (v as { nameWithOwner?: string }).nameWithOwner) as {
+			nameWithOwner: string;
+		};
+		for (const key of Object.keys(read.data))
+			if (read.data[key] !== node && key !== "rateLimit") delete read.data[key];
+		const seen: string[] = [];
+		const local: Cli = async (cmd, args) => {
+			seen.push(`${cmd} ${args.join(" ")}`);
+			return ok(JSON.stringify(read));
+		};
+		store.db
+			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("fx", node.nameWithOwner, "fx", "", "/tmp", store.iso());
+		const poller = new Poller({
+			store,
+			cli: local,
+			publish: () => {},
+			engine: () =>
+				new Engine({
+					store,
+					cli: local,
+					executor: new FakeExecutor(),
+					publish: () => {},
+					pollSoon: () => {},
+				}),
+		} as never);
+		writeFileSync(join(dir, "never-touch.json"), JSON.stringify(["developer-tools"]));
+		await poller.readGithub();
+		expect(seen.some((c) => c.includes("graphql"))).toBe(true);
+		expect(seen.some((c) => c.includes("developer-tools"))).toBe(false);
+
+		// The same read reaches the toolkit once no rule covers it.
+		writeFileSync(join(dir, "never-touch.json"), "[]");
+		await poller.readGithub();
+		expect(seen.some((c) => c.includes("developer-tools"))).toBe(true);
+	});
+});

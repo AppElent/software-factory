@@ -2,7 +2,8 @@ import { awaitChecks, isRegression } from "../shared/rules.ts";
 import type { ErrorItem, Project, ToolkitState, WorkType } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
-import { GithubError, readRepos, readToolkit } from "./connectors/github.ts";
+import { filterNeverTouch } from "./config.ts";
+import { GithubError, readRepos, readToolkit, TOOLKIT_REPO } from "./connectors/github.ts";
 import { readDetail, readIssues, readOrg, readProjects, SentryError } from "./connectors/sentry.ts";
 import { kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
@@ -110,7 +111,10 @@ export class Poller {
 				for (const r of read.repos) {
 					const project = projects.find((p) => p.repo.toLowerCase() === r.repo.toLowerCase());
 					if (!project) continue;
-					const toolkit = await readToolkit(cli, r.repo, r.devtoolsCommit, this.toolkitCache, now.getTime());
+					// A rule can cover the toolkit repo itself, and then its drift isn't ours to read.
+					const toolkit = filterNeverTouch(store.neverTouch(), [{ repo: TOOLKIT_REPO }]).kept.length
+						? await readToolkit(cli, r.repo, r.devtoolsCommit, this.toolkitCache, now.getTime())
+						: ({ status: "unknown", behindDays: 0, changed: 0 } as const);
 					this.saveRepo(project, r, toolkit);
 				}
 				if (read.rate && read.rate.remaining < LOW_RATE) {
