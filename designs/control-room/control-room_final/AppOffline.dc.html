@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factory not running</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; justify-content: center; padding: 96px 24px; box-sizing: border-box">
+    <main style="max-width: 560px; display: flex; flex-direction: column; gap: 16px; align-items: flex-start">
+      <h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">The factory isn't running</h1>
+      <p style="margin: 0; color: #9AA3AE; ">This page can't reach the local service on port 4310. Agents already working in T3 keep going, but nothing new starts and nothing here updates. Start the service, then check again.</p>
+      <pre style="margin: 0; padding: 12px; background: #0E1013; border: 1px solid #23282E; border-radius: 6px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere">launchctl kickstart gui/$UID/com.appelent.software-factory</pre>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="pri" href="Queue.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Check again</a></div>
+    </main></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

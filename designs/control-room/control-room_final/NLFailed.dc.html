@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New project: scaffold failed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <div style="flex: 1 1 240px; max-width: 280px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 20px 24px; display: flex; flex-direction: column; gap: 24px">
+    <div style="font-size: 16px; font-weight: 600">Software Factory</div>
+    <ol aria-label="Steps" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px"><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span>Describe</span></li><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span>Approve changes</span></li><li aria-current="step" style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 600; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5.25" fill="none" stroke="#7AB8FF" stroke-width="1.5"/><path d="M8 2.75a5.25 5.25 0 0 1 0 10.5Z" fill="#7AB8FF"/></svg><span>Scaffold</span></li><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #9AA3AE"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg><span>Connect services</span></li><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #9AA3AE"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg><span>First idea</span></li></ol>
+  </div>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px 24px; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; justify-content: center">
+    <div style="flex: 1 1 560px; max-width: 720px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+      <nav aria-label="Breadcrumb"><ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; color: #9AA3AE; font-size: 12px"><li style="display: flex; gap: 4px"><a class="lnk" style="color: #9AA3AE" href="Projects.dc.html">Projects</a></li><li style="display: flex; gap: 4px"><span aria-hidden="true">/</span><span aria-current="page">New project</span></li></ol></nav>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">caddie couldn't be built</h1>
+        <p style="margin: 0; color: #9AA3AE; max-width: 62ch">The template step failed. The repo and folder exist, so you can retry from here.</p>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; border-block-end: 1px solid #23282E"><div style="display: flex; align-items: center; gap: 12px; min-height: 28px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span style="flex: 1 1 0">Created AppElent/caddie</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">0:04</span></div></div><div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; border-block-end: 1px solid #23282E"><div style="display: flex; align-items: center; gap: 12px; min-height: 28px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span style="flex: 1 1 0">Created ~/Developer/caddie</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">0:05</span></div></div>
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; border-block-end: 1px solid #23282E"><div style="display: flex; align-items: center; gap: 12px; min-height: 28px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg><span style="flex: 1 1 0">Applied the Expo app template</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">0:31</span></div><pre style="margin: 0; padding: 12px; background: #0E1013; border: 1px solid #23282E; border-radius: 6px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere">pnpm install failed
+ERR_PNPM_FETCH_503 registry.npmjs.org: Service Unavailable</pre></div>
+        <div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; border-block-end: 1px solid #23282E"><div style="display: flex; align-items: center; gap: 12px; min-height: 28px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg><span style="flex: 1 1 0">Run the baseline</span></div></div><div style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; border-block-end: 1px solid #23282E"><div style="display: flex; align-items: center; gap: 12px; min-height: 28px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg><span style="flex: 1 1 0">Add it to T3</span></div></div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="pri" href="NLScaffold.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Retry this step</a><sc-if value="{{notAsk}}" hint-placeholder-val="{{true}}"><button type="button" class="btn" onClick="{{askRm}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; ">Remove what was created</button></sc-if></div>
+      <sc-if value="{{ask}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #121519; border: 1px solid #23282E; border-radius: 8px"><strong>Remove caddie?</strong><p style="margin: 0; color: #9AA3AE; ">This deletes the AppElent/caddie repo on GitHub and the ~/Developer/caddie folder. It can't be undone.</p><div style="display: flex; flex-wrap: wrap; gap: 8px"><button type="button" class="btn" onClick="{{keep}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Keep it</button><a class="btn" href="Projects.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; ">Remove repo and folder</a></div></div></sc-if>
+    </div>
+    
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"ask":false}; }
+
+  renderVals() {
+    const s = this.state;
+return { ask: s.ask, notAsk: !s.ask, askRm: () => this.setState({ ask: true }), keep: () => this.setState({ ask: false }) };
+  }
+}
+</script>
+</body>
+</html>

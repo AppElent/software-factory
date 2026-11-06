@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Errors</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 20px"><header style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px"><h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">Errors</h1><span style="color: #9AA3AE">{{sub}}</span><span style="margin-inline-start: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><label for="er-p" style="color: #9AA3AE; font-size: 12px">Project</label><select id="er-p" value="{{pr}}" onChange="{{pickP}}"><option>All projects</option><option>Arcade Club</option><option>Fairway</option><option>Foundry</option><option>Gather</option></select></span></header><sc-if value="{{gv.fairway}}" hint-placeholder-val="{{true}}"><section aria-label="Fairway" style="display: flex; flex-direction: column; gap: 4px"><h2 class="sec">Fairway · {{gc.fairway}}</h2><sc-if value="{{vis.a}}" hint-placeholder-val="{{true}}"><div style="display: flex; align-items: center"><label style="display: flex; align-items: center; justify-content: center; width: 36px; min-height: 44px; flex: none; cursor: pointer"><input type="checkbox" aria-label="Select TypeError reading 'holes'" checked="{{sel.a}}" onChange="{{tog.a}}"></label><a class="row" href="ErrorNew.dc.html" style="flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; border-radius: 6px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M8 2.5 14 13H2Z" fill="#FF6B4A"/></svg><span style="flex: 1 1 280px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">TypeError reading 'holes'</span><span style="width: 96px; color: #9AA3AE; font-size: 12px">New</span><span style="width: 88px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">41 events</span></span><span style="width: 72px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">14 users</span></span><span style="width: 32px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3h</span></span></a></div></sc-if><sc-if value="{{vis.b}}" hint-placeholder-val="{{true}}"><div style="display: flex; align-items: center"><label style="display: flex; align-items: center; justify-content: center; width: 36px; min-height: 44px; flex: none; cursor: pointer"><input type="checkbox" aria-label="Select NetworkError fetching course list" checked="{{sel.b}}" onChange="{{tog.b}}"></label><a class="row" href="ErrorRegression.dc.html" style="flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; border-radius: 6px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M8 2.5 14 13H2Z" fill="#FF6B4A"/></svg><span style="flex: 1 1 280px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">NetworkError fetching course list</span><span style="width: 96px; color: #9AA3AE; font-size: 12px">Regression</span><span style="width: 88px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12 events</span></span><span style="width: 72px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">5 users</span></span><span style="width: 32px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">1d</span></span></a></div></sc-if></section></sc-if><sc-if value="{{gv.gather}}" hint-placeholder-val="{{true}}"><section aria-label="Gather" style="display: flex; flex-direction: column; gap: 4px"><h2 class="sec">Gather · {{gc.gather}}</h2><sc-if value="{{vis.c}}" hint-placeholder-val="{{true}}"><div style="display: flex; align-items: center"><label style="display: flex; align-items: center; justify-content: center; width: 36px; min-height: 44px; flex: none; cursor: pointer"><input type="checkbox" aria-label="Select Task sync timed out" checked="{{sel.c}}" onChange="{{tog.c}}"></label><a class="row" href="ErrorSnoozed.dc.html" style="flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; border-radius: 6px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg><span style="flex: 1 1 280px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">Task sync timed out</span><span style="width: 96px; color: #9AA3AE; font-size: 12px">Snoozed</span><span style="width: 88px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">6 events</span></span><span style="width: 72px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">2 users</span></span><span style="width: 32px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">2d</span></span></a></div></sc-if></section></sc-if><sc-if value="{{noneShown}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start"><p role="status" style="margin: 0">Nothing open in {{pr}}.</p><button type="button" class="btn" onClick="{{allP}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Show all projects</button></div></sc-if>
+      <div role="status" style="min-height: 36px"><sc-if value="{{hasNote}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 12px">{{note}} <button type="button" class="btn" onClick="{{undo}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Undo</button></span></sc-if></div>
+      <p style="margin: 0; color: #9AA3AE; font-size: 12px">7 other projects have no open errors. 3 have no Sentry yet. Checked 1 minute ago.</p></div>
+      <sc-if value="{{some}}" hint-placeholder-val="{{false}}"><div role="region" aria-label="Bulk actions" style="position: sticky; bottom: 16px; margin: auto 24px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: #1B2026; border: 1px solid #2C3238; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4)"><span role="status" style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px">{{n}} selected</span><button type="button" class="btn" onClick="{{clear}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Clear</button><span style="margin-inline-start: auto; display: flex; flex-wrap: wrap; gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button><a class="pri" href="FloorBoard.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">{{startLabel}}</a></span></div></sc-if>
+  </main>
+
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"pr":"All projects","sel":{},"gone":{},"ask":false,"note":""}; }
+
+  renderVals() {
+    const s = this.state;
+
+    const R = [["a","Fairway","fairway","TypeError reading 'holes'"],["b","Fairway","fairway","NetworkError fetching course list"],["c","Gather","gather","Task sync timed out"]];
+    const vis = {}, sel = {}, tog = {}, gc = {}, gv = {}; let shown = 0; const names = new Set();
+    R.forEach(([id, pr, k]) => {
+      const on = (s.pr === 'All projects' || s.pr === pr) && !s.gone[id];
+      vis[id] = on; sel[id] = !!s.sel[id] && on;
+      tog[id] = () => this.setState({ sel: { ...s.sel, [id]: !s.sel[id] } });
+      gc[k] = (gc[k] || 0) + (on ? 1 : 0); gv[k] = gc[k] > 0;
+      if (on) { shown++; names.add(pr); }
+    });
+    const chosen = R.filter(([id]) => sel[id]).map(([id, pr, k, label]) => ({ id, label, pr }));
+    const n = chosen.length;
+    const base = { pr: s.pr, vis, sel, tog, gc, gv, n, some: n > 0, chosen, ask: s.ask, shown,
+      noneShown: shown === 0, allP: () => this.setState({ pr: 'All projects' }),
+      pickP: (e) => this.setState({ pr: e.target.value }),
+      clear: () => this.setState({ sel: {} }), askOn: () => this.setState({ ask: true }), keep: () => this.setState({ ask: false }),
+      note: s.note, hasNote: !!s.note };
+    
+    const hide = (word) => () => { const gone = { ...s.gone }; const last = []; chosen.forEach((x) => { gone[x.id] = true; last.push(x.id); }); this.setState({ gone, sel: {}, last, note: word + ' ' + n + (n === 1 ? ' error.' : ' errors.') }); };
+    return { ...base, sub: shown + ' open in ' + names.size + (names.size === 1 ? ' project' : ' projects'),
+      startLabel: n === 1 ? 'Start work order' : 'Start ' + n + ' work orders',
+      snooze: hide('Snoozed'), dismiss: hide('Dismissed'),
+      undo: () => { const gone = { ...s.gone }; (s.last || []).forEach((id) => { delete gone[id]; }); this.setState({ gone, note: '' }); } };
+  }
+}
+</script>
+</body>
+</html>

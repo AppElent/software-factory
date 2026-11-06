@@ -1,0 +1,59 @@
+/* Generated from tokens.json. Dark only. Import after tailwindcss. */
+@theme {
+  --color-*: initial;
+  --color-bg-canvas: #0E1013;
+  --color-bg-surface: #121519;
+  --color-bg-raised: #1B2026;
+  --color-bg-active: #20252B;
+  --color-border-subtle: #23282E;
+  --color-border-control: #2C3238;
+  --color-border-input: #6B7480;
+  --color-text-primary: #E6E8EB;
+  --color-text-muted: #9AA3AE;
+  --color-accent-solid: #F5A524;
+  --color-accent-on: #17120A;
+  --color-status-needs-you: var(--color-accent-solid);
+  --color-status-run: #7AB8FF;
+  --color-status-pass: #3DD6B0;
+  --color-status-fail: #FF6B4A;
+  --color-status-idle: var(--color-text-muted);
+  --color-scrim: rgb(14 16 19 / 0.78);
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --text-page-title: 20px;
+  --text-page-title--line-height: 1.2;
+  --text-page-title--font-weight: 600;
+  --text-detail-title: 16px;
+  --text-detail-title--line-height: 1.35;
+  --text-detail-title--font-weight: 600;
+  --text-body: 13px;
+  --text-body--line-height: 1.4;
+  --text-body--font-weight: 400;
+  --text-body-strong: 13px;
+  --text-body-strong--line-height: 1.4;
+  --text-body-strong--font-weight: 500;
+  --text-meta: 12px;
+  --text-meta--line-height: 1.4;
+  --text-meta--font-weight: 400;
+  --text-section-label: 12px;
+  --text-section-label--line-height: 1.4;
+  --text-section-label--font-weight: 600;
+  --text-section-label--letter-spacing: 0.06em;
+  --text-metric: 16px;
+  --text-metric--line-height: 1.25;
+  --text-metric--font-weight: 500;
+  --text-data: 12px;
+  --text-data--line-height: 1.4;
+  --text-data--font-weight: 400;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+
+  --spacing-control: 36px;
+  --spacing-action: 44px;
+  --spacing-row: 44px;
+
+  --shadow-dialog: 0 16px 48px rgb(0 0 0 / 0.5);
+}

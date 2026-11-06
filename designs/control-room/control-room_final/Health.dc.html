@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Health</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 20px">
+      <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px"><h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">Health</h1><span style="color: #9AA3AE">Last 14 days</span><span style="margin-inline-start: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px"></span></header>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px"><button type="button" class="btn" aria-pressed="{{press.shipped}}" onClick="{{tabs.shipped}}" style="flex: 1 1 160px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; background: {{ring.shipped}}; border: 1px solid #23282E; border-radius: 6px; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer"><span style="color: #9AA3AE; font-size: 12px">Shipped</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25">31</span><span style="color: #9AA3AE; font-size: 12px">last 14 days</span></button><button type="button" class="btn" aria-pressed="{{press.first}}" onClick="{{tabs.first}}" style="flex: 1 1 160px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; background: {{ring.first}}; border: 1px solid #23282E; border-radius: 6px; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer"><span style="color: #9AA3AE; font-size: 12px">First-try</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25">71%</span><span style="color: #9AA3AE; font-size: 12px">22 of 31</span></button><button type="button" class="btn" aria-pressed="{{press.time}}" onClick="{{tabs.time}}" style="flex: 1 1 160px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; background: {{ring.time}}; border: 1px solid #23282E; border-radius: 6px; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer"><span style="color: #9AA3AE; font-size: 12px">Median to PR</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25">38m</span><span style="color: #9AA3AE; font-size: 12px">was 52m</span></button><button type="button" class="btn" aria-pressed="{{press.cost}}" onClick="{{tabs.cost}}" style="flex: 1 1 160px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; background: {{ring.cost}}; border: 1px solid #23282E; border-radius: 6px; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer"><span style="color: #9AA3AE; font-size: 12px">Cost per change</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25">$1.80</span><span style="color: #9AA3AE; font-size: 12px">was $2.40</span></button></div>
+      <section aria-label="Chart" style="display: flex; flex-direction: column; gap: 8px">
+        <h2 class="sec">{{title}}</h2>
+        <div role="img" aria-label="{{summary}}" style="display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 2px; align-items: end; height: 160px; border-block-end: 1px solid #23282E">
+          <sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><span title="{{b.tip}}" style="display: block; height: {{b.h}}; background: #6B7480; border-radius: 4px 4px 0 0"></span></sc-for>
+        </div>
+        <div aria-hidden="true" style="display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 2px; color: #9AA3AE; font-size: 12px"><sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><span style="white-space: nowrap">{{b.tick}}</span></sc-for></div>
+        <p style="margin: 0; color: #9AA3AE; font-size: 12px">{{summary}}</p>
+        <details><summary style="color: #9AA3AE; font-size: 12px">Show daily numbers</summary><table style="margin-block-start: 8px; border-collapse: collapse; font-size: 12px"><tbody><sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><tr><th scope="row" style="padding: 2px 16px 2px 0; text-align: start; font-weight: 400; color: #9AA3AE">{{b.day}}</th><td style="font-family: 'IBM Plex Mono', ui-monospace, monospace; text-align: end">{{b.val}}</td></tr></sc-for></tbody></table></details>
+      </section>
+      <section aria-label="By work type" style="display: flex; flex-direction: column; gap: 8px">
+        <h2 class="sec">By work type</h2>
+        <div style="overflow-x: auto"><table style="width: 100%; border-collapse: collapse"><thead><tr><th scope="col" style="padding: 8px 12px; text-align: start; font-weight: 500; color: #9AA3AE; font-size: 12px; border-block-end: 1px solid #23282E; white-space: nowrap">Work type</th><th scope="col" style="padding: 8px 12px; text-align: end; font-weight: 500; color: #9AA3AE; font-size: 12px; border-block-end: 1px solid #23282E; white-space: nowrap">Runs</th><th scope="col" style="padding: 8px 12px; text-align: end; font-weight: 500; color: #9AA3AE; font-size: 12px; border-block-end: 1px solid #23282E; white-space: nowrap">First try</th><th scope="col" style="padding: 8px 12px; text-align: end; font-weight: 500; color: #9AA3AE; font-size: 12px; border-block-end: 1px solid #23282E; white-space: nowrap">Median to PR</th><th scope="col" style="padding: 8px 12px; text-align: end; font-weight: 500; color: #9AA3AE; font-size: 12px; border-block-end: 1px solid #23282E; white-space: nowrap">Cost per change</th><th scope="col" style="padding: 8px 12px; text-align: start; font-weight: 500; color: #9AA3AE; font-size: 12px; border-block-end: 1px solid #23282E; white-space: nowrap">Merging</th></tr></thead>
+        <tbody><tr><th scope="row" style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: start; font-weight: 500">Bug fix</th><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">14</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">12 of 14</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">31m</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">$1.40</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; white-space: nowrap"><span style="display: inline-flex; align-items: center; gap: 8px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><sc-if value="{{notAlone}}" hint-placeholder-val="{{true}}"><span>Can merge without you</span><button type="button" class="btn" onClick="{{askOn}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Turn on</button></sc-if><sc-if value="{{alone}}" hint-placeholder-val="{{false}}"><span>Merges without you</span></sc-if></span></td></tr><tr><th scope="row" style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: start; font-weight: 500">Feature</th><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">9</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">5 of 9</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">54m</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">$3.10</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; white-space: nowrap"><span style="color: #9AA3AE">Needs you</span></td></tr><tr><th scope="row" style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: start; font-weight: 500">Toolkit sync</th><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">6</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">5 of 6</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">12m</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">$0.60</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; white-space: nowrap"><span style="color: #9AA3AE">Needs you</span></td></tr><tr><th scope="row" style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: start; font-weight: 500">Chore</th><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">2</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">–</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">9m</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;  white-space: nowrap">$0.30</td><td style="padding: 8px 12px; border-block-end: 1px solid #23282E; white-space: nowrap"><span style="color: #9AA3AE">Too few runs</span></td></tr></tbody></table></div>
+        <p style="margin: 0; color: #9AA3AE; font-size: 12px">A work type qualifies after 10 runs with at least 80% passing every gate on the first try and no regressions. Nothing changes until you turn it on. <a class="lnk" href="SettingsApprovals.dc.html">Change this in Settings</a></p>
+      </section>
+    </div>
+  </main>
+
+<sc-if value="{{ask}}" hint-placeholder-val="{{false}}"><div style="position: absolute; inset: 0; background: rgba(14, 16, 19, 0.78); display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; box-sizing: border-box">
+  <div role="dialog" aria-modal="true" aria-labelledby="al" style="width: 100%; max-width: 480px; background: #1B2026; border: 1px solid #2C3238; border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); padding: 20px; display: flex; flex-direction: column; gap: 16px">
+    <h2 id="al" style="margin: 0; font-size: 16px; line-height: 1.35; font-weight: 600">Let bug fixes merge without you?</h2>
+    <p style="margin: 0; color: #9AA3AE; ">When all 4 gates pass, a bug-fix PR merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.</p><div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end"><button type="button" class="btn" onClick="{{keep}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Cancel</button><button type="button" class="pri" onClick="{{turnOn}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Turn on</button></div>
+  </div>
+</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"tab":"shipped","ask":false,"on":false}; }
+
+  renderVals() {
+    const s = this.state;
+
+    const S = {"shipped":{"label":"Shipped","value":"31","sub":"last 14 days","vals":[1,2,3,2,0,0,3,4,2,3,1,0,4,6],"unit":"changes"},"first":{"label":"First-try","value":"71%","sub":"22 of 31","vals":[100,50,67,50,0,0,67,75,100,67,100,0,75,67],"unit":"%"},"time":{"label":"Median to PR","value":"38m","sub":"was 52m","vals":[61,55,48,52,0,0,44,41,39,47,36,0,35,38],"unit":"m"},"cost":{"label":"Cost per change","value":"$1.80","sub":"was $2.40","vals":[2.8,2.5,2.2,2.6,0,0,2.1,1.9,1.6,2,1.7,0,1.9,1.8],"unit":"$"}}; const D = ["23 Oct","24 Oct","25 Oct","26 Oct","27 Oct","28 Oct","29 Oct","30 Oct","31 Oct","1 Nov","2 Nov","3 Nov","4 Nov","5 Nov"];
+    const cur = S[s.tab]; const max = Math.max(...cur.vals);
+    const fmt = (v) => cur.unit === '$' ? '$' + v.toFixed(2) : cur.unit === '%' ? v + '%' : cur.unit === 'm' ? v + 'm' : String(v);
+    const tabs = {}, press = {}, ring = {};
+    Object.keys(S).forEach((k) => { tabs[k] = () => this.setState({ tab: k }); press[k] = s.tab === k; ring[k] = s.tab === k ? '#1B2026' : 'transparent'; });
+    return { tabs, press, ring, title: cur.label + ' per day', ask: s.ask, alone: s.on, notAlone: !s.on,
+      askOn: () => this.setState({ ask: true }), keep: () => this.setState({ ask: false }), turnOn: () => this.setState({ ask: false, on: true }),
+      summary: cur.label + ', last 14 days. Latest ' + fmt(cur.vals[13]) + '. Highest ' + fmt(max) + '.',
+      bars: cur.vals.map((v, i) => ({ h: Math.max(2, Math.round((v / max) * 160)) + 'px', tip: D[i] + ': ' + fmt(v), day: D[i], val: fmt(v), tick: i % 3 === 0 ? D[i] : '' })) };
+  }
+}
+</script>
+</body>
+</html>

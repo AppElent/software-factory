@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Long text: project</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 20px"><nav aria-label="Breadcrumb"><ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; color: #9AA3AE; font-size: 12px"><li style="display: flex; gap: 4px"><a class="lnk" style="color: #9AA3AE" href="Projects.dc.html">Projects</a></li><li style="display: flex; gap: 4px"><span aria-hidden="true">/</span><span aria-current="page">Fairway Scorecards for Weekend Golf Societies and Long Tournaments</span></li></ol></nav>
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 12px">
+          <div style="flex: 1 1 320px; min-width: 0"><h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600; overflow-wrap: anywhere">Fairway Scorecards for Weekend Golf Societies and Long Tournaments</h1><span style="color: #9AA3AE">1 plan and 2 errors need you</span></div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="btn" href="#t3" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Open in T3</a><a class="btn" href="https://github.com/AppElent/fairway-scorecards-for-weekend-golf-societies-and-long-tournaments" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">GitHub</a><a class="pri" href="NewWorkOrder.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Start work order</a></div>
+        </header>
+        <sc-if value="{{paused}}" hint-placeholder-val="{{false}}"><div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: #121519; border: 1px solid #23282E; border-radius: 8px">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg>
+  <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">Paused</strong><span style="color: #9AA3AE">New work orders for this project wait in Intake. Work already running finishes.</span></div>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px"><button type="button" class="btn" onClick="{{resume}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Resume</button></div>
+</div></sc-if>
+        <section aria-label="Work orders · 1" style="display: flex; flex-direction: column; gap: 4px"><h2 class="sec">Work orders · 1</h2><a class="row" href="WOPlan.dc.html" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; border-radius: 6px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M8 2 14 8 8 14 2 8Z" fill="#F5A524"/></svg><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">WO-214</span><span style="flex: 1 1 220px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">Fix TypeError: Cannot read properties of undefined (reading 'holes') in RoundSummaryCard while rendering the scorecard for a shared round</span><span style="color: #9AA3AE; font-size: 12px">Plan · waiting on you</span><span style="width: 32px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">4m</span></span></a></section>
+    <section aria-label="Pull requests · 1" style="display: flex; flex-direction: column; gap: 4px"><h2 class="sec">Pull requests · 1</h2><a class="row" href="PRFailed.dc.html" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; border-radius: 6px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">#94</span><span style="flex: 1 1 220px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">Show a helpful empty state with a clear-search action when a course search finds nothing in the selected region or season</span><span style="color: #9AA3AE; font-size: 12px">Preview failed</span><span style="width: 32px; text-align: end"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3h</span></span></a></section></div>
+  </main>
+  <aside class="sf-pane" aria-label="Details" style="flex: 1 1 340px; max-width: 380px; min-width: 300px; box-sizing: border-box; background: #121519; border-inline-start: 1px solid #23282E; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">Repo</dt><dd style="margin: 0; "><a class="lnk" href="https://github.com/AppElent/fairway-scorecards-for-weekend-golf-societies-and-long-tournaments">AppElent/fairway-scorecards-for-weekend-golf-societies-and-long-tournaments</a></dd><dt style="color: #9AA3AE">Folder</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">~/Developer/clients-and-side-projects/2026/fairway-scorecards-for-weekend-golf-societies-and-long-tournaments</dd><dt style="color: #9AA3AE">Branch</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">release/2026-11-spring-season-scorecard-migration</dd><dt style="color: #9AA3AE">Toolkit</dt><dd style="margin: 0; ">Current</dd><dt style="color: #9AA3AE">Last deploy</dt><dd style="margin: 0; ">5h ago · EAS</dd></dl>
+        <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px"><h2 class="sec">Last 30 days</h2><dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">Shipped</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">11</dd><dt style="color: #9AA3AE">First try</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">8 of 11</dd><dt style="color: #9AA3AE">Median to PR</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">41m</dd><dt style="color: #9AA3AE">Cost per change</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">$1.60</dd></dl></div>
+        <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px"><h2 class="sec">Services</h2><div><div style="display: flex; align-items: center; gap: 8px; min-height: 36px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span style="flex: 1 1 0">Sentry</span><span style="color: #9AA3AE; font-size: 12px">fairway-web</span></div><div style="display: flex; align-items: center; gap: 8px; min-height: 36px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span style="flex: 1 1 0">EAS</span><span style="color: #9AA3AE; font-size: 12px">Connected</span></div><div style="display: flex; align-items: center; gap: 8px; min-height: 36px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg><span style="flex: 1 1 0">Infisical</span><a class="btn" href="NLConnect.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Connect</a></div></div></div>
+        <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px"><fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 4px"><legend class="sec" style="padding: 0; margin-block-end: 4px">Merging</legend>
+          <label style="display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer"><input type="radio" name="mg" checked="{{follow}}" onChange="{{setFollow}}"><span>Follow <a class="lnk" href="SettingsApprovals.dc.html">Settings</a></span></label>
+          <label style="display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer"><input type="radio" name="mg" checked="{{always}}" onChange="{{setAlways}}"><span>Always ask me</span></label></fieldset></div>
+        <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px"><sc-if value="{{running}}" hint-placeholder-val="{{true}}"><button type="button" class="btn" onClick="{{pause}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; width: 100%">Pause project</button></sc-if><button type="button" class="btn" onClick="{{askOn}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Remove from factory</button></div>
+  </aside>
+<sc-if value="{{ask}}" hint-placeholder-val="{{false}}"><div style="position: absolute; inset: 0; background: rgba(14, 16, 19, 0.78); display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; box-sizing: border-box">
+  <div role="dialog" aria-modal="true" aria-labelledby="rm" style="width: 100%; max-width: 480px; background: #1B2026; border: 1px solid #2C3238; border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); padding: 20px; display: flex; flex-direction: column; gap: 16px">
+    <h2 id="rm" style="margin: 0; font-size: 16px; line-height: 1.35; font-weight: 600">Fairway can't be removed yet</h2>
+    <p style="margin: 0; color: #9AA3AE; ">It has 2 open work orders. Close them first, or pause the project so nothing new starts.</p>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end"><button type="button" class="btn" onClick="{{keep}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Cancel</button><a class="btn" href="FloorBoard.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">See work orders</a><button type="button" class="pri" onClick="{{pause}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Pause project</button></div>
+  </div>
+</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"paused":false,"ask":false,"merge":"follow","cloning":false,"cloned":false}; }
+
+  renderVals() {
+    const s = this.state;
+
+    if (s.cloning && !this.t) this.t = setTimeout(() => { this.t = null; this.setState({ cloning: false, cloned: true }); }, 1200);
+    return { paused: s.paused, running: !s.paused, ask: s.ask, askOn: () => this.setState({ ask: true }), keep: () => this.setState({ ask: false }),
+      pause: () => this.setState({ paused: true, ask: false }), resume: () => this.setState({ paused: false }),
+      follow: s.merge === 'follow', always: s.merge === 'always', setFollow: () => this.setState({ merge: 'follow' }), setAlways: () => this.setState({ merge: 'always' }),
+      needClone: !s.cloning && !s.cloned, cloning: s.cloning, cloned: s.cloned, busy: true, clone: () => this.setState({ cloning: true }) };
+  }
+}
+</script>
+</body>
+</html>

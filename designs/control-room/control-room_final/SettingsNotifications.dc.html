@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings: notifications</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 20px"><h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">Settings</h1>
+        <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+          <nav aria-label="Settings sections" style="flex: 0 1 168px; min-width: 140px; display: flex; flex-direction: column; gap: 4px"><a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Agents</a><a class="nav" href="SettingsApprovals.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Approvals</a><a class="nav" href="SettingsNotifications.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B">Notifications</a><a class="nav" href="SettingsProjects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Projects</a><a class="nav" href="SettingsTools.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Tools</a></nav>
+          <div style="flex: 1 1 480px; max-width: 820px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+            <div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-size: 16px; line-height: 1.35; font-weight: 600">Notifications</h2><p style="margin: 0; color: #9AA3AE; max-width: 62ch">Sent by this Mac, even with the browser closed. Clicking one opens the item it names.</p></div>
+            <sc-if value="{{blocked}}" hint-placeholder-val="{{false}}"><div role="alert" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: #121519; border: 1px solid #23282E; border-radius: 8px">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg>
+  <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">macOS is blocking notifications</strong><span style="color: #9AA3AE">Allow terminal-notifier in System Settings, under Notifications. Until then, everything still lands in the Queue.</span></div>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="btn" href="x-apple.systempreferences:com.apple.Notifications-Settings.extension" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Open System Settings</a><button type="button" class="btn" onClick="{{recheck}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Check again</button></div>
+</div></sc-if>
+    <sc-if value="{{checking}}" hint-placeholder-val="{{false}}"><div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: #121519; border: 1px solid #23282E; border-radius: 8px">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5.25" fill="none" stroke="#7AB8FF" stroke-width="1.5"/><path d="M8 2.75a5.25 5.25 0 0 1 0 10.5Z" fill="#7AB8FF"/></svg>
+  <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">Checking macOS</strong></div>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px"><button type="button" class="btn" disabled="{{busy}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Checking…</button></div>
+</div></sc-if>
+    <sc-if value="{{allowed}}" hint-placeholder-val="{{true}}"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span style="font-weight: 500">macOS notifications are on</span><button type="button" class="btn" onClick="{{test}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Send a test</button><sc-if value="{{sent}}" hint-placeholder-val="{{false}}"><span role="status" style="color: #9AA3AE; font-size: 12px">Sent. Nothing showed? Check Focus and System Settings.</span></sc-if></div></sc-if>
+    <section aria-label="Needs you" style="display: flex; flex-direction: column"><h2 class="sec">Needs you</h2><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.q}}" onChange="{{tog.q}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">An agent asks a question</span><span style="color: #9AA3AE; font-size: 12px">The work order waits until you answer.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.plan}}" onChange="{{tog.plan}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">A plan needs approval</span><span style="color: #9AA3AE; font-size: 12px">Build starts after you approve.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.pr}}" onChange="{{tog.pr}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">A PR is ready to merge</span><span style="color: #9AA3AE; font-size: 12px">All gates passed.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.gate}}" onChange="{{tog.gate}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">Gates fail after the retries</span><span style="color: #9AA3AE; font-size: 12px">The agent has stopped trying.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.err}}" onChange="{{tog.err}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">A new production error or a regression</span><span style="color: #9AA3AE; font-size: 12px">Once per error, not once per event.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.ci}}" onChange="{{tog.ci}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">CI goes red on main</span><span style="color: #9AA3AE; font-size: 12px">Once per project until it is green again.</span></span></label></section>
+    <section aria-label="Just so you know" style="display: flex; flex-direction: column"><h2 class="sec">Just so you know</h2><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.alone}}" onChange="{{tog.alone}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">A PR merges without you</span><span style="color: #9AA3AE; font-size: 12px">Only when you turned that on in Approvals.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.ship}}" onChange="{{tog.ship}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">A work order ships</span><span style="color: #9AA3AE; font-size: 12px">Merged and deployed.</span></span></label><label style="display: flex; align-items: flex-start; gap: 12px; padding: 8px 12px; min-height: 44px; box-sizing: border-box; border-block-end: 1px solid #23282E; cursor: pointer"><input type="checkbox" checked="{{chk.full}}" onChange="{{tog.full}}" style="margin-top: 2px"><span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">All agent slots are full</span><span style="color: #9AA3AE; font-size: 12px">New work is waiting in Intake.</span></span></label></section>
+    <label style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; cursor: pointer"><input type="checkbox" checked="{{front}}" onChange="{{flipFront}}"><span>Only when Software Factory isn’t the tab you’re on</span></label>
+    <p style="margin: 0; color: #9AA3AE; font-size: 12px; max-width: 62ch">Several events within a minute arrive as one. Focus and Do Not Disturb apply as usual. There’s no separate inbox: the Queue is the list of what needs you. <a class="lnk" href="NotifSamples.dc.html">See how they read</a></p>
+    <div style="min-height: 20px"><sc-if value="{{saved}}" hint-placeholder-val="{{false}}"><span role="status" style="display: inline-flex; align-items: center; gap: 8px; color: #9AA3AE; font-size: 12px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg>Saved</span></sc-if></div>
+          </div>
+        </div></div>
+  </main>
+
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"chk":{"q":true,"plan":true,"pr":true,"gate":true,"err":true,"ci":true,"alone":true,"ship":false,"full":false},"blocked":false,"sent":false,"front":true,"saved":false,"checking":false}; }
+
+  renderVals() {
+    const s = this.state;
+
+    if (s.checking && !this.t) this.t = setTimeout(() => { this.t = null; this.setState({ checking: false, blocked: false }); }, 1000);
+    const tog = {}; Object.keys(s.chk).forEach((k) => { tog[k] = () => this.setState({ chk: { ...s.chk, [k]: !s.chk[k] }, saved: true }); });
+    return { chk: s.chk, tog, saved: s.saved, blocked: s.blocked && !s.checking, checking: s.checking, allowed: !s.blocked, busy: true, front: s.front,
+      flipFront: () => this.setState({ front: !s.front, saved: true }), sent: s.sent, test: () => this.setState({ sent: true }), recheck: () => this.setState({ checking: true }) };
+  }
+}
+</script>
+</body>
+</html>

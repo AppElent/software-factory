@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PR review: gate failed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 16px">
+        <nav aria-label="Breadcrumb"><ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; color: #9AA3AE; font-size: 12px"><li style="display: flex; gap: 4px"><a class="lnk" style="color: #9AA3AE" href="PullRequests.dc.html">Pull requests</a></li><li style="display: flex; gap: 4px"><span aria-hidden="true">/</span><span aria-current="page">#94</span></li></ol></nav>
+        <div><span style="color: #9AA3AE; font-size: 12px">Fairway · PR #94 · Feature</span><h1 style="margin: 4px 0 0; font-size: 20px; line-height: 1.2; font-weight: 600">Course search empty state</h1></div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: #121519; border: 1px solid #23282E; border-radius: 8px">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg>
+  <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">Preview build failed</strong><span style="color: #9AA3AE">The build can't find <code style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px">EXPO_PUBLIC_MAPS_KEY</code>. Merge stays off until the gate passes.</span></div>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="btn" href="https://github.com/AppElent/golf-app/actions" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Open the log</a></div>
+</div>
+        <sc-if value="{{changes}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 8px; max-width: 72ch"><div style="display: flex; flex-direction: column; gap: 4px">
+  <label for="pr-c" style="font-weight: 500">What should change?</label>
+  <textarea id="pr-c" rows="3"></textarea>
+  <span id="pr-c-hint" style="color: #9AA3AE; font-size: 12px">The agent pushes to this PR and the gates run again.</span>
+</div><div><a class="btn" href="FloorBoard.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Send to agent</a></div></div></sc-if>
+        <section aria-label="Summary" style="display: flex; flex-direction: column; gap: 8px; max-width: 72ch"><h2 class="sec">What changed</h2><p style="margin: 0">Shows a message and a clear-search action when a course search finds nothing.</p></section>
+        <section aria-label="Files" style="display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; align-items: center; gap: 8px"><h2 class="sec">Files · +88 −12</h2><span style="margin-inline-start: auto"><a class="btn" href="https://github.com/AppElent/golf-app/pull/94/files" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Open diff on GitHub</a></span></div>
+          <div style="display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; min-height: 32px; padding: 0 12px"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #E6E8EB">src/courses/SearchResults.tsx</span><span style="margin-inline-start: auto"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">+62 −12</span></span></div><div style="display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; min-height: 32px; padding: 0 12px"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #E6E8EB">src/courses/SearchResults.test.tsx</span><span style="margin-inline-start: auto"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">+26 −0</span></span></div>
+        </section>
+      </div>
+  </main>
+  <aside class="sf-pane" aria-label="Details" style="flex: 1 1 340px; max-width: 380px; min-width: 300px; box-sizing: border-box; background: #121519; border-inline-start: 1px solid #23282E; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; gap: 8px; font-weight: 500"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg><span>Preview failed · can't merge yet</span></div>
+        <sc-if value="{{notMerged}}" hint-placeholder-val="{{true}}"><a class="pri" href="FloorBoard.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Send back to the agent</a></sc-if>
+        <sc-if value="{{merged}}" hint-placeholder-val="{{false}}"><p role="status" style="margin: 0">Merged. Shipping to production now. <a class="lnk" href="FloorBoard.dc.html">See the floor</a></p></sc-if>
+        <sc-if value="{{notMerged}}" hint-placeholder-val="{{true}}"><div style="display: flex; flex-direction: column; gap: 8px">
+          <button type="button" class="btn" onClick="{{toggle}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; width: 100%">Request changes</button>
+          <sc-if value="{{notClosing}}" hint-placeholder-val="{{true}}"><button type="button" class="btn" onClick="{{askClose}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Close PR</button></sc-if>
+          <sc-if value="{{closing}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 8px"><strong>Close PR #94?</strong><p style="margin: 0; color: #9AA3AE; font-size: 12px">The branch stays on GitHub. The work order closes.</p><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{keep}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Keep it</button><a class="btn" href="PullRequests.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; ">Close PR</a></div></div></sc-if>
+        </div></sc-if>
+        <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px"><div style="display: flex; flex-direction: column; gap: 8px"><h3 class="sec">Gates</h3><div style="display: flex; align-items: center; gap: 8px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg><span>Typecheck</span><span style="margin-inline-start: auto; color: #9AA3AE; font-size: 12px">Passed</span></div><div style="display: flex; align-items: center; gap: 8px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg><span>Tests</span><span style="margin-inline-start: auto; color: #9AA3AE; font-size: 12px">180 passed</span></div><div style="display: flex; align-items: center; gap: 8px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg><span>Lint</span><span style="margin-inline-start: auto; color: #9AA3AE; font-size: 12px">Passed</span></div><div style="display: flex; align-items: center; gap: 8px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg><span>Preview</span><span style="margin-inline-start: auto; color: #9AA3AE; font-size: 12px">Failed</span></div></div></div>
+        <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px"><dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">Work order</dt><dd style="margin: 0; ">WO-209</dd><dt style="color: #9AA3AE">Cost</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">$1.40</dd><dt style="color: #9AA3AE">Age</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">3h</dd><dt style="color: #9AA3AE">On GitHub</dt><dd style="margin: 0; "><a class="lnk" href="https://github.com/AppElent/golf-app/pull/94">AppElent/golf-app#94</a></dd></dl></div>
+  </aside>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"st":"idle","changes":false,"closing":false}; }
+
+  renderVals() {
+    const s = this.state;
+
+    if (s.st === 'merging' && !this.t) this.t = setTimeout(() => { this.t = null; this.setState({ st: 'merged' }); }, 1200);
+    return { idle: s.st === 'idle', merging: s.st === 'merging', merged: s.st === 'merged', notMerged: s.st !== 'merged',
+      busy: true, changes: s.changes, notClosing: !s.closing, closing: s.closing,
+      merge: () => this.setState({ st: 'merging' }),
+      toggle: () => this.setState({ changes: !s.changes }),
+      askClose: () => this.setState({ closing: true }), keep: () => this.setState({ closing: false }) };
+  }
+}
+</script>
+</body>
+</html>

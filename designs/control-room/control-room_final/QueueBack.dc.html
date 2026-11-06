@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Queue: back after time away</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<header style="padding: 16px 24px 0">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px">
+        <h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">Queue</h1>
+        <span style="color: #9AA3AE">{{summary}}</span>
+        <span style="margin-inline-start: auto"><a class="btn" href="NewWorkOrder.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">New work order</a></span>
+      </div>
+      <div style="margin-block-start: 16px"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; background: #121519; border: 1px solid #23282E; border-radius: 8px">
+  
+  <div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">Since yesterday at 18:20</strong><span style="color: #9AA3AE">3 shipped · 1 gate failed and needs you · 2 new errors · $4.10 spent</span></div>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px"><a class="btn" href="Health.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">See numbers</a></div>
+</div></div>
+      <nav aria-label="Stages" style="margin-block-start: 16px; overflow-x: auto"><div style="display: grid; grid-template-columns: repeat(7, minmax(84px, 1fr)); border: 1px solid #23282E; border-radius: 6px">
+  <a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 0"><div style="color: #9AA3AE; font-size: 12px">Intake</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">4</div></a><a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 1px solid #23282E"><div style="color: #9AA3AE; font-size: 12px">Plan</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">1</div></a><a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 1px solid #23282E"><div style="color: #9AA3AE; font-size: 12px">Build</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">2/3</div></a><a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 1px solid #23282E"><div style="color: #9AA3AE; font-size: 12px">Verify</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">1/3</div></a><a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 1px solid #23282E"><div style="color: #9AA3AE; font-size: 12px">Review</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">3</div></a><a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 1px solid #23282E"><div style="color: #9AA3AE; font-size: 12px">Ship</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">0</div></a><a class="nav" href="FloorBoard.dc.html" style="padding: 8px 12px; border-inline-start: 1px solid #23282E"><div style="color: #9AA3AE; font-size: 12px">Observe</div><div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 16px; font-weight: 500; line-height: 1.25; margin-block-start: 2px">3</div></a>
+</div></nav>
+    </header>
+    <section aria-label="Needs you" style="padding: 20px 24px 0; display: flex; flex-direction: column; gap: 4px">
+      <h2 class="sec">Needs you</h2>
+      <sc-if value="{{show.r1}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r1}}" onClick="{{pick.r1}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r1}}; box-shadow: {{mark.r1}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M8 2.5 14 13H2Z" fill="#FF6B4A"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Fairway</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">TypeError reading 'holes'</span>
+  <span style="color: #9AA3AE; font-size: 12px">Production error · 14 users</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3h</span>
+</button></sc-if>
+<sc-if value="{{show.r2}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r2}}" onClick="{{pick.r2}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r2}}; box-shadow: {{mark.r2}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M8 2 14 8 8 14 2 8Z" fill="#F5A524"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Foundry</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">Agent asks: keep the old migration?</span>
+  <span style="color: #9AA3AE; font-size: 12px">WO-212 · Build</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">8m</span>
+</button></sc-if>
+<sc-if value="{{show.r3}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r3}}" onClick="{{pick.r3}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r3}}; box-shadow: {{mark.r3}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><path d="M4 4l8 8M12 4l-8 8" stroke="#FF6B4A" stroke-width="2" stroke-linecap="round"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Gather</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">CI red on main: typecheck</span>
+  <span style="color: #9AA3AE; font-size: 12px">GitHub Actions</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">22m</span>
+</button></sc-if>
+<sc-if value="{{show.r4}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r4}}" onClick="{{pick.r4}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r4}}; box-shadow: {{mark.r4}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Foundry</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 500; overflow-wrap: anywhere">#168 Sync toolkit standards</span>
+  <span style="color: #9AA3AE; font-size: 12px">All gates passed · ready to merge</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">1h</span>
+</button></sc-if>
+    </section>
+    <section aria-label="Later" style="padding: 20px 24px 0; display: flex; flex-direction: column; gap: 4px">
+      <h2 class="sec">Later</h2>
+      <sc-if value="{{show.r5}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r5}}" onClick="{{pick.r5}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r5}}; box-shadow: {{mark.r5}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Gather</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 400; overflow-wrap: anywhere">#127 Provider-backed task lists</span>
+  <span style="color: #9AA3AE; font-size: 12px">Stale · no activity</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">87d</span>
+</button></sc-if>
+<sc-if value="{{show.r6}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r6}}" onClick="{{pick.r6}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r6}}; box-shadow: {{mark.r6}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Gather</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 400; overflow-wrap: anywhere">#240 Export your data as JSON</span>
+  <span style="color: #9AA3AE; font-size: 12px">Needs rebase</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">18d</span>
+</button></sc-if>
+<sc-if value="{{show.r7}}" hint-placeholder-val="{{true}}"><button type="button" class="row" aria-pressed="{{on.r7}}" onClick="{{pick.r7}}" style="width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 44px; padding: 6px 12px; box-sizing: border-box; border: 0; border-radius: 6px; background: {{bg.r7}}; box-shadow: {{mark.r7}}; color: #E6E8EB; font: inherit; text-align: start; cursor: pointer">
+  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="4.5" fill="none" stroke="#9AA3AE" stroke-width="1.5"/></svg>
+  <span style="width: 88px; color: #9AA3AE">Arcade Club</span>
+  <span style="flex: 1 1 220px; min-width: 0; font-weight: 400; overflow-wrap: anywhere">Toolkit is behind</span>
+  <span style="color: #9AA3AE; font-size: 12px">Sync available</span>
+  <span style="width: 32px; text-align: end; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">4d</span>
+</button></sc-if>
+    </section>
+    <div role="status" style="padding: 12px 24px 0; min-height: 36px"><sc-if value="{{hasNote}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; flex-wrap: wrap; align-items: center; gap: 12px">{{note}} <button type="button" class="btn" onClick="{{undo}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Undo</button></span></sc-if></div>
+    <footer style="margin-block-start: auto; padding: 16px 24px; display: flex; flex-wrap: wrap; gap: 16px; color: #9AA3AE; font-size: 12px">
+      <span><b style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; color: #E6E8EB">j k</b> move</span><span><b style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; color: #E6E8EB">↵</b> open</span><span><b style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; color: #E6E8EB">w</b> start work order</span><span><b style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; color: #E6E8EB">s</b> snooze</span><span><b style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 500; color: #E6E8EB">d</b> dismiss</span>
+    </footer>
+  </main>
+  <aside class="sf-pane" aria-label="Details" style="flex: 1 1 340px; max-width: 380px; min-width: 300px; box-sizing: border-box; background: #121519; border-inline-start: 1px solid #23282E; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<sc-if value="{{pane.r1}}" hint-placeholder-val="{{true}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Fairway · production · fairway-web</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">TypeError: Cannot read properties of undefined (reading 'holes')</h2></div>
+    <div style="display: flex; flex-direction: column; gap: 8px"><div role="img" aria-label="Events over the last 24 hours, rising sharply in the last 4 hours" style="display: flex; align-items: flex-end; gap: 2px; height: 48px"><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="6 events" style="flex: 1 1 0; height: 7px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="6 events" style="flex: 1 1 0; height: 7px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="6 events" style="flex: 1 1 0; height: 7px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="4 events" style="flex: 1 1 0; height: 5px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="6 events" style="flex: 1 1 0; height: 7px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="8 events" style="flex: 1 1 0; height: 10px; border-radius: 2px 2px 0 0; background: #6B7480"></span><span title="14 events" style="flex: 1 1 0; height: 17px; border-radius: 2px 2px 0 0; background: #FF6B4A"></span><span title="26 events" style="flex: 1 1 0; height: 31px; border-radius: 2px 2px 0 0; background: #FF6B4A"></span><span title="40 events" style="flex: 1 1 0; height: 48px; border-radius: 2px 2px 0 0; background: #FF6B4A"></span><span title="34 events" style="flex: 1 1 0; height: 41px; border-radius: 2px 2px 0 0; background: #FF6B4A"></span></div><div style="display: flex; flex-wrap: wrap; gap: 4px 16px"><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #E6E8EB">41 events</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #E6E8EB">14 users</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #E6E8EB">first seen 3h ago</span></div></div>
+    <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">First release</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">a1b2c3d</dd><dt style="color: #9AA3AE">Likely source</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">src/rounds/score.ts:42</dd><dt style="color: #9AA3AE">In that release</dt><dd style="margin: 0; ">2 merged PRs</dd></dl>
+    <div style="border-block-start: 1px solid #23282E; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <h3 style="margin: 0; font-size: 13px; font-weight: 600">Bug fix</h3>
+      <p style="margin: 0; color: #9AA3AE; font-size: 12px">Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.</p><a class="pri" href="WOPlan.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Start work order</a>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button></div>
+      <a class="btn" href="ErrorNew.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; width: 100%">Open full error</a>
+    </div></div></sc-if>
+<sc-if value="{{pane.r2}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Foundry · WO-212 · Build · waiting 8m</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">Keep the old migration?</h2></div>
+    <p style="margin: 0; color: #9AA3AE; ">Migration 0042 still reads <code style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px">sets_old</code>. Removing the table breaks a fresh install unless 0042 goes too.</p>
+    <a class="pri" href="WOQuestion.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Answer</a>
+    <a class="btn" href="WOQuestion.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; width: 100%">Open work order</a></div></sc-if>
+<sc-if value="{{pane.r3}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Gather · main · GitHub Actions</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">CI red on main: typecheck</h2></div>
+    <pre style="margin: 0; padding: 12px; background: #0E1013; border: 1px solid #23282E; border-radius: 6px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere">src/tasks/sync.ts(88,14): error TS2345:
+Argument of type 'string | undefined' is not
+assignable to parameter of type 'string'.</pre>
+    <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">Commit</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">f81c0de</dd><dt style="color: #9AA3AE">Red for</dt><dd style="margin: 0; ">22 minutes</dd><dt style="color: #9AA3AE">Blocks</dt><dd style="margin: 0; ">3 open PRs</dd></dl>
+    <a class="pri" href="WOPlan.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Start work order</a>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button></div></div></sc-if>
+<sc-if value="{{pane.r4}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Foundry · PR #168 · Toolkit sync</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">Sync toolkit standards</h2></div>
+    <div style="display: flex; align-items: center; gap: 8px"><span role="img" aria-label="Typecheck passed, Tests passed, Lint passed, Preview passed" style="display: inline-flex; gap: 0"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" style="flex: none; display: block"><rect x="3" y="3" width="10" height="10" rx="1" fill="#3DD6B0"/></svg></span><span style="color: #9AA3AE; font-size: 12px">All 4 gates passed</span></div>
+    <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">Size</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">+214 −98 · 11 files</dd><dt style="color: #9AA3AE">Work order</dt><dd style="margin: 0; ">WO-207</dd><dt style="color: #9AA3AE">Cost</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">$0.62</dd></dl>
+    <a class="pri" href="PRPassed.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Review PR</a>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button></div></div></sc-if>
+<sc-if value="{{pane.r5}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Gather · PR #127 · stale 87 days</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">Provider-backed task lists</h2></div>
+    <p style="margin: 0; color: #9AA3AE; ">No commits or comments for 87 days. It conflicts with main in 6 files.</p>
+    <a class="pri" href="PRRebase.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Start rebase work order</a>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button></div></div></sc-if>
+<sc-if value="{{pane.r6}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Gather · PR #240 · needs rebase</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">Export your data as JSON</h2></div>
+    <p style="margin: 0; color: #9AA3AE; ">Gates passed 18 days ago. main moved on, so they need to run again after a rebase.</p>
+    <a class="pri" href="PRRebase.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Start rebase work order</a>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button></div></div></sc-if>
+<sc-if value="{{pane.r7}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; gap: 16px"><div><span style="color: #9AA3AE; font-size: 12px">Arcade Club · 4 days behind</span><h2 style="margin: 4px 0 0; font-size: 16px; line-height: 1.35; font-weight: 600">Toolkit is behind</h2></div>
+    <p style="margin: 0; color: #9AA3AE; ">6 standards changed in developer-tools since the last sync.</p>
+    <a class="pri" href="FloorBoard.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; width: 100%">Start sync work order</a>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><button type="button" class="btn" onClick="{{snooze}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Snooze</button><button type="button" class="btn" onClick="{{dismiss}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Dismiss</button></div></div></sc-if>
+  </aside>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"sel":"r1","gone":{},"note":""}; }
+
+  renderVals() {
+    const s = this.state;
+
+    const ids = ["r1","r2","r3","r4","r5","r6","r7"];
+    const need = ["r1","r2","r3","r4"];
+    const on = {}, bg = {}, mark = {}, pick = {}, show = {}, pane = {};
+    ids.forEach((id) => {
+      on[id] = s.sel === id; pane[id] = s.sel === id; show[id] = !s.gone[id];
+      bg[id] = s.sel === id ? '#1B2026' : 'transparent';
+      mark[id] = s.sel === id ? 'inset 2px 0 0 #E6E8EB' : 'none';
+      pick[id] = () => this.setState({ sel: id });
+    });
+    const hide = (msg) => () => {
+      const gone = { ...s.gone, [s.sel]: true };
+      this.setState({ gone, last: s.sel, note: msg, sel: ids.find((i) => !gone[i]) || '' });
+    };
+    const left = need.filter((i) => !s.gone[i]).length;
+    const later = ids.length - need.length - ids.filter((i) => s.gone[i] && !need.includes(i)).length;
+    return { on, bg, mark, pick, show, pane,
+      summary: left + ' need you · ' + later + ' can wait',
+      hasNote: !!s.note, note: s.note,
+      snooze: hide('Snoozed until tomorrow at 09:00.'),
+      dismiss: hide('Dismissed. It comes back only if it gets worse.'),
+      undo: () => { const gone = { ...s.gone }; delete gone[s.last]; this.setState({ gone, sel: s.last, note: '' }); },
+      closeBack: () => this.setState({ back: false }), back: s.back };
+  }
+}
+</script>
+</body>
+</html>

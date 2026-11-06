@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New project: running</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <div style="flex: 1 1 240px; max-width: 280px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 20px 24px; display: flex; flex-direction: column; gap: 24px">
+    <div style="font-size: 16px; font-weight: 600">Software Factory</div>
+    <ol aria-label="Steps" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px"><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span>Describe</span></li><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span>Approve changes</span></li><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span>Scaffold</span></li><li style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 400; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5" fill="#3DD6B0"/></svg><span>Connect services</span></li><li aria-current="step" style="display: flex; align-items: center; gap: 8px; min-height: 32px; font-weight: 600; color: #E6E8EB"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style="flex: none; display: block"><circle cx="8" cy="8" r="5.25" fill="none" stroke="#7AB8FF" stroke-width="1.5"/><path d="M8 2.75a5.25 5.25 0 0 1 0 10.5Z" fill="#7AB8FF"/></svg><span>First idea</span></li></ol>
+  </div>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 32px 24px; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; justify-content: center">
+    <div style="flex: 1 1 560px; max-width: 720px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+      <nav aria-label="Breadcrumb"><ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; color: #9AA3AE; font-size: 12px"><li style="display: flex; gap: 4px"><a class="lnk" style="color: #9AA3AE" href="Projects.dc.html">Projects</a></li><li style="display: flex; gap: 4px"><span aria-hidden="true">/</span><span aria-current="page">New project</span></li></ol></nav>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">caddie is on the floor</h1>
+        <p style="margin: 0; color: #9AA3AE; max-width: 62ch">The baseline is green and the project is open. All 4 gates are ready.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+  <label for="nl-i" style="font-weight: 500">What should it build first?</label>
+  <textarea id="nl-i" rows="3" value="{{text}}" onChange="{{type}}" placeholder="A screen that lists my clubs with their average distance"></textarea>
+  <span id="nl-i-hint" style="color: #9AA3AE; font-size: 12px">This becomes the first work order. It goes to Plan and waits for your approval.</span>
+</div>
+      <sc-if value="{{err}}" hint-placeholder-val="{{false}}"><span style="color: #FF6B4A; font-size: 12px">Describe the first change, or skip this for now.</span></sc-if>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-if value="{{ready}}" hint-placeholder-val="{{false}}"><a class="pri" href="WOPlan.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Start work order</a></sc-if><sc-if value="{{notReady}}" hint-placeholder-val="{{true}}"><button type="button" class="pri" onClick="{{fail}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Start work order</button></sc-if><a class="btn" href="FloorBoard.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Skip for now</a></div>
+      <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 12px; font-size: 12px"><dt style="color: #9AA3AE">Repo</dt><dd style="margin: 0; "><a class="lnk" href="https://github.com/AppElent">AppElent/caddie</a></dd><dt style="color: #9AA3AE">Folder</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; overflow-wrap: anywhere">~/Developer/caddie</dd><dt style="color: #9AA3AE">Services</dt><dd style="margin: 0; ">Sentry, EAS</dd><dt style="color: #9AA3AE">Skipped</dt><dd style="margin: 0; ">Infisical. Reminder under Later.</dd></dl>
+    </div>
+    
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"text":"","err":false}; }
+
+  renderVals() {
+    const s = this.state;
+return { text: s.text, ready: !!s.text.trim(), notReady: !s.text.trim(), err: s.err,
+      type: (e) => this.setState({ text: e.target.value, err: false }), fail: () => this.setState({ err: true }) };
+  }
+}
+</script>
+</body>
+</html>

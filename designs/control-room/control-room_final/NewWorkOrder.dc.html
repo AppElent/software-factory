@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New work order</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0E1013;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:inherit;text-decoration:none}
+.lnk{color:#E6E8EB;text-decoration:underline;text-decoration-color:#6B7480;text-underline-offset:2px}
+.lnk:hover{text-decoration-color:#E6E8EB}
+:focus-visible{outline:2px solid #E6E8EB;outline-offset:2px}
+.row:hover,.nav:hover,.btn:hover{background:#1B2026 !important}
+.card:hover{background:#20252B !important}
+.pri:hover{filter:brightness(1.08)}
+.skip{position:absolute;left:-9999px}
+.skip:focus{left:8px;top:8px;z-index:10;background:#1B2026;padding:8px 12px;border-radius:6px}
+.sec{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9AA3AE}
+input,textarea,select{font:inherit;color:#E6E8EB;background:#0E1013;border:1px solid #6B7480;border-radius:6px;box-sizing:border-box}
+input[type=text],input[type=search],select{height:36px;padding:0 10px}
+textarea{padding:8px 10px;width:100%;resize:vertical}
+input[type=radio],input[type=checkbox]{accent-color:#F5A524;width:16px;height:16px;margin:0;flex:none}
+summary{cursor:pointer}
+button:disabled{cursor:not-allowed}
+@media (max-width:760px){
+.sf-nav{flex:1 1 100% !important;max-width:none !important;flex-direction:row !important;align-items:center;overflow-x:auto;padding:8px 12px !important;border-inline-end:0 !important;border-block-end:1px solid #23282E}
+.sf-nav>a,.sf-foot a{flex:none;white-space:nowrap}
+.sf-word,.sf-find{display:none !important}
+.sf-foot{margin:0 !important;padding:0 !important;flex-direction:row !important;align-items:center}
+.sf-foot>div{display:none}
+.sf-pane{flex:1 1 100% !important;max-width:none !important;border-inline-start:0 !important;border-block-start:1px solid #23282E}
+main{flex:1 1 100% !important}
+}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0E1013; color: #E6E8EB; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: stretch">
+  <a class="skip" href="#main">Skip to content</a>
+  <nav class="sf-nav" aria-label="Main" style="flex: 1 1 216px; max-width: 216px; min-width: 200px; box-sizing: border-box; background: #121519; border-inline-end: 1px solid #23282E; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px">
+    <div class="sf-word" style="padding: 4px 12px 16px; font-size: 16px; font-weight: 600">Software Factory</div>
+    <a class="btn sf-find" href="CmdK.dc.html" style="min-height: 36px; display: flex; align-items: center; padding: 0 12px; margin-block-end: 12px; background: #0E1013; border: 1px solid #2C3238; border-radius: 6px; color: #9AA3AE; font-size: 12px">Search or run a command<span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace">⌘K</span></a>
+      <a class="nav" href="Queue.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 600; background: #20252B"><span>Queue</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="FloorBoard.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Floor</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="PullRequests.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Pull requests</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">7</span></a>
+      <a class="nav" href="ErrorsList.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Errors</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">3</span></a>
+      <a class="nav" href="Projects.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Projects</span><span style="margin-inline-start: auto; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #9AA3AE">12</span></a>
+      <a class="nav" href="Health.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent"><span>Health</span></a>
+    <div class="sf-foot" style="margin-block-start: auto; padding-block-start: 16px; display: flex; flex-direction: column; gap: 8px">
+      <a class="nav" href="SettingsAgents.dc.html" style="display: flex; align-items: center; min-height: 36px; padding: 0 12px; border-radius: 6px; font-weight: 400; background: transparent">Settings</a>
+      <div style="padding: 0 12px; color: #9AA3AE; font-size: 12px"><div>2 of 3 agents working</div><div>Synced 1m ago</div></div>
+      <a class="btn" href="StopConfirm.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #FF6B4A; font-weight: 500; width: 100%">Stop the line</a>
+    </div>
+  </nav>
+  <main id="main" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+<div style="padding: 16px 24px"><h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600">Queue</h1></div>
+  </main>
+
+<div style="position: absolute; inset: 0; background: rgba(14, 16, 19, 0.78); display: flex; justify-content: center; align-items: flex-start; padding: 96px 16px 16px; box-sizing: border-box">
+  <div role="dialog" aria-modal="true" aria-labelledby="nw" style="width: 100%; max-width: 520px; background: #1B2026; border: 1px solid #2C3238; border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); padding: 20px; display: flex; flex-direction: column; gap: 16px">
+    <h2 id="nw" style="margin: 0; font-size: 16px; line-height: 1.35; font-weight: 600">New work order</h2>
+    
+      <div style="display: flex; flex-direction: column; gap: 4px">
+  <label for="nw-p" style="font-weight: 500">Project</label>
+  <select id="nw-p"><option>Fairway</option><option>Foundry</option><option>Gather</option><option>Arcade Club</option></select>
+  
+</div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+  <label for="nw-t" style="font-weight: 500">What should change?</label>
+  <textarea id="nw-t" rows="4" value="{{text}}" onChange="{{type}}" placeholder="Add a weekly summary to the workout history page"></textarea>
+  
+</div>
+      <sc-if value="{{err}}" hint-placeholder-val="{{false}}"><span style="color: #FF6B4A; font-size: 12px">Describe the change so the agent can plan it.</span></sc-if>
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column"><legend style="font-weight: 500; padding: 0; margin-block-end: 4px">Work type</legend>
+        <label style="display: flex; gap: 8px; padding: 8px 12px; align-items: flex-start; border-radius: 6px; cursor: pointer">
+  <input type="radio" name="line" checked="{{on.bug}}" onChange="{{pick.bug}}" style="margin-top: 2px">
+  <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">Bug fix</span><span style="color: #9AA3AE; font-size: 12px">You approve the plan. It builds, checks, and opens a PR.</span></span>
+</label>
+        <label style="display: flex; gap: 8px; padding: 8px 12px; align-items: flex-start; border-radius: 6px; cursor: pointer">
+  <input type="radio" name="line" checked="{{on.feature}}" onChange="{{pick.feature}}" style="margin-top: 2px">
+  <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">Feature</span><span style="color: #9AA3AE; font-size: 12px">Same steps, with a longer plan to read first.</span></span>
+</label>
+        <label style="display: flex; gap: 8px; padding: 8px 12px; align-items: flex-start; border-radius: 6px; cursor: pointer">
+  <input type="radio" name="line" checked="{{on.chore}}" onChange="{{pick.chore}}" style="margin-top: 2px">
+  <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-weight: 500">Chore</span><span style="color: #9AA3AE; font-size: 12px">Skips the plan. For small, safe changes.</span></span>
+</label>
+      </fieldset>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end"><a class="btn" href="Queue.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 36px; background: transparent; border: 1px solid #2C3238; color: #E6E8EB; ">Cancel</a><sc-if value="{{ready}}" hint-placeholder-val="{{false}}"><a class="pri" href="WOPlan.dc.html" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Start work order</a></sc-if><sc-if value="{{notReady}}" hint-placeholder-val="{{true}}"><button type="button" class="pri" onClick="{{fail}}" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; font: inherit; white-space: nowrap; cursor: pointer; min-height: 44px; background: #F5A524; border: 0; color: #17120A; font-weight: 600; ">Start work order</button></sc-if></div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {"text":"","err":false,"line":"bug"}; }
+
+  renderVals() {
+    const s = this.state;
+
+    const lines = ['bug', 'feature', 'chore'];
+    const on = {}, pick = {};
+    lines.forEach((l) => { on[l] = s.line === l; pick[l] = () => this.setState({ line: l }); });
+    return { text: s.text, on, pick, err: s.err, ready: !!s.text.trim(), notReady: !s.text.trim(),
+      type: (e) => this.setState({ text: e.target.value, err: false }),
+      fail: () => this.setState({ err: true }) };
+  }
+}
+</script>
+</body>
+</html>
