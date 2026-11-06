@@ -416,7 +416,7 @@ export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 export interface NotificationSettings {
 	events: Record<NotificationEvent, boolean>;
 	onlyWhenAway: boolean;
-	lastTest: "ok" | "failed" | null;
+	lastTest: "ok" | "failed" | "blocked" | null;
 }
 
 export interface ProjectSettings {

@@ -218,13 +218,13 @@ describe("SettingsNotifyBlocked", () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/settings/notifications", "notify_failed");
 		const banner = await screen.findByRole("alert");
-		expect(banner).toHaveTextContent("The test notification didn't send");
+		expect(banner).toHaveTextContent("macOS is blocking notifications");
 		expect(banner).toHaveTextContent("Allow terminal-notifier in System Settings");
 		expect(within(banner).getByRole("link", { name: /Open System Settings/ })).toBeInTheDocument();
 		await user.click(within(banner).getByRole("button", { name: "Check again" }));
 		await waitFor(() => expect(h.mutations).toContain("POST /api/notifications/test {}"));
 		expect(await screen.findByText("Test sent to this Mac")).toBeInTheDocument();
-		expect(screen.queryByText("The test notification didn't send")).not.toBeInTheDocument();
+		expect(screen.queryByText("macOS is blocking notifications")).not.toBeInTheDocument();
 	});
 
 	it("gives the install command when terminal-notifier isn't there", async () => {

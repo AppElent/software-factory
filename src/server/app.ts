@@ -833,15 +833,15 @@ export function createApp(d: AppDeps): Hono {
 	});
 
 	app.post("/api/notifications/test", async (c) => {
-		const sent = await notifier.send({
+		const result = await notifier.send({
 			title: "This is a test",
 			message: "Notifications from Software Factory reach this Mac.",
 			path: "/settings/notifications",
 		});
 		const prev = store.settings().notifications;
-		kvSet(store.db, "settings:notifications", { ...prev, lastTest: sent ? "ok" : "failed" });
+		kvSet(store.db, "settings:notifications", { ...prev, lastTest: result });
 		bus.publish(["settings"]);
-		return c.json({ ok: sent });
+		return c.json({ ok: result === "ok", result });
 	});
 
 	app.get("/api/tools", async (c) => c.json(await checkTools(cli)));

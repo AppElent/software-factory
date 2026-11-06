@@ -1,6 +1,6 @@
 import type { NotificationEvent, QueueItem } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
-import { audit } from "./db.ts";
+import { audit, kvSet } from "./db.ts";
 import type { Store } from "./store.ts";
 
 export interface Note {
@@ -207,6 +207,13 @@ export class Notifier {
 			"software-factory",
 		]);
 		audit(this.store.db, "notify", n.title, "factory", null, this.store.now());
-		return res.code === 0;
+		// terminal-notifier exits 3 and says so when macOS has notifications turned off for it.
+		const result =
+			res.code === 0 ? "ok" : res.code === 3 || /turned off/i.test(res.stderr) ? "blocked" : "failed";
+		const prev = this.store.settings().notifications;
+		if (prev.lastTest !== result && (result === "blocked" || prev.lastTest === "blocked")) {
+			kvSet(this.store.db, "settings:notifications", { ...prev, lastTest: result });
+		}
+		return result;
 	}
 }

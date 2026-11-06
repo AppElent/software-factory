@@ -687,10 +687,10 @@ export function installDemo(store: Store) {
 			full();
 			toolFaults = { wrangler: "signed_out", infisical: "missing" };
 		},
-		/** SettingsNotifyBlocked: the last test failed to send, and the next one works. */
+		/** SettingsNotifyBlocked: macOS refused the last test, and the next one works. */
 		notify_failed: () => {
 			full();
-			kvSet(store.db, "settings:notifications", { ...store.settings().notifications, lastTest: "failed" });
+			kvSet(store.db, "settings:notifications", { ...store.settings().notifications, lastTest: "blocked" });
 		},
 		notify_missing: () => {
 			full();

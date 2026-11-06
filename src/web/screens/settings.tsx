@@ -557,9 +557,10 @@ function NotificationsSection() {
 		);
 	}
 
-	// macOS doesn't say when it blocks a notification, so nothing here claims it's on or blocked.
-	// A failed send is the only thing the service knows; a blocked one reads as sent, and the words after say what to check.
-	const failed = settings.data?.notifications.lastTest === "failed" && !sent;
+	// macOS blocking terminal-notifier shows up as its own exit code. Focus and banner settings don't, so a sent test still says what to check.
+	const lastTest = settings.data?.notifications.lastTest;
+	const blocked = lastTest === "blocked" && !sent;
+	const failed = (lastTest === "failed" || lastTest === "blocked") && !sent;
 	const notifier = tools.data?.find((t) => t.name === "terminal-notifier");
 	const missing = notifier?.state === "missing";
 	const rows = (items: typeof NEEDS_YOU) =>
@@ -595,7 +596,7 @@ function NotificationsSection() {
 				<Banner
 					role="alert"
 					glyph="fail"
-					title="The test notification didn't send"
+					title={blocked ? "macOS is blocking notifications" : "The test notification didn't send"}
 					body={
 						missing ? (
 							<>

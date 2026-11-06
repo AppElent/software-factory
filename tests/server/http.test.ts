@@ -22,10 +22,13 @@ const SESSION = { ...HOST, "x-sf-session": TOKEN, "content-type": "application/j
 let dir: string;
 let store: Store;
 let calls: string[];
+let notifyCode = 0;
 let app: ReturnType<typeof createApp>;
 
 const cli: Cli = async (cmd, args) => {
 	calls.push(`${cmd} ${args.join(" ")}`);
+	if (cmd === "terminal-notifier")
+		return { code: notifyCode, stdout: "", stderr: "", timedOut: false, missing: false };
 	if (cmd === "gh" && args[1] === "list") {
 		return {
 			code: 0,
@@ -207,5 +210,24 @@ describe("settings", () => {
 		});
 		expect(res.status).toBe(409);
 		expect(store.settings().approvals.mergeWithoutMe.Chore).toBe(false);
+	});
+
+	it("tells a blocked notification from a sent one", async () => {
+		notifyCode = 3;
+		const blocked = await app.request("/api/notifications/test", {
+			method: "POST",
+			headers: SESSION,
+			body: "{}",
+		});
+		expect(await blocked.json()).toEqual({ ok: false, result: "blocked" });
+		expect(store.settings().notifications.lastTest).toBe("blocked");
+		notifyCode = 0;
+		const sent = await app.request("/api/notifications/test", {
+			method: "POST",
+			headers: SESSION,
+			body: "{}",
+		});
+		expect(await sent.json()).toEqual({ ok: true, result: "ok" });
+		expect(store.settings().notifications.lastTest).toBe("ok");
 	});
 });
