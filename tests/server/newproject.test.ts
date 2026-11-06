@@ -332,7 +332,7 @@ describe("the scaffold script", () => {
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 
-		it("still reaches main, so a fix has CI, and passes once the fix has merged", () => {
+		const setup = () => {
 			const root = mkdtempSync(join(tmpdir(), "sf-baseline-"));
 			const remote = join(root, "remote", "me", "fresh.git");
 			mkdirSync(remote, { recursive: true });
@@ -383,6 +383,25 @@ describe("the scaffold script", () => {
 						},
 					},
 				);
+			return { root, remote, folder, bin, baseline };
+		};
+
+		it("pushes on a retry when only the push failed last time", () => {
+			const { root, remote, folder, bin, baseline } = setup();
+			writeFileSync(join(bin, "pnpm"), "#!/bin/sh\nexit 0\n");
+			git(folder, "remote", "set-url", "--push", "origin", join(root, "nowhere.git"));
+
+			expect(baseline().status).toBe(1);
+			expect(git(remote, "ls-tree", "-r", "--name-only", "main")).not.toContain(".github/workflows/ci.yml");
+
+			git(folder, "remote", "set-url", "--push", "origin", remote);
+			expect(baseline().status).toBe(0);
+			expect(git(remote, "ls-tree", "-r", "--name-only", "main")).toContain(".github/workflows/ci.yml");
+			rmSync(root, { recursive: true, force: true });
+		});
+
+		it("still reaches main, so a fix has CI, and passes once the fix has merged", () => {
+			const { root, remote, folder, baseline } = setup();
 
 			const red = baseline();
 			expect(red.status).toBe(1);

@@ -177,10 +177,9 @@ const steps = {
 		// Red or green, it goes up. An agent fixing a red baseline needs the CI and the files on main.
 		run("git", ["add", "-A"]);
 		const status = dry ? "x" : run("git", ["status", "--porcelain"]);
-		if (status.trim()) {
-			run("git", ["commit", "-m", "Add the toolkit baseline"]);
-			run("git", ["push", "origin", "HEAD"]);
-		}
+		if (status.trim()) run("git", ["commit", "-m", "Add the toolkit baseline"]);
+		// Always, because a retry finds a clean folder when only the push failed last time.
+		run("git", ["push", "origin", "HEAD"]);
 		if (red) throw red;
 	},
 	t3() {
