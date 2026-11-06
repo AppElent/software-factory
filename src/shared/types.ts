@@ -148,6 +148,8 @@ export interface CheckRun {
 export type PrGroup = "ready" | "failed" | "running" | "rebase" | "stale";
 
 export interface PullRequest {
+	/** Set while a new commit has no checks yet, though the one before it had some. */
+	awaitingChecksSince?: number;
 	project: string;
 	projectName: string;
 	number: number;

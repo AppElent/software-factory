@@ -18,7 +18,7 @@ export interface CliOptions {
 export type Cli = (cmd: string, args: string[], opts?: CliOptions) => Promise<CliResult>;
 
 const SECRET =
-	/\b(gh[opusr]_[A-Za-z0-9]{10,}|sntry[a-z]*_[A-Za-z0-9]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g;
+	/\b(gh[opusr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|sntry[a-z]*_[A-Za-z0-9]{10,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g;
 
 /** Removes token-shaped strings before anything reaches a log, the database, or the browser. */
 export const scrub = (text: string) => text.replace(SECRET, "[hidden]");
@@ -52,7 +52,7 @@ export const realCli: Cli = (cmd, args, opts = {}) =>
 			});
 			child.on("close", (code) => {
 				clearTimeout(timer);
-				resolve({ code: code ?? 1, stdout, stderr: scrub(stderr) });
+				resolve({ code: code ?? 1, stdout: scrub(stdout), stderr: scrub(stderr) });
 			});
 			child.stdin.end(opts.stdin);
 			return;
@@ -67,7 +67,7 @@ export const realCli: Cli = (cmd, args, opts = {}) =>
 					return;
 				}
 				const code = err ? (typeof err.code === "number" ? err.code : 1) : 0;
-				resolve({ code, stdout: stdout.toString(), stderr: scrub(stderr.toString()) });
+				resolve({ code, stdout: scrub(stdout.toString()), stderr: scrub(stderr.toString()) });
 			},
 		);
 	});

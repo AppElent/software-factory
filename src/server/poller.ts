@@ -1,4 +1,4 @@
-import { isRegression } from "../shared/rules.ts";
+import { awaitChecks, isRegression } from "../shared/rules.ts";
 import type { ErrorItem, Project, ToolkitState, WorkType } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
@@ -151,9 +151,23 @@ export class Poller {
 				store.iso(),
 				project.slug,
 			);
+		const before = new Map(
+			(
+				store.db.prepare("SELECT number, json FROM prs WHERE project = ?").all(project.slug) as Array<{
+					number: number;
+					json: string;
+				}>
+			).map((row) => [row.number, JSON.parse(row.json)]),
+		);
 		store.db.prepare("DELETE FROM prs WHERE project = ?").run(project.slug);
 		const insert = store.db.prepare("INSERT INTO prs (project, number, json) VALUES (?, ?, ?)");
-		for (const pr of r.prs) insert.run(project.slug, pr.number, JSON.stringify(pr));
+		const now = store.now().getTime();
+		for (const pr of r.prs)
+			insert.run(
+				project.slug,
+				pr.number,
+				JSON.stringify(awaitChecks(before.get(pr.number) ?? null, pr, now)),
+			);
 	}
 
 	async readSentry(): Promise<number> {

@@ -23,6 +23,8 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 - The factory sends one stage per agent turn, so a hold takes effect at the next step.
 - Closing a work order deletes its worktree and branch. The source error stays in the queue.
 - Closing a PR keeps the branch on GitHub and closes its work order.
+- Closing a work order closes its PR first. If GitHub refuses, nothing else changes.
+- Merging is refused when the factory hasn't read the project from GitHub for 15 minutes. Merge without me also waits for that, and for a paused project.
 
 ## Agents
 
@@ -48,6 +50,9 @@ Typecheck, Tests, Lint, Preview. Each is not set up, not started, running, passe
 - Failing triggers automatic retries (default 1, range 0 to 2), then the work order stops and needs you.
 - Retrying with a note counts as a new retry and a miss for first try.
 - A PR with no CI goes to Review after 5 minutes, with the activity line `No gates set up`.
+- A new commit with no checks yet, on a PR that had some, hasn't passed anything. Its gates read not started for up to 5 minutes, and merging waits.
+- A failing or running check with no gate of its own counts against Tests. A passing one is ignored. A cancelled or stale run counts as failed.
+- `Try again` after T3 failed resends the same turn, plus any note. If T3 no longer has the thread, the work order starts over from Intake.
 - Rebasing makes every gate out of date until it runs again. List rows and the page for a PR that needs a rebase or is stale show its gates as out of date.
 - A stale PR uses the rebase page.
 - Merge requires no conflicts, and no gate failed, running, not started, or out of date. `Not set up` doesn't block a manual merge.

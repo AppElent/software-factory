@@ -99,6 +99,16 @@ jobs:
       - run: pnpm run --if-present build
 `;
 
+/** The folder is about to get commits and a push. It has to be this project's checkout. */
+const assertOrigin = () => {
+	if (dry) return;
+	const url = execFileSync("git", ["remote", "get-url", "origin"], { cwd: folder, encoding: "utf8" });
+	if (!url.toLowerCase().includes(repo.toLowerCase())) {
+		console.error(`${folder} is a checkout of ${url.trim()}, not ${repo}. Nothing was changed.`);
+		process.exit(1);
+	}
+};
+
 const steps = {
 	repo() {
 		try {
@@ -112,6 +122,7 @@ const steps = {
 		run("gh", ["repo", "clone", repo, folder], process.cwd());
 	},
 	template() {
+		assertOrigin();
 		let hasCommit = false;
 		if (!dry) {
 			try {
@@ -129,6 +140,7 @@ const steps = {
 		run("git", ["push", "-u", "origin", "main"]);
 	},
 	baseline() {
+		assertOrigin();
 		const script =
 			template === "expo" ? "baseline-mobile.mjs" : template === "vite" ? "baseline-web.mjs" : "baseline.mjs";
 		run("node", [join(toolkit, "scripts", script), "--path", folder, "--apply"], process.cwd());

@@ -75,7 +75,7 @@ export function applyNeverTouch<T extends { repo?: string; path?: string | null 
 /* ---------- gates ---------- */
 
 const TYPECHECK = /type-?check|\btsc\b|\btypes\b/i;
-const TESTS = /\btests?\b|vitest|jest|\bunit\b|\be2e\b|maestro/i;
+const TESTS = /\btests?\b|vitest|jest|pytest|rspec|\bunit\b|\be2e\b|maestro/i;
 const LINT = /\blint\b|biome|eslint/i;
 const PREVIEW = /preview|\bdeploy\b|vercel|pages/i;
 /** The toolkit's CI runs typecheck, tests, and lint in one job called `check` or `verify`. */
@@ -92,7 +92,10 @@ function combine(states: GateState[]): GateState {
 const bucketState = (b: CheckRun["bucket"]): GateState =>
 	b === "pass" ? "passed" : b === "fail" ? "failed" : b === "running" ? "running" : "not_set_up";
 
-/** Maps a PR's check runs to the four gates. A skipped run says nothing, so it counts as not set up. */
+/**
+ * Maps a PR's check runs to the four gates. A skipped run says nothing, so it counts as not set up.
+ * A failing or running check with no gate of its own counts against Tests, so a red CodeQL can't read as passed.
+ */
 export function mapGates(checks: CheckRun[]): Gates {
 	const found: Record<GateName, GateState[]> = { Typecheck: [], Tests: [], Lint: [], Preview: [] };
 	for (const c of checks) {
@@ -108,7 +111,7 @@ export function mapGates(checks: CheckRun[]): Gates {
 			found.Typecheck.push(state);
 			found.Tests.push(state);
 			found.Lint.push(state);
-		}
+		} else if (state === "failed" || state === "running") found.Tests.push(state);
 	}
 	return {
 		Typecheck: combine(found.Typecheck),
@@ -141,6 +144,29 @@ export function gatesPassed(g: Gates): boolean {
 export const gatesClear = (g: Gates) =>
 	!anyGate(g, "failed") && !anyGate(g, "running") && !anyGate(g, "out_of_date") && !anyGate(g, "not_started");
 
+/** A PR with no checks at all has this long for some to appear. */
+export const NO_CHECKS_MS = 5 * 60_000;
+
+/**
+ * Right after a push, GitHub has no checks for the new commit. If the commit before had some, this one will
+ * too, so it hasn't passed anything yet. It gets a limit in case this push really runs none.
+ */
+export function awaitChecks<
+	T extends {
+		headSha: string;
+		checks: CheckRun[];
+		gates: Gates;
+		group: PrGroup;
+		awaitingChecksSince?: number;
+	},
+>(previous: Pick<T, "headSha" | "checks" | "awaitingChecksSince"> | null, pr: T, now: number): T {
+	if (pr.checks.length > 0 || !previous) return pr;
+	const pushed = previous.headSha !== pr.headSha && previous.checks.length > 0;
+	const since = pushed ? now : previous.headSha === pr.headSha ? previous.awaitingChecksSince : undefined;
+	if (since === undefined || now - since >= NO_CHECKS_MS) return pr;
+	return { ...pr, gates: noGates("not_started"), group: "running", awaitingChecksSince: since };
+}
+
 /** Says what a ready PR's gates really did. A repo with no CI hasn't passed anything. */
 export function gateSummary(gates: Gates): string {
 	const passed = GATE_NAMES.filter((n) => gates[n] === "passed").length;
@@ -166,7 +192,7 @@ export function prGroup(pr: {
 	if (ageDays >= STALE_DAYS) return "stale";
 	if (pr.mergeable === "CONFLICTING" || pr.mergeState === "DIRTY" || pr.mergeState === "BEHIND")
 		return "rebase";
-	if (anyGate(pr.gates, "failed")) return "failed";
+	if (anyGate(pr.gates, "failed") || pr.mergeState === "UNSTABLE") return "failed";
 	if (pr.isDraft || !gatesClear(pr.gates)) return "running";
 	return "ready";
 }
@@ -184,6 +210,7 @@ export function mergeBlockers(pr: {
 		out.push("It conflicts with the base branch.");
 	if (pr.mergeState === "BEHIND") out.push("The base branch moved on, so it needs a rebase.");
 	if (anyGate(pr.gates, "failed")) out.push("A gate failed.");
+	else if (pr.mergeState === "UNSTABLE") out.push("GitHub says a check on this PR isn't passing.");
 	if (anyGate(pr.gates, "running")) out.push("Gates are still running.");
 	if (anyGate(pr.gates, "out_of_date")) out.push("Gates are out of date.");
 	if (anyGate(pr.gates, "not_started")) out.push("Gates haven't started.");
@@ -269,8 +296,10 @@ export function agentHoldsMerge(
 	if (!wo) return null;
 	if (["planning", "building", "retrying", "rebasing", "waiting_in_t3", "question"].includes(wo.state))
 		return "The agent is still working on this PR.";
-	if (wo.state === "verifying" && wo.failedSha === headSha)
-		return "The agent's changes haven't reached this PR yet.";
+	if (wo.state === "verifying")
+		return wo.failedSha === headSha
+			? "The agent's changes haven't reached this PR yet."
+			: "The factory is still checking this PR's gates.";
 	return null;
 }
 

@@ -10,6 +10,7 @@ import {
 	gateValues,
 	mayMergeAlone,
 	mergeBlockers,
+	NO_CHECKS_MS,
 	noGates,
 	ownsNoPr,
 	parseReply,
@@ -66,11 +67,11 @@ const QuestionShape = z.object({
 
 /** A push from the agent has this long to show up before the factory stops waiting for new gates. */
 const PUSH_WAIT_MS = 10 * 60_000;
-/** A PR with no checks at all goes to Review after this long. */
-const NO_CHECKS_MS = 5 * 60_000;
 /** Main's CI on the merge commit takes a moment to show up. Until then, main's state is about the commit before. */
 const SHIP_MIN_MS = 2 * 60_000;
 const SHIP_MAX_MS = 30 * 60_000;
+/** Gates this old may no longer be true. GitHub reads run every minute or so when anything's in review. */
+const READ_MAX_AGE_MS = 15 * 60_000;
 export const OBSERVE_MS = 24 * 3_600_000;
 
 export class ActionError extends Error {
@@ -254,6 +255,7 @@ export class Engine {
 		const prompt = needsPlan ? planPrompt(wo) : this.directPrompt(wo);
 		const branch = `factory/wo-${wo.id}-${slugify(wo.title, 32)}`;
 		try {
+			this.store.patchWorkOrder(wo.id, { pending_send: prompt });
 			const { threadId, link } = await this.executor.start({
 				projectPath: localPath,
 				title: `WO-${wo.id} ${wo.title}`,
@@ -289,13 +291,33 @@ export class Engine {
 	private runFailed(wo: WorkOrder, stage: WorkOrder["stage"], e: unknown) {
 		const message = e instanceof Error ? e.message : String(e);
 		this.store.addActivity(wo.id, "T3 couldn't start this run", message);
-		this.patch(wo.id, { stage, state: "run_failed", failure: message });
+		const gone = e instanceof ExecutorError && e.gone;
+		this.patch(wo.id, {
+			stage: gone ? "Intake" : stage,
+			state: "run_failed",
+			failure: message,
+			...(gone ? { thread_id: null, thread_link: null } : {}),
+		});
+	}
+
+	/** Every turn goes through here, so Try again can resend exactly what failed. */
+	private async sendTurn(id: number, threadId: string, prompt: string) {
+		this.store.patchWorkOrder(id, { pending_send: prompt });
+		await this.executor.send(threadId, prompt);
+	}
+
+	private lastPrompt(id: number) {
+		return (
+			this.store.db.prepare("SELECT pending_send FROM work_orders WHERE id = ?").get(id) as {
+				pending_send: string | null;
+			}
+		).pending_send;
 	}
 
 	private async startBuildTurn(wo: WorkOrder) {
 		if (!wo.threadId) return;
 		try {
-			await this.executor.send(wo.threadId, buildPrompt(wo));
+			await this.sendTurn(wo.id, wo.threadId, buildPrompt(wo));
 			this.patch(wo.id, { stage: "Build", state: "building", stage_at: this.store.iso() });
 		} catch (e) {
 			this.runFailed(wo, "Build", e);
@@ -320,6 +342,12 @@ export class Engine {
 				return this.ship(wo);
 			case "observing":
 				return this.observe(wo);
+			case "failed":
+			case "run_failed":
+			case "question":
+				// Waiting on you, but the PR can still be merged or closed on GitHub.
+				if (wo.prNumber && !this.openPr(wo)) await this.prLeft(wo);
+				return;
 			default:
 				return;
 		}
@@ -332,6 +360,12 @@ export class Engine {
 			state = await this.executor.status(wo.threadId);
 			this.setT3Health(true, null);
 		} catch (e) {
+			if (e instanceof ExecutorError && e.gone) {
+				// T3 is fine. This one thread is gone, so nothing will ever finish this turn.
+				this.setT3Health(true, null);
+				this.runFailed(wo, wo.stage, e);
+				return;
+			}
 			this.setT3Health(false, e instanceof Error ? e.message : String(e));
 			return;
 		}
@@ -468,7 +502,7 @@ export class Engine {
 			return;
 		}
 		if (anyGate(pr.gates, "failed")) return this.gateFailed(wo, pr, false);
-		if (anyGate(pr.gates, "running")) return;
+		if (anyGate(pr.gates, "running") || anyGate(pr.gates, "not_started")) return;
 		const noChecks = !gatesPassed(pr.gates) && gatesClear(pr.gates);
 		// Timed from entering this state: right after a retry's push, GitHub has no checks for the new commit yet.
 		if (noChecks && this.store.now().getTime() - Date.parse(this.stateAt(wo.id)) < NO_CHECKS_MS) return;
@@ -536,7 +570,7 @@ export class Engine {
 				failed_sha: pr.headSha,
 			});
 			try {
-				await this.executor.send(wo.threadId, retryPrompt(gate, text, null));
+				await this.sendTurn(wo.id, wo.threadId, retryPrompt(gate, text, null));
 			} catch (e) {
 				this.runFailed(wo, "Verify", e);
 			}
@@ -556,7 +590,7 @@ export class Engine {
 		if (gates !== JSON.stringify(wo.gates)) this.store.patchWorkOrder(wo.id, { gates });
 		// A push or a re-run after the gates passed. What passed is no longer what's on the PR.
 		const failed = anyGate(pr.gates, "failed");
-		if (failed || anyGate(pr.gates, "running")) {
+		if (failed || anyGate(pr.gates, "running") || anyGate(pr.gates, "not_started")) {
 			this.store.addActivity(
 				wo.id,
 				failed ? "A gate failed during review" : "New gates started during review",
@@ -568,6 +602,8 @@ export class Engine {
 		const approvals = this.store.settings().approvals;
 		if (
 			!project ||
+			project.paused ||
+			this.staleRead(project) ||
 			this.store.line().stopped ||
 			!mayMergeAlone({
 				on: approvals.mergeWithoutMe[wo.type],
@@ -617,7 +653,17 @@ export class Engine {
 
 	private async observe(wo: WorkOrder) {
 		if (this.store.now().getTime() - Date.parse(wo.stageAt) < OBSERVE_MS) return;
-		this.store.addActivity(wo.id, "No errors traced to this change");
+		const shipped = Date.parse(wo.mergedAt ?? wo.stageAt);
+		// The same rule the floor counts by. The errors themselves are in the queue.
+		const caused = this.store
+			.errors(wo.project)
+			.filter((e) => !e.triage && Date.parse(e.firstSeen) >= shipped).length;
+		this.store.addActivity(
+			wo.id,
+			caused === 0
+				? "No errors traced to this change"
+				: `${caused} new ${caused === 1 ? "error" : "errors"} since this shipped`,
+		);
 		this.patch(wo.id, { state: "done", finished_at: this.store.iso() });
 	}
 
@@ -699,7 +745,7 @@ export class Engine {
 		return this.locked(id, async () => {
 			const wo = this.need(id, ["plan_ready"]);
 			if (!wo.threadId) throw new ActionError("This work order has no agent thread.");
-			await this.sendOrThrow(wo.threadId, changePlanPrompt(note));
+			await this.sendOrThrow(id, wo.threadId, changePlanPrompt(note));
 			this.store.addActivity(id, "You asked for changes to the plan", note);
 			this.patch(id, { state: "planning" });
 		});
@@ -723,7 +769,7 @@ export class Engine {
 				return;
 			}
 			if (!wo.threadId) throw new ActionError("This work order has no agent thread.");
-			await this.sendOrThrow(wo.threadId, answerPrompt(answer, note));
+			await this.sendOrThrow(id, wo.threadId, answerPrompt(answer, note));
 			this.store.addActivity(id, `You answered: ${answer}`, note);
 			this.patch(id, {
 				question: null,
@@ -769,17 +815,16 @@ export class Engine {
 			const prompt =
 				wo.state === "failed"
 					? retryPrompt(wo.failedGate as GateName | null, wo.failure ?? "", note)
-					: wo.stage === "Plan"
-						? planPrompt(wo)
-						: this.directPrompt(wo);
-			await this.sendOrThrow(wo.threadId, prompt);
+					: `${this.lastPrompt(id) ?? (wo.stage === "Plan" ? planPrompt(wo) : this.directPrompt(wo))}${note ? `\n\nOwner's note:\n${note}` : ""}`;
+			await this.sendOrThrow(id, wo.threadId, prompt);
 			this.store.addActivity(id, note ? "You retried with a note" : "You tried again", note);
 			this.patch(id, {
-				state: wo.stage === "Plan" ? "planning" : wo.state === "failed" ? "retrying" : "building",
+				state: wo.stage === "Plan" ? "planning" : wo.stage === "Verify" ? "retrying" : "building",
 				retries: wo.state === "failed" ? wo.retries + 1 : wo.retries,
 				first_try: wo.state === "failed" ? 0 : wo.firstTry ? 1 : 0,
 				failure: null,
-				failed_sha: wo.state === "failed" ? (pr?.headSha ?? null) : null,
+				// After a run that never finished, the commit it was waiting to replace is still the one to wait on.
+				...(wo.state === "failed" ? { failed_sha: pr?.headSha ?? null } : {}),
 			});
 			return false;
 		});
@@ -800,12 +845,17 @@ export class Engine {
 		if (!wo) throw new ActionError("That work order doesn't exist.", 404);
 		if (wo.state === "done" || wo.state === "closed") return;
 		const project = this.store.project(wo.project);
+		// A rebase or a requested change works on someone else's PR. Closing the work order leaves that PR alone.
+		const closesRemote = !opts.keepRemoteBranch && !ownsNoPr(wo.source.kind);
+		if (project && closesRemote && wo.prNumber) {
+			const res = await closePr(this.cli, project.repo, wo.prNumber);
+			if (res.code !== 0 && !/already (been )?(closed|merged)/i.test(res.stderr))
+				throw new ActionError(res.stderr.trim() || "GitHub refused to close the PR.", 502);
+		}
 		if (project?.localPath && wo.branch) {
 			if (wo.worktree) await this.git(project.localPath, ["worktree", "remove", "--force", wo.worktree]);
 			await this.git(project.localPath, ["branch", "-D", wo.branch]);
-			// A rebase or a requested change works on someone else's PR. Closing the work order leaves that PR alone.
-			if (!opts.keepRemoteBranch && !ownsNoPr(wo.source.kind)) {
-				if (wo.prNumber) await closePr(this.cli, project.repo, wo.prNumber);
+			if (closesRemote) {
 				await this.git(project.localPath, ["push", "origin", "--delete", wo.branch]);
 				audit(this.store.db, "delete branch", `${project.repo}:${wo.branch}`, "you", null, this.store.now());
 			}
@@ -828,7 +878,7 @@ export class Engine {
 				if (busy) throw new ActionError(busy);
 				if (!wo.threadId)
 					throw new ActionError("This PR's work order hasn't started yet. Try again once it has.");
-				await this.sendOrThrow(wo.threadId, requestChangesPrompt(note));
+				await this.sendOrThrow(wo.id, wo.threadId, requestChangesPrompt(note));
 				this.store.addActivity(wo.id, "You asked for changes on the PR", note);
 				this.patch(wo.id, {
 					stage: "Verify",
@@ -853,13 +903,20 @@ export class Engine {
 		return linked ? this.locked(linked, run) : run();
 	}
 
+	private staleRead(project: { readAt: string | null }) {
+		return (
+			project.readAt != null && this.store.now().getTime() - Date.parse(project.readAt) > READ_MAX_AGE_MS
+		);
+	}
+
 	private agentBusy(wo: WorkOrder, pr: PullRequest) {
 		return agentHoldsMerge({ state: wo.state, failedSha: this.failedSha(wo.id) }, pr.headSha);
 	}
 
-	private async sendOrThrow(threadId: string, prompt: string) {
+	private async sendOrThrow(id: number, threadId: string, prompt: string) {
+		if (this.store.line().stopped) throw new ActionError("The line is stopped. Restart it first.");
 		try {
-			await this.executor.send(threadId, prompt);
+			await this.sendTurn(id, threadId, prompt);
 		} catch (e) {
 			if (e instanceof ExecutorError) throw new ActionError(`T3 couldn't take this: ${e.message}`, 502);
 			throw e;
@@ -876,7 +933,10 @@ export class Engine {
 			if (!pr) throw new ActionError("That PR isn't open.", 404);
 			const wo = pr.workOrderId ? this.store.workOrder(pr.workOrderId) : null;
 			const busy = wo ? this.agentBusy(wo, pr) : null;
-			const blockers = busy ? [busy] : mergeBlockers(pr);
+			const stale = this.staleRead(proj)
+				? "The factory hasn't read this PR from GitHub lately. Try again once it has."
+				: null;
+			const blockers = busy ? [busy] : stale ? [stale] : mergeBlockers(pr);
 			if (blockers.length) return { ok: false, reason: blockers.join(" ") };
 			const res = await mergePr(this.cli, proj.repo, number, pr.headSha);
 			audit(this.store.db, "merge PR", `${proj.repo}#${number}`, "you", res.reason || null, this.store.now());

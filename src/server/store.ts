@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { TriageRecord } from "../shared/rules.ts";
-import { agentHoldsMerge, applyNeverTouch, noGates, triageHides } from "../shared/rules.ts";
+import { agentHoldsMerge, applyNeverTouch, isRegression, noGates, triageHides } from "../shared/rules.ts";
 import type {
 	ActivityEntry,
 	AgentSettings,
@@ -19,6 +19,7 @@ import type {
 	WorkOrderSource,
 	WorkType,
 } from "../shared/types.ts";
+import { scrub } from "./cli.ts";
 import { readNeverTouch } from "./config.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
@@ -198,8 +199,12 @@ export class Store {
 					PullRequest,
 					"project" | "projectName" | "workOrderId" | "workType"
 				>;
-				const link = links.find((l) => l.project === r.project && l.pr_number === pr.number);
-				const held = link && agentHoldsMerge({ state: link.state, failedSha: link.failed_sha }, pr.headSha);
+				const linked = links.filter((l) => l.project === r.project && l.pr_number === pr.number);
+				const holds = (l: (typeof links)[number]) =>
+					agentHoldsMerge({ state: l.state, failedSha: l.failed_sha }, pr.headSha);
+				// A rebase can run on a PR that has its own work order. Whichever is busy is the one that counts.
+				const link = linked.find(holds) ?? linked[0];
+				const held = link && holds(link);
 				return {
 					...pr,
 					group: held && pr.group === "ready" ? "running" : pr.group,
@@ -252,12 +257,30 @@ export class Store {
 				`SELECT id FROM work_orders WHERE fingerprint = ? AND ${OPEN_FILTER}${e.kind === "regression" ? " AND stage <> 'Observe'" : ""}`,
 			)
 			.get(fp) as { id: number } | undefined;
+		// A shipped fix owns its error until the error comes back. Nothing new has happened to offer it again.
+		const fix =
+			open || e.kind === "regression"
+				? null
+				: (this.db
+						.prepare(
+							"SELECT id, merged_at FROM work_orders WHERE fingerprint = ? AND merged_at IS NOT NULL ORDER BY id DESC",
+						)
+						.get(fp) as { id: number; merged_at: string } | undefined);
+		const owner =
+			open?.id ??
+			(fix &&
+			!isRegression(
+				{ lastSeen: e.lastSeen, release: e.latestRelease ?? null },
+				{ mergedAt: fix.merged_at, release: this.fixRelease(fix.id) },
+			)
+				? fix.id
+				: null);
 		// A snooze that woke, or a dismissal that got worse, no longer counts as triaged.
 		const rec = this.triageRecord(fp);
 		const held =
 			rec &&
 			triageHides(rec, { events: e.events, users: e.users, release: e.firstRelease }, this.now().getTime());
-		return { ...e, projectName, workOrderId: open?.id ?? null, triage: held ? this.triage(fp) : null };
+		return { ...e, projectName, workOrderId: owner, triage: held ? this.triage(fp) : null };
 	}
 
 	/* ---------- triage ---------- */
@@ -393,7 +416,8 @@ export class Store {
 	}
 
 	patchWorkOrder(id: number, patch: Partial<WorkOrderPatch>): void {
-		const entries = Object.entries(patch);
+		// Agent output and failure text can quote a token. Nothing token-shaped reaches the database or the page.
+		const entries = Object.entries(patch).map(([k, v]) => [k, typeof v === "string" ? scrub(v) : v] as const);
 		if (entries.length === 0) return;
 		const set = entries.map(([k]) => `${k} = ?`).join(", ");
 		this.db
@@ -404,7 +428,7 @@ export class Store {
 	addActivity(id: number, text: string, detail: string | null = null): void {
 		this.db
 			.prepare("INSERT INTO activity (work_order, at, text, detail) VALUES (?, ?, ?, ?)")
-			.run(id, this.iso(), text, detail);
+			.run(id, this.iso(), scrub(text), detail === null ? null : scrub(detail));
 	}
 
 	/* ---------- source health ---------- */
@@ -461,6 +485,7 @@ export interface WorkOrderRow {
 	question: string | null;
 	failure: string | null;
 	failed_gate: string | null;
+	pending_send: string | null;
 	retries: number;
 	first_try: number;
 	hold: number;
@@ -492,6 +517,7 @@ export type WorkOrderPatch = Pick<
 	| "question"
 	| "failure"
 	| "failed_gate"
+	| "pending_send"
 	| "retries"
 	| "first_try"
 	| "hold"

@@ -503,8 +503,8 @@ function Baseline({ run }: { run: NewProjectRun }) {
 				project: run.projectSlug,
 				type: "Bug fix",
 				title: "Fix the red baseline",
-				description: `The baseline failed on a new project.\n\n${run.failure ?? ""}`,
-				source: { kind: "new_project" },
+				description: "The baseline failed on a new project. Make it pass.",
+				source: { kind: "new_project", newProjectId: run.id },
 			}),
 		{ onSuccess: (r) => void navigate({ to: "/work-orders/$id", params: { id: String(r.id) } }) },
 	);

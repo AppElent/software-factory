@@ -23,6 +23,10 @@ Decided while building. These win over the rest of this file, the boards, and th
 [`control-room_copy.md`](control-room_copy.md) are hand-off snapshots, so they still show cost and the older copy.
 
 - **Cost:** no cost UI anywhere, because T3 exposes no cost source. A plan `Estimate` keeps time only.
+- **New project:** the name check also refuses a folder with files in it. The run never adopts a repo or folder it didn't make, so `Remove` can't delete anything else.
+- **Fixed errors:** a merged fix keeps its error off the queue until the error returns on a new release, not only during Observe.
+- **Observe:** the closing line says how many new errors appeared since the change shipped.
+- **Red main:** dismissing covers that commit. A later red commit comes back.
 - **Questions:** native questions in T3 can't be answered over the CLI. Agents use `factory-question` blocks. A native request shows `waiting_in_t3` with `Open in T3`.
 - **Stop:** there's no CLI interrupt, so Stop keeps its wording: `Stopping at the agent's next step.` A held work order has `Restart this work order` (Resume). Running and Stopping also offer `Close work order`, so a turn that never ends can't keep its Build slot.
 - **Agent at work on a PR:** while a linked work order's agent is working, or its push hasn't arrived, the PR reads as running and merge refuses: `The agent is still working on this PR.` or `The agent's changes haven't reached this PR yet.`

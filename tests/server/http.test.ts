@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +6,7 @@ import { createApp } from "../../src/server/app.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Cli } from "../../src/server/cli.ts";
 import type { Config } from "../../src/server/config.ts";
-import { writeNeverTouch } from "../../src/server/config.ts";
+import { readNeverTouch, writeNeverTouch } from "../../src/server/config.ts";
 import { openDb } from "../../src/server/db.ts";
 import { Engine } from "../../src/server/engine.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
@@ -229,5 +229,17 @@ describe("settings", () => {
 		});
 		expect(await sent.json()).toEqual({ ok: true, result: "ok" });
 		expect(store.settings().notifications.lastTest).toBe("ok");
+	});
+});
+
+describe("the Never touch file", () => {
+	it("refuses a file it can't fully read, rather than dropping rules", () => {
+		const file = join(dir, "never-touch.json");
+		for (const bad of ['{"rules":["*x*"]}', '["*x*", 3]', "not json"]) {
+			writeFileSync(file, bad);
+			expect(() => readNeverTouch(dir)).toThrow(/JSON list of strings/);
+		}
+		writeFileSync(file, '["*x*"]');
+		expect(readNeverTouch(dir)).toEqual(["*x*"]);
 	});
 });

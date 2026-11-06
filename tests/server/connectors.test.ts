@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
+import { scrub } from "../../src/server/cli.ts";
 import { cleanLog, GithubError, readRepos } from "../../src/server/connectors/github.ts";
 import { parseDetail, readIssues, SentryError } from "../../src/server/connectors/sentry.ts";
 import { parseShow, t3Executor } from "../../src/server/executor/t3.ts";
@@ -31,6 +32,13 @@ describe("GitHub responses", () => {
 		expect(pr?.gates.Typecheck).toBe("passed");
 		expect(pr?.gates.Preview).toBe("failed");
 		expect(pr?.checks.find((c) => c.name === "cleanup")?.bucket).toBe("skipped");
+	});
+
+	it("counts a repo that answers under a new name as missing", async () => {
+		const renamed: Cli = async () => ok(fixture("gh/repo-read.json"));
+		const read = await readRepos(renamed, ["example-org/old-name"], NOW);
+		expect(read.missing).toEqual(["example-org/old-name"]);
+		expect(read.repos).toEqual([]);
 	});
 
 	it("reports an unreadable response instead of treating it as no PRs", async () => {
@@ -137,5 +145,23 @@ describe("a failed CI log", () => {
 		const raw =
 			"verify\tRun tests\t2026-11-06T14:38:02.1856700Z \u001b[36;1mpnpm test\u001b[0m\nverify\tRun tests\t2026-11-06T14:38:03.0000000Z not ok 1";
 		expect(cleanLog(raw)).toBe("pnpm test\nnot ok 1");
+	});
+});
+
+describe("t3 thread status", () => {
+	it("marks a thread T3 no longer has, but not any other failure", async () => {
+		const answer =
+			(stderr: string): Cli =>
+			async () => ({ code: 1, stdout: "", stderr, timedOut: false, missing: false });
+		await expect(t3Executor(answer("Thread X is no longer available.")).status("X")).rejects.toMatchObject({
+			gone: true,
+		});
+		await expect(t3Executor(answer("connection refused")).status("X")).rejects.toMatchObject({ gone: false });
+	});
+});
+
+describe("scrub", () => {
+	it("covers fine-grained GitHub tokens", () => {
+		expect(scrub(`x github_pat_${"A1_".repeat(10)} y`)).not.toContain("github_pat_A1");
 	});
 });

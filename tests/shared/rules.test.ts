@@ -27,6 +27,21 @@ const check = (name: string, bucket: CheckRun["bucket"], workflow: string | null
 	url: null,
 });
 
+describe("checks with no gate of their own", () => {
+	it("counts a failing or running one against Tests, and ignores a passing one", () => {
+		expect(mapGates([check("CodeQL", "fail")]).Tests).toBe("failed");
+		expect(mapGates([check("CodeQL", "running")]).Tests).toBe("running");
+		expect(mapGates([check("CodeQL", "pass")]).Tests).toBe("not_set_up");
+		expect(mapGates([check("pytest", "pass")]).Tests).toBe("passed");
+	});
+
+	it("doesn't call an UNSTABLE merge state ready, whatever the gates say", () => {
+		const pr = { isDraft: false, gates: noGates("passed"), mergeable: "MERGEABLE", mergeState: "UNSTABLE" };
+		expect(prGroup(pr as never)).toBe("failed");
+		expect(mergeBlockers(pr as never).join()).toMatch(/isn't passing/);
+	});
+});
+
 describe("never touch", () => {
 	it.each([
 		["client-*", { repo: "me/client-work" }, true],

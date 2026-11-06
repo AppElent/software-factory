@@ -210,6 +210,8 @@ function readItems(store: Store): QueueItem[] {
 function isTriaged(store: Store, item: QueueItem, now: number) {
 	const rec = store.triageRecord(item.fingerprint);
 	if (!rec) return false;
+	// Dismissing a red main is about that commit. A later commit going red is news.
+	if (item.main && rec.action === "dismiss" && rec.baselineRelease !== item.main.sha) return false;
 	const current = {
 		events: item.error?.events ?? 0,
 		users: item.error?.users ?? 0,

@@ -109,6 +109,7 @@ async function checkState(label, path, width) {
 			.map((el) => el.outerHTML.slice(0, 80)),
 	);
 	if (unnamed.length) errors.push(`no accessible name: ${unnamed[0]}`);
+	// biome-ignore lint/performance/useDomNodeTextContent: this checks what's visible, and textContent includes hidden text.
 	const text = await page.locator("body").innerText();
 	// The sample error's own title says "properties of undefined".
 	if (/\{\{|undefined|\bNaN\b|\[object/.test(text.replaceAll("properties of undefined", "")))
@@ -121,7 +122,7 @@ async function checkState(label, path, width) {
 
 for (const name of SCENARIOS) {
 	const seeded = await scenario(name);
-	const ids = (seeded.workOrders ?? []).map((w) => `/work-orders/${w.id}`);
+	const ids = (seeded.ids ?? []).map((w) => `/work-orders/${w.id}`);
 	for (const path of [...PATHS, ...ids]) {
 		await checkState(name, path, 1440);
 		if (name === "full" || name === "long") await checkState(name, path, 390);

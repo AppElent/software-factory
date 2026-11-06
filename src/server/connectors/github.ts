@@ -8,6 +8,7 @@ import type {
 	ToolkitState,
 } from "../../shared/types.ts";
 import type { Cli } from "../cli.ts";
+import { scrub } from "../cli.ts";
 
 export const TOOLKIT_REPO = "AppElent/developer-tools";
 
@@ -142,7 +143,8 @@ export function readChecks(rollup: Rollup): CheckRun[] {
 		if (n.status === "COMPLETED") {
 			const c = n.conclusion ?? "";
 			if (c === "SUCCESS") bucket = "pass";
-			else if (c === "SKIPPED" || c === "NEUTRAL" || c === "CANCELLED" || c === "STALE") bucket = "skipped";
+			// A cancelled run passed nothing, so it isn't the same as one that chose to skip.
+			else if (c === "SKIPPED" || c === "NEUTRAL") bucket = "skipped";
 			else bucket = "fail";
 		}
 		return {
@@ -220,7 +222,8 @@ export async function readRepos(cli: Cli, repos: string[], now: number): Promise
 			throw new GithubError(res.stderr.trim() || "GitHub returned an unexpected response.");
 		batch.forEach((repo, n) => {
 			const node = parsed.data.data[`r${n}`];
-			if (!node || !("nameWithOwner" in node)) {
+			// A renamed repo answers under its new name, which no project here has.
+			if (!node || !("nameWithOwner" in node) || node.nameWithOwner.toLowerCase() !== repo.toLowerCase()) {
 				out.missing.push(repo);
 				return;
 			}
@@ -413,22 +416,24 @@ export async function cloneRepo(cli: Cli, repo: string, dest: string) {
 	return cli("gh", ["repo", "clone", repo, dest], { timeoutMs: 600_000 });
 }
 
-/** The last lines of a failed job's log, or null. Output is untrusted and only ever shown as text. */
+const COLOUR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "g");
+
 /** `gh run view --log-failed` prefixes each line with job, step, and time, and keeps the terminal's colours. */
 export function cleanLog(raw: string): string {
 	return raw
 		.trim()
 		.split("\n")
 		.map((line) => line.split("\t").slice(2).join("\t") || line)
-		.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, ""))
+		.map((line) => line.replace(COLOUR, "").replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, ""))
 		.slice(-40)
 		.join("\n");
 }
 
+/** The last lines of a failed job's log, or null. Output is untrusted and only ever shown as text. */
 export async function failedLog(cli: Cli, repo: string, url: string | null): Promise<string | null> {
 	const run = url?.match(/\/actions\/runs\/(\d+)/)?.[1];
 	if (!run) return null;
 	const res = await cli("gh", ["run", "view", run, "-R", repo, "--log-failed"], { timeoutMs: 60_000 });
 	if (res.code !== 0) return null;
-	return cleanLog(res.stdout);
+	return scrub(cleanLog(res.stdout));
 }

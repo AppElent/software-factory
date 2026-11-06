@@ -365,7 +365,9 @@ export function createApp(d: AppDeps): Hono {
 	app.post("/api/projects/:slug/folder", async (c) => {
 		const slug = c.req.param("slug");
 		const p = needProject(slug);
-		const { path } = await body(c.req, z.object({ path: z.string().min(1) }));
+		const input = await body(c.req, z.object({ path: z.string().min(1) }));
+		// Paths from here go straight to git and the file system, which don't expand a typed ~.
+		const path = input.path.replace(/^~(?=$|\/)/, homedir());
 		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo: p.repo, path }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that folder.", 403);
 		if (!existsSync(join(path, ".git"))) throw new ActionError("That folder isn't a git checkout.", 400);
@@ -522,6 +524,7 @@ export function createApp(d: AppDeps): Hono {
 						kind: z.enum(["person", "error", "red_main", "stale_pr", "rebase_pr", "toolkit", "new_project"]),
 						fingerprint: z.string().optional(),
 						prNumber: z.number().optional(),
+						newProjectId: z.number().optional(),
 					})
 					.optional(),
 			}),
@@ -540,10 +543,12 @@ export function createApp(d: AppDeps): Hono {
 
 	/** Builds the context an agent gets. The browser only names the item; the text comes from here. */
 	async function sourceFor(
-		s: { kind: string; fingerprint?: string; prNumber?: number },
+		s: { kind: string; fingerprint?: string; prNumber?: number; newProjectId?: number },
 		project: string,
 	): Promise<import("../shared/types.ts").WorkOrderSource> {
 		const kind = s.kind as import("../shared/types.ts").WorkOrderSource["kind"];
+		// A failed baseline's output comes from the project's tools, so it travels as data.
+		if (s.newProjectId) return { kind, data: newProjects.get(s.newProjectId)?.failure ?? undefined };
 		if (s.fingerprint?.startsWith("error:")) {
 			const id = s.fingerprint.slice(6);
 			const e = store.error(id);
@@ -879,7 +884,7 @@ export function createApp(d: AppDeps): Hono {
 		return c.json({
 			owner,
 			folder: join(cloneFolder, name),
-			problem: await newProjects.validate(owner, name),
+			problem: await newProjects.validate(owner, name, join(cloneFolder, name)),
 		});
 	});
 
@@ -894,9 +899,9 @@ export function createApp(d: AppDeps): Hono {
 			}),
 		);
 		const owner = await newProjects.owner();
-		const problem = await newProjects.validate(owner, input.name);
-		if (problem) throw new ActionError(problem, 400);
 		const { cloneFolder } = store.settings().projects;
+		const problem = await newProjects.validate(owner, input.name, join(cloneFolder, input.name));
+		if (problem) throw new ActionError(problem, 400);
 		const { kept } = applyNeverTouch(store.neverTouch(), [
 			{ repo: `${owner}/${input.name}`, path: join(cloneFolder, input.name) },
 		]);

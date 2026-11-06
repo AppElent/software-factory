@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NewProjectLogLine, NewProjectRun, ToolStatus } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
@@ -62,12 +62,16 @@ export const scriptRunner: ScaffoldRunner = (run, step) =>
 		);
 	});
 
+const folderInUse = (folder: string) => existsSync(folder) && readdirSync(folder).length > 0;
+
 export class NewProjects {
 	private readonly store: Store;
 	private readonly cli: Cli;
 	private readonly runner: ScaffoldRunner;
 	private readonly publish: (keys: string[]) => void;
 	private readonly addProject: (repo: string, localPath: string) => string;
+	/** Runs scaffolding right now. A saved `scaffold` step without one means the service restarted mid-run. */
+	private readonly running = new Set<number>();
 
 	constructor(deps: {
 		store: Store;
@@ -96,11 +100,12 @@ export class NewProjects {
 	}
 
 	/** Blank name, a taken repo, a path in use. Returns a message, or null when it's fine. */
-	async validate(owner: string, name: string): Promise<string | null> {
+	async validate(owner: string, name: string, folder: string): Promise<string | null> {
 		if (!name.trim()) return "Enter a name for the project.";
 		if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) return "Use letters, numbers, dashes, dots, and underscores.";
 		const res = await this.cli("gh", ["repo", "view", `${owner}/${name}`, "--json", "name"]);
 		if (res.code === 0) return `${owner} already has a repo with this name. Choose another name.`;
+		if (folderInUse(folder)) return `${folder} already has files in it. Choose another name.`;
 		return null;
 	}
 
@@ -137,7 +142,28 @@ export class NewProjects {
 	/** Runs from the first unfinished step. Doesn't block the request. */
 	async scaffold(id: number): Promise<void> {
 		const run = this.get(id);
-		if (!run) return;
+		if (!run || this.running.has(id)) return;
+		if (!["approve", "scaffold", "failed", "baseline"].includes(run.step)) return;
+		this.running.add(id);
+		try {
+			await this.runSteps(run);
+		} finally {
+			this.running.delete(id);
+		}
+	}
+
+	/** What's there may have changed since the name was checked. This run never adopts what it didn't make. */
+	private async alreadyThere(run: NewProjectRun, step: ScaffoldStep): Promise<string | null> {
+		if (step === "repo") {
+			const res = await this.cli("gh", ["repo", "view", run.repo, "--json", "name"]);
+			if (res.code === 0) return `${run.repo} already exists, and this run didn't make it.`;
+		}
+		if (step === "folder" && folderInUse(run.localPath))
+			return `${run.localPath} already has files in it, and this run didn't put them there.`;
+		return null;
+	}
+
+	private async runSteps(run: NewProjectRun): Promise<void> {
 		run.step = "scaffold";
 		run.failure = null;
 		this.save(run);
@@ -148,7 +174,8 @@ export class NewProjects {
 			line.detail = undefined;
 			this.save(run);
 			const step = line.step as ScaffoldStep;
-			const result = await this.runner(run, step, this.cli);
+			const taken = await this.alreadyThere(run, step);
+			const result = taken ? { ok: false, detail: taken } : await this.runner(run, step, this.cli);
 			const elapsed = Math.round((this.store.now().getTime() - startedAt) / 1000);
 			line.at = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
 			if (!result.ok) {
@@ -249,6 +276,8 @@ export class NewProjects {
 	async remove(id: number): Promise<{ ok: boolean; reason?: string }> {
 		const run = this.get(id);
 		if (!run) return { ok: false, reason: "Not found" };
+		if (this.running.has(id) || !["failed", "baseline"].includes(run.step))
+			return { ok: false, reason: "This project isn't in a state that can be removed." };
 		for (const item of run.created) {
 			if (item.startsWith("repo:")) {
 				const res = await this.cli("gh", ["repo", "delete", item.slice(5), "--yes"]);
@@ -268,7 +297,12 @@ export class NewProjects {
 				audit(this.store.db, "delete folder", item.slice(7), "you", null, this.store.now());
 			}
 		}
+		if (run.projectSlug)
+			this.store.db
+				.prepare("UPDATE projects SET removed_at = ? WHERE slug = ?")
+				.run(this.store.iso(), run.projectSlug);
 		this.store.db.prepare("DELETE FROM new_projects WHERE id = ?").run(id);
+		this.publish(["projects", "shell", "queue"]);
 		return { ok: true };
 	}
 }

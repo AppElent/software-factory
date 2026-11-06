@@ -39,13 +39,17 @@ function sessionToken(dataDir: string): string {
 export function readNeverTouch(dataDir: string): string[] {
 	const file = join(dataDir, "never-touch.json");
 	if (!existsSync(file)) return [];
+	// A broken file must not silently allow everything through, or drop a rule it couldn't read.
+	const refuse = () =>
+		new Error(`${file} must be a JSON list of strings. Fix it before the factory reads any repo.`);
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(readFileSync(file, "utf8"));
-		return Array.isArray(parsed) ? parsed.filter((r) => typeof r === "string") : [];
+		parsed = JSON.parse(readFileSync(file, "utf8"));
 	} catch {
-		// A broken file must not silently allow everything through.
-		throw new Error(`${file} isn't valid JSON. Fix it before the factory reads any repo.`);
+		throw refuse();
 	}
+	if (!Array.isArray(parsed) || !parsed.every((r) => typeof r === "string")) throw refuse();
+	return parsed;
 }
 
 export function writeNeverTouch(dataDir: string, rules: string[]): void {

@@ -28,4 +28,11 @@ export interface Executor {
 	send(threadId: string, prompt: string): Promise<void>;
 }
 
-export class ExecutorError extends Error {}
+export class ExecutorError extends Error {
+	/** T3 answered, and this thread no longer exists there. */
+	readonly gone: boolean;
+	constructor(message: string, gone = false) {
+		super(message);
+		this.gone = gone;
+	}
+}

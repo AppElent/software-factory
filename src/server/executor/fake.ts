@@ -42,7 +42,7 @@ export class FakeExecutor implements Executor {
 
 	async status(threadId: string) {
 		const t = this.threads.get(threadId);
-		if (!t) throw new ExecutorError(`No thread ${threadId}`);
+		if (!t) throw new ExecutorError(`Thread ${threadId} is no longer available.`, true);
 		return t.state;
 	}
 

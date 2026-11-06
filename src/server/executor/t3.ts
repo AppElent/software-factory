@@ -59,7 +59,11 @@ export function t3Executor(cli: Cli): Executor {
 			const res = await cli("t3", ["thread", "show", threadId, "--messages", "12", "--json"], {
 				timeoutMs: 30_000,
 			});
-			if (res.code !== 0) throw new ExecutorError(res.stderr.trim() || `t3 exited with ${res.code}`);
+			if (res.code !== 0)
+				throw new ExecutorError(
+					res.stderr.trim() || `t3 exited with ${res.code}`,
+					/no longer available/i.test(res.stderr),
+				);
 			return parseShow(res.stdout);
 		},
 		async send(threadId, prompt) {

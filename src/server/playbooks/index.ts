@@ -20,7 +20,8 @@ function context(wo: WorkOrder): string {
 	const fromOwner = wo.source.kind === "person" || wo.source.kind === "new_project";
 	const parts = [
 		`Work order WO-${wo.id}${fromOwner ? `: ${wo.title}` : ""}`,
-		`Project: ${wo.projectName}`,
+		// The slug, not the display name: that name comes from a file in the repo.
+		`Project: ${wo.project}`,
 		`Work type: ${wo.type}`,
 	];
 	const body = [parts.join("\n")];
