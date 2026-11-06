@@ -1,0 +1,46 @@
+{
+  "thread": {
+    "threadId": "mcp:eec65900-f03e-4828-8c96-f538176824f9",
+    "projectId": "3b43fcd7-7a48-40de-a872-49332ea4ed10",
+    "title": "SF spike worktree",
+    "link": "https://app.t3.codes/threads/0c0eb609-de32-4bb4-9af2-7ae149502aa0/mcp%3Aeec65900-f03e-4828-8c96-f538176824f9",
+    "createdBy": "agent",
+    "creationSource": "mcp",
+    "status": "completed",
+    "latestRunId": "run:thread:mcp%3Aeec65900-f03e-4828-8c96-f538176824f9:ordinal:1",
+    "activeRunId": null,
+    "providerInstanceId": "claudeAgent",
+    "model": "claude-opus-5-5",
+    "runtimeMode": "auto",
+    "interactionMode": "default",
+    "linkedPullRequest": null,
+    "pullRequests": [],
+    "titleRegeneration": null,
+    "branch": "sf-spike/one",
+    "worktreePath": "/Users/me/Developer/.worktrees/repo/sf-spike-one",
+    "parentThreadId": null,
+    "relationshipToParent": null,
+    "runCount": 1,
+    "itemCount": 4,
+    "pendingRequestCount": 0,
+    "archived": false,
+    "settled": false,
+    "settledAt": null,
+    "snoozed": false,
+    "snoozedUntil": null,
+    "createdAt": "2026-11-06T12:47:18.541Z",
+    "updatedAt": "2026-11-06T12:47:20.607Z"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "runId": "run:thread:mcp%3Aeec65900-f03e-4828-8c96-f538176824f9:ordinal:1",
+      "text": "Reply with exactly: SPIKE-OK. Do not edit anything."
+    },
+    {
+      "role": "assistant",
+      "runId": "run:thread:mcp%3Aeec65900-f03e-4828-8c96-f538176824f9:ordinal:1",
+      "text": "SPIKE-OK"
+    }
+  ]
+}

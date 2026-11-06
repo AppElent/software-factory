@@ -1,0 +1,41 @@
+{
+  "thread": {
+    "threadId": "mcp:d15eff14-6151-473f-88ed-23c6017c027a",
+    "projectId": "3b43fcd7-7a48-40de-a872-49332ea4ed10",
+    "title": "SF spike question",
+    "link": "https://app.t3.codes/threads/0c0eb609-de32-4bb4-9af2-7ae149502aa0/mcp%3Ad15eff14-6151-473f-88ed-23c6017c027a",
+    "createdBy": "agent",
+    "creationSource": "mcp",
+    "status": "running",
+    "latestRunId": "run:thread:mcp%3Ad15eff14-6151-473f-88ed-23c6017c027a:ordinal:1",
+    "activeRunId": "run:thread:mcp%3Ad15eff14-6151-473f-88ed-23c6017c027a:ordinal:1",
+    "providerInstanceId": "claudeAgent",
+    "model": "claude-opus-5-5",
+    "runtimeMode": "auto",
+    "interactionMode": "default",
+    "linkedPullRequest": null,
+    "pullRequests": [],
+    "titleRegeneration": null,
+    "branch": "sf-spike/ask",
+    "worktreePath": "/Users/me/Developer/.worktrees/repo/sf-spike-ask",
+    "parentThreadId": null,
+    "relationshipToParent": null,
+    "runCount": 1,
+    "itemCount": 4,
+    "pendingRequestCount": 1,
+    "archived": false,
+    "settled": false,
+    "settledAt": null,
+    "snoozed": false,
+    "snoozedUntil": null,
+    "createdAt": "2026-11-06T12:47:55.846Z",
+    "updatedAt": "2026-11-06T12:47:57.712Z"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "runId": "run:thread:mcp%3Ad15eff14-6151-473f-88ed-23c6017c027a:ordinal:1",
+      "text": "Use the AskUserQuestion tool once to ask: 'Pick a colour' with options Red and Blue. Then reply with the chosen colour."
+    }
+  ]
+}

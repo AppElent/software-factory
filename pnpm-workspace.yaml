@@ -1,0 +1,8 @@
+# Supply-chain cooldown: refuse versions published less than 3 days ago.
+minimumReleaseAge: 4320
+
+# Build-script ledger. Scripts are denied by default.
+allowBuilds:
+  esbuild: true # bundler binary
+
+verifyDepsBeforeRun: install
