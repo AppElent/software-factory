@@ -704,7 +704,7 @@ export class Engine {
 			if (existing && existing.stage !== "Observe") return existing.id;
 			// Starting again means the shipped fix isn't the answer. Its watch ends and new work begins.
 			if (existing) {
-				this.store.addActivity(existing.id, "You started new work on this error");
+				this.store.addActivity(existing.id, "You started new work on this");
 				this.patch(existing.id, { state: "done", finished_at: this.store.iso() });
 			}
 		}

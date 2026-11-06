@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
 import { scrub } from "../../src/server/cli.ts";
-import { cleanLog, GithubError, readRepos } from "../../src/server/connectors/github.ts";
+import { cleanLog, GithubError, readRepos, readToolkit } from "../../src/server/connectors/github.ts";
 import { parseDetail, readIssues, SentryError } from "../../src/server/connectors/sentry.ts";
 import { parseShow, t3Executor } from "../../src/server/executor/t3.ts";
 
@@ -163,5 +163,26 @@ describe("t3 thread status", () => {
 describe("scrub", () => {
 	it("covers fine-grained GitHub tokens", () => {
 		expect(scrub(`x github_pat_${"A1_".repeat(10)} y`)).not.toContain("github_pat_A1");
+	});
+});
+
+describe("toolkit drift over time", () => {
+	it("asks again after an hour, because the toolkit moves on while the pin stays", async () => {
+		let ahead = 0;
+		const fake: Cli = async (_cmd, args) => ({
+			code: 0,
+			stdout: args.some((a) => a.includes("/compare/"))
+				? JSON.stringify({ ahead_by: ahead, files: [{ filename: "a" }] })
+				: JSON.stringify({ commit: { committer: { date: "2026-11-01T00:00:00Z" } } }),
+			stderr: "",
+			timedOut: false,
+			missing: false,
+		});
+		const cache = new Map();
+		const start = Date.parse("2026-11-06T00:00:00Z");
+		expect((await readToolkit(fake, "me/app", "abc", cache, start)).status).toBe("current");
+		ahead = 5;
+		expect((await readToolkit(fake, "me/app", "abc", cache, start + 60_000)).status).toBe("current");
+		expect((await readToolkit(fake, "me/app", "abc", cache, start + 61 * 60_000)).status).toBe("behind");
 	});
 });

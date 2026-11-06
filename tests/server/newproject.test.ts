@@ -108,6 +108,30 @@ describe("New project never adopts what it didn't make", () => {
 		expect((await projects.remove(id)).ok).toBe(false);
 	});
 
+	it("won't remove a project an agent is still working on", async () => {
+		const id = await projects.create(input);
+		store.db
+			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("fresh", "me/fresh", "fresh", "", "/nope", store.iso());
+		const run = projects.get(id) as NonNullable<ReturnType<NewProjects["get"]>>;
+		store.db
+			.prepare("UPDATE new_projects SET json = ? WHERE id = ?")
+			.run(JSON.stringify({ ...run, step: "baseline", projectSlug: "fresh" }), id);
+		store.insertWorkOrder({
+			project: "fresh",
+			type: "Bug fix",
+			title: "Fix the red baseline",
+			description: "Make it pass.",
+			source: { kind: "new_project" },
+			agent: "claude",
+		});
+		expect(await projects.remove(id)).toEqual({
+			ok: false,
+			reason: "This project has open work orders. Close them first.",
+		});
+		expect(store.project("fresh")).toBeTruthy();
+	});
+
 	it("takes the project off the list when it removes one", async () => {
 		const id = await projects.create(input);
 		store.db
@@ -216,6 +240,35 @@ describe("the scaffold script", () => {
 		);
 		expect(res.status).toBe(1);
 		expect(res.stderr.trim()).toBe("gh isn't installed, or the service can't find it.");
+	});
+
+	it("pushes the first commit on a retry, when that push is what failed", () => {
+		const root = mkdtempSync(join(tmpdir(), "sf-template-"));
+		const remote = join(root, "remote", "me", "fresh.git");
+		mkdirSync(remote, { recursive: true });
+		execFileSync("git", ["init", "--bare", "-b", "main"], { cwd: remote, stdio: "pipe" });
+		const folder = join(root, "fresh");
+		mkdirSync(folder);
+		const git = (...args: string[]) =>
+			execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...args], {
+				cwd: folder,
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+		git("init", "-b", "main");
+		git("remote", "add", "origin", remote);
+		git("commit", "--allow-empty", "-m", "First commit");
+		const res = spawnSync(
+			process.execPath,
+			["scripts/new-project.mjs", "--step", "template", "--repo", "me/fresh", "--folder", folder],
+			{ encoding: "utf8", env: { PATH: process.env.PATH } },
+		);
+		expect(res.stderr).toBe("");
+		expect(res.status).toBe(0);
+		expect(execFileSync("git", ["rev-parse", "main"], { cwd: remote, encoding: "utf8" }).trim()).toBe(
+			git("rev-parse", "HEAD").trim(),
+		);
+		rmSync(root, { recursive: true, force: true });
 	});
 
 	describe("a red baseline", () => {

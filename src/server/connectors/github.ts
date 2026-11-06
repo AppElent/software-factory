@@ -287,25 +287,28 @@ export class GithubError extends Error {}
 
 const HEAD = z.object({ sha: z.string(), commit: z.object({ committer: z.object({ date: z.string() }) }) });
 
+const TOOLKIT_CACHE_MS = 60 * 60_000;
+
 /** Compares a project's pinned toolkit commit with the toolkit's main branch. */
 export async function readToolkit(
 	cli: Cli,
 	repo: string,
 	commit: string | null,
-	cache: Map<string, ToolkitState>,
+	cache: Map<string, { state: ToolkitState; at: number }>,
 	now: number,
 ): Promise<ToolkitState> {
 	if (repo === TOOLKIT_REPO) return { status: "source", behindDays: 0, changed: 0 };
 	if (!commit) return { status: "none", behindDays: 0, changed: 0 };
 	const cached = cache.get(commit);
-	if (cached) return cached;
+	// The pinned commit doesn't move, but the toolkit does. An old answer stops being true.
+	if (cached && now - cached.at < TOOLKIT_CACHE_MS) return cached.state;
 	const compare = await cli("gh", ["api", `repos/${TOOLKIT_REPO}/compare/${commit}...HEAD`]);
 	if (compare.code !== 0) return { status: "unknown", behindDays: 0, changed: 0 };
 	const parsed = Compare.safeParse(JSON.parse(compare.stdout));
 	if (!parsed.success) return { status: "unknown", behindDays: 0, changed: 0 };
 	if (parsed.data.ahead_by === 0) {
 		const state: ToolkitState = { status: "current", behindDays: 0, changed: 0 };
-		cache.set(commit, state);
+		cache.set(commit, { state, at: now });
 		return state;
 	}
 	const pinned = await cli("gh", ["api", `repos/${TOOLKIT_REPO}/commits/${commit}`]);
@@ -314,7 +317,7 @@ export async function readToolkit(
 		? Math.floor((now - Date.parse(date.data.commit.committer.date)) / 86_400_000)
 		: 0;
 	const state: ToolkitState = { status: "behind", behindDays: days, changed: parsed.data.files?.length ?? 0 };
-	cache.set(commit, state);
+	cache.set(commit, { state, at: now });
 	return state;
 }
 

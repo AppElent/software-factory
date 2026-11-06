@@ -30,7 +30,7 @@ export class Poller {
 	private timers: NodeJS.Timeout[] = [];
 	private githubFails = 0;
 	private sentryFails = 0;
-	private readonly toolkitCache = new Map<string, ToolkitState>();
+	private readonly toolkitCache = new Map<string, { state: ToolkitState; at: number }>();
 	private stopped = false;
 	private reading = false;
 

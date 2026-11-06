@@ -217,6 +217,26 @@ describe("work order", () => {
 		expect(screen.queryByRole("region", { name: "Agent question" })).not.toBeInTheDocument();
 	});
 
+	it("WOQuestion: an open question takes what you type as the answer", async () => {
+		const user = userEvent.setup();
+		const { h, id } = await openOrder("Name the new export", "open_question");
+		const answerButton = within(pane()).getByRole("button", { name: "Answer" });
+		expect(answerButton).toBeDisabled();
+		expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+		await user.type(screen.getByLabelText("Your answer"), "Ledger export");
+		await user.click(answerButton);
+		await waitFor(() =>
+			expect(h.mutations).toContain(
+				`POST /api/work-orders/${id}/answer {"answer":"Ledger export","note":null}`,
+			),
+		);
+	});
+
+	it("WOQuestion: a question you don't want to answer can be closed", async () => {
+		await openOrder("Name the new export", "open_question");
+		expect(within(pane()).getByRole("button", { name: "Close work order" })).toBeInTheDocument();
+	});
+
 	it("WOQuestion: a failed answer keeps the choice and the note", async () => {
 		const user = userEvent.setup();
 		const { h } = await openOrder("Migrate the invoices table");

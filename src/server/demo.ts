@@ -1074,6 +1074,19 @@ export function installDemo(store: Store) {
 				)
 				.run("error:6003", snoozeUntil(store.now()).toISOString(), store.iso());
 		},
+		/** The agent asked something with no options to pick from. */
+		open_question: () => {
+			baseProjects();
+			healthy();
+			seedWo({
+				project: "foundry",
+				title: "Name the new export",
+				stage: "Build",
+				state: "question",
+				thread: "demo:open-question",
+				question: { question: "What should the export be called?", options: [] },
+			});
+		},
 		/** One work order per state the other scenarios don't reach. */
 		wo_states: () => {
 			baseProjects();

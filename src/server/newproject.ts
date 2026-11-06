@@ -309,6 +309,12 @@ export class NewProjects {
 		if (!run) return { ok: false, reason: "Not found" };
 		if (this.running.has(id) || !["failed", "baseline"].includes(run.step))
 			return { ok: false, reason: "This project isn't in a state that can be removed." };
+		const open =
+			run.projectSlug &&
+			this.store.db
+				.prepare("SELECT 1 FROM work_orders WHERE project = ? AND state NOT IN ('done', 'closed') LIMIT 1")
+				.get(run.projectSlug);
+		if (open) return { ok: false, reason: "This project has open work orders. Close them first." };
 		for (const item of run.created) {
 			if (item.startsWith("repo:")) {
 				const res = await this.cli("gh", ["repo", "delete", item.slice(5), "--yes"]);

@@ -444,19 +444,25 @@ function WorkOrderPage({
 						<Button
 							variant="primary"
 							grow
-							disabled={answer.pending}
+							disabled={answer.pending || (!options.length && !answerNote.trim())}
 							onClick={() =>
-								void answer.run({
-									answer: picked,
-									note: answerNote.trim() || null,
-									stop: !!options.find((o) => o.label === picked)?.stop,
-								})
+								void answer.run(
+									// An open question has no options, so what you typed is the answer.
+									options.length
+										? {
+												answer: picked,
+												note: answerNote.trim() || null,
+												stop: !!options.find((o) => o.label === picked)?.stop,
+											}
+										: { answer: answerNote.trim(), note: null, stop: false },
+								)
 							}
 						>
 							Answer
 						</Button>
 						<Failed verb="send" error={answer.error} />
 						{openInT3}
+						{closeControl}
 					</>
 				);
 			case "failed":
@@ -487,11 +493,16 @@ function WorkOrderPage({
 					</>
 				);
 			case "in_t3":
-				return wo.threadLink ? (
-					<ButtonOut href={wo.threadLink} variant="primary" grow>
-						Open in T3
-					</ButtonOut>
-				) : null;
+				return (
+					<>
+						{wo.threadLink && (
+							<ButtonOut href={wo.threadLink} variant="primary" grow>
+								Open in T3
+							</ButtonOut>
+						)}
+						{closeControl}
+					</>
+				);
 			case "ready":
 				return (
 					<>
@@ -636,21 +647,23 @@ function WorkOrderPage({
 					{wo.question.detail && (
 						<p className="m-0 text-text-muted [overflow-wrap:anywhere]">{wo.question.detail}</p>
 					)}
-					<fieldset className="m-0 flex flex-col border-0 p-0">
-						<legend className="section-label mb-1 p-0">Your answer</legend>
-						{options.map((o) => (
-							<Choice
-								key={o.label}
-								type="radio"
-								name="answer"
-								title={o.label}
-								description={o.detail}
-								checked={picked === o.label}
-								onChange={() => setPick(o.label)}
-							/>
-						))}
-					</fieldset>
-					<Field label="Add a note (optional)">
+					{options.length > 0 && (
+						<fieldset className="m-0 flex flex-col border-0 p-0">
+							<legend className="section-label mb-1 p-0">Your answer</legend>
+							{options.map((o) => (
+								<Choice
+									key={o.label}
+									type="radio"
+									name="answer"
+									title={o.label}
+									description={o.detail}
+									checked={picked === o.label}
+									onChange={() => setPick(o.label)}
+								/>
+							))}
+						</fieldset>
+					)}
+					<Field label={options.length ? "Add a note (optional)" : "Your answer"}>
 						{(p) => (
 							<textarea {...p} rows={2} value={answerNote} onChange={(e) => setAnswerNote(e.target.value)} />
 						)}

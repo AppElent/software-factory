@@ -136,7 +136,12 @@ const steps = {
 				hasCommit = true;
 			} catch {}
 		}
-		if (hasCommit) return;
+		if (hasCommit) {
+			// The commit is here, but the push that followed it may be what failed.
+			run("git", ["branch", "-M", "main"]);
+			run("git", ["push", "-u", "origin", "main"]);
+			return;
+		}
 		TEMPLATES[template]?.();
 		write("README.md", `# ${name}\n\n${description}\n`);
 		write(".gitignore", "node_modules\ndist\n.env*\n");
