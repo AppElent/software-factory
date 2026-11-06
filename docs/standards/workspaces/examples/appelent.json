@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "workspace": {
+    "backend": {
+      "mode": "none",
+      "project": "team:replace-project",
+      "expiration": "in 5 days",
+      "scopedCredential": false,
+      "push": false
+    },
+    "install": false,
+    "buildScripts": [],
+    "outputs": {
+      "rootEnv": ".env.local",
+      "mobileEnv": "apps/mobile/.env.local",
+      "mobileUrlName": "EXPO_PUBLIC_CONVEX_URL"
+    },
+    "ports": {
+      "web": 3000,
+      "mobile": 8081
+    }
+  }
+}

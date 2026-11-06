@@ -1,0 +1,74 @@
+# Adapt before use: APP_NAME, the staging Wrangler environment (or drop the
+# staging branch of each expression), extra VITE_* values and post-deploy
+# steps such as seeds. Pairs with environments.md (the GitHub Environments and
+# their values) and the CI workflow, which must accept `workflow_call`.
+name: Deploy
+
+# Merge to main -> staging (or production when there is no staging).
+# Manual "Run workflow" -> production, from main only.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never cancel a deploy mid-flight; queue behind the previous one instead.
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  # Required checks can be bypassed by admins, so check again before shipping.
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions: { contents: read }
+
+  deploy:
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
+    permissions: { contents: read }
+    env:
+      # Every value is scoped to the GitHub Environment; this file names each
+      # once and never selects between environments with expressions.
+      ENVIRONMENT_NAME: ${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+      VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      # wrangler.jsonc: top-level = APP_NAME (production), env.staging = APP_NAME-staging.
+      WRANGLER_ARGS: ${{ github.event_name == 'workflow_dispatch' && ' ' || '--env staging' }}
+    steps:
+      - name: Guard production ref
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Production deploys run from main only (got ${GITHUB_REF})."
+          exit 1
+
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      # An Environment without its own CONVEX_DEPLOY_KEY silently inherits a
+      # repo-level one (often the preview key), so check the prefix first.
+      - name: Check environment
+        run: |
+          case "$CONVEX_DEPLOY_KEY" in
+            prod:*) ;;
+            *) echo "::error::CONVEX_DEPLOY_KEY in the $ENVIRONMENT_NAME Environment is missing or not a prod: key."; exit 1 ;;
+          esac
+          node scripts/env.mjs check "$ENVIRONMENT_NAME" --ci
+
+      # The deploy key alone picks the Convex deployment, which exposes its URL
+      # to --cmd as $CONVEX_URL; the build reads VITE_CONVEX_URL.
+      - name: Convex deploy + build
+        run: |
+          pnpm exec convex deploy \
+            --cmd-url-env-var-name CONVEX_URL \
+            --cmd "VITE_CONVEX_URL=\$CONVEX_URL pnpm build"
+
+      - name: Deploy Worker
+        run: pnpm exec wrangler deploy $WRANGLER_ARGS

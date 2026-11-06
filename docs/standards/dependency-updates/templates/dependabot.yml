@@ -1,0 +1,57 @@
+# Dependabot handles security fixes and routine minor/patch bumps. Majors and
+# SDK-aligned packages go through the dependency-upgrade runbook.
+version: 2
+updates:
+  - package-ecosystem: npm # also pnpm
+    directories: ["/"] # list every workspace package directory
+    schedule: { interval: weekly, day: monday }
+    # Must stay >= minimumReleaseAge in pnpm-workspace.yaml.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message: { prefix: "chore(deps)" }
+    labels: [dependencies]
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+      prod-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+    # Every ignore names update-types: a bare dependency-name ignore would also
+    # block security updates.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Expo projects: versions pinned by the SDK; upgrade with `expo install --fix`.
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "jest-expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "react-native-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "@react-native/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      # Add each package listed in patchedDependencies.
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: monthly }
+    commit-message: { prefix: "chore(ci)" }
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

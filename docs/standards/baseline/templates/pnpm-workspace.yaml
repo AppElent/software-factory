@@ -1,0 +1,36 @@
+# Copy to pnpm-workspace.yaml. Keep every comment true for this app: an entry
+# without a reason is removed at the next review.
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Supply-chain cooldown: refuse versions published less than 3 days ago, the
+# window in which most hijacked releases are caught and unpublished.
+minimumReleaseAge: 4320
+# Exempt a package only with a dated reason; remove it once the version ages out.
+# minimumReleaseAgeExclude:
+#   - some-package # 2026-11-01: security fix not yet 3 days old
+
+# pnpm 11 build-script ledger. Scripts are denied by default, and an install
+# with an unlisted script fails with ERR_PNPM_IGNORED_BUILDS. `true` only for
+# packages that compile or download a binary the app uses; keep only entries
+# the lockfile actually contains.
+allowBuilds:
+  esbuild: true # bundler binary
+  workerd: true # Cloudflare Workers runtime for wrangler and the Vite plugin
+  "@clerk/shared": false # postinstall is a telemetry notice
+  core-js: false # postinstall is a sponsorship notice
+  bufferutil: false # optional `ws` accelerator; falls back to JS
+  utf-8-validate: false # optional `ws` accelerator; falls back to JS
+  browser-tabs-lock: false # postinstall prints a notice (via @clerk/expo)
+  dtrace-provider: false # EAS CLI's optional tracing; JS fallback is enough
+  protobufjs: false # postinstall only checks version notation
+  unrs-resolver: false # optional platform package supplies the binary
+
+# Expo's fingerprint hashes paths under node_modules/.pnpm, whose length
+# defaults to 60 on Windows and 120 elsewhere. Pin it so a local build and the
+# EAS builder compute the same runtime version.
+virtualStoreDirMaxLength: 60
+
+# Install before `pnpm run <script>` when node_modules is stale.
+verifyDepsBeforeRun: install

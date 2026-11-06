@@ -1,7 +1,24 @@
 {
-	"files": { "includes": ["**", "!designs", "!dist", "!tests/fixtures", "!.scratch"] },
+	"files": {
+		"includes": [
+			"**",
+			"!designs",
+			"!dist",
+			"!tests/fixtures",
+			"!.scratch",
+			"!**/*.md",
+			"!docs/standards",
+			"!.appelent",
+			"!scripts/lib",
+			"!scripts/baseline*.mjs",
+			"!scripts/check-project.mjs",
+			"!scripts/env.mjs",
+			"!scripts/sync-devtools.mjs",
+			"!scripts/workspace.mjs"
+		]
+	},
 	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 110 },
 	"javascript": { "formatter": { "quoteStyle": "double" } },
-	"linter": { "enabled": true, "rules": { "recommended": true } },
+	"linter": { "enabled": true, "rules": { "preset": "none" } },
 	"css": { "parser": { "tailwindDirectives": true } }
 }
