@@ -134,14 +134,22 @@ export function Button({ variant = "secondary", grow, className, type = "button"
 	return <button type={type} className={buttonClass(variant, grow, className)} {...rest} />;
 }
 
+/** `Link` props, with `params` spelled out: wrapping `Link` loses the route's own params type. */
+type LinkProps = Omit<ComponentProps<typeof Link>, "params"> & { params?: Record<string, string> };
+
 /** A button that navigates inside the app. Pass TanStack `to`, `params`, `search`. */
 export function ButtonLink({
 	variant = "secondary",
 	grow,
 	className,
 	...rest
-}: ComponentProps<typeof Link> & { variant?: ButtonVariant; grow?: boolean }) {
-	return <Link className={buttonClass(variant, grow, className as string | undefined)} {...rest} />;
+}: LinkProps & { variant?: ButtonVariant; grow?: boolean }) {
+	return (
+		<Link
+			className={buttonClass(variant, grow, className as string | undefined)}
+			{...(rest as ComponentProps<typeof Link>)}
+		/>
+	);
 }
 
 /** A button that opens something outside the app, such as GitHub or T3. */
@@ -154,8 +162,13 @@ export function ButtonOut({
 	return <a target="_blank" rel="noreferrer" className={buttonClass(variant, grow, className)} {...rest} />;
 }
 
-export function Lnk({ muted, className, ...rest }: ComponentProps<typeof Link> & { muted?: boolean }) {
-	return <Link className={cx("lnk", muted && "lnk-muted", className as string | undefined)} {...rest} />;
+export function Lnk({ muted, className, ...rest }: LinkProps & { muted?: boolean }) {
+	return (
+		<Link
+			className={cx("lnk", muted && "lnk-muted", className as string | undefined)}
+			{...(rest as ComponentProps<typeof Link>)}
+		/>
+	);
 }
 
 export function LnkOut({ muted, className, ...rest }: ComponentProps<"a"> & { muted?: boolean }) {
@@ -442,6 +455,7 @@ export function ConfirmDialog({
 	pending,
 	error,
 	width = 480,
+	extra,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -449,14 +463,18 @@ export function ConfirmDialog({
 	description?: ReactNode;
 	children?: ReactNode;
 	cancel?: string;
-	action: ReactNode;
+	/** Leave it out when the dialog only explains why something can't happen. */
+	action?: ReactNode;
 	actionVariant?: ButtonVariant;
-	onAction: () => void;
+	onAction?: () => void;
 	pending?: boolean;
 	error?: ReactNode;
 	width?: number;
+	/** More buttons, shown between Cancel and the action. */
+	extra?: ReactNode;
 }) {
 	const cancelRef = useRef<HTMLButtonElement>(null);
+	const opener = useRef<HTMLElement | null>(null);
 	return (
 		<AlertDialog.Root open={open} onOpenChange={onOpenChange}>
 			<AlertDialog.Portal>
@@ -466,7 +484,12 @@ export function ConfirmDialog({
 						style={{ maxWidth: width }}
 						onOpenAutoFocus={(e) => {
 							e.preventDefault();
+							opener.current = document.activeElement as HTMLElement | null;
 							cancelRef.current?.focus();
+						}}
+						onCloseAutoFocus={(e) => {
+							e.preventDefault();
+							if (opener.current?.isConnected) opener.current.focus();
 						}}
 					>
 						<AlertDialog.Title className="m-0 text-detail-title">{title}</AlertDialog.Title>
@@ -482,9 +505,12 @@ export function ConfirmDialog({
 							<AlertDialog.Cancel asChild>
 								<Button ref={cancelRef}>{cancel}</Button>
 							</AlertDialog.Cancel>
-							<Button variant={actionVariant} disabled={pending} onClick={onAction}>
-								{action}
-							</Button>
+							{extra}
+							{action && (
+								<Button variant={actionVariant} disabled={pending} onClick={onAction}>
+									{action}
+								</Button>
+							)}
 						</div>
 					</AlertDialog.Content>
 				</AlertDialog.Overlay>
@@ -506,11 +532,24 @@ export function FormDialog({
 	children: ReactNode;
 	width?: number;
 }) {
+	const opener = useRef<HTMLElement | null>(null);
+	// Read while rendering the open: a field inside takes focus before onOpenAutoFocus would run.
+	const wasOpen = useRef(false);
+	if (open && !wasOpen.current) opener.current = document.activeElement as HTMLElement | null;
+	wasOpen.current = open;
 	return (
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>
 			<Dialog.Portal>
 				<Dialog.Overlay className={OVERLAY}>
-					<Dialog.Content className={DIALOG} style={{ maxWidth: width }} aria-describedby={undefined}>
+					<Dialog.Content
+						className={DIALOG}
+						style={{ maxWidth: width }}
+						aria-describedby={undefined}
+						onCloseAutoFocus={(e) => {
+							e.preventDefault();
+							if (opener.current?.isConnected) opener.current.focus();
+						}}
+					>
 						<Dialog.Title className="m-0 text-detail-title">{title}</Dialog.Title>
 						{children}
 					</Dialog.Content>
@@ -611,12 +650,15 @@ export function Histogram({
 	spike,
 	height = 48,
 	unit = "",
+	tip,
 }: {
 	values: number[];
 	label: string;
 	spike?: (v: number, i: number) => boolean;
 	height?: number;
 	unit?: string;
+	/** The title for one bar, when "3m" alone doesn't say enough. */
+	tip?: (v: number, i: number) => string;
 }) {
 	const max = Math.max(1, ...values);
 	return (
@@ -625,7 +667,7 @@ export function Histogram({
 				<span
 					// biome-ignore lint/suspicious/noArrayIndexKey: bars are positional.
 					key={i}
-					title={`${v}${unit}`}
+					title={tip ? tip(v, i) : `${v}${unit}`}
 					className={cx("flex-[1_1_0] rounded-t-[2px]", spike?.(v, i) ? "bg-status-fail" : "bg-border-input")}
 					style={{ height: Math.max(2, Math.round((v / max) * height)) }}
 				/>
@@ -635,25 +677,48 @@ export function Histogram({
 }
 
 /** Seven stages with the current step. */
-export function StageTrack({ current, label = "Stage" }: { current: Stage; label?: string }) {
+export function StageTrack({
+	current,
+	glyph = "run",
+	label = "Stages",
+}: {
+	current: Stage;
+	/** The current step's glyph, matching the work order's status line. */
+	glyph?: GlyphKind;
+	label?: string;
+}) {
 	const at = STAGES.indexOf(current);
 	return (
-		<ol aria-label={label} className="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0">
+		<ol
+			aria-label={label}
+			className="m-0 grid list-none grid-cols-[repeat(7,minmax(84px,1fr))] overflow-x-auto rounded-sm border border-solid border-border-subtle p-0"
+		>
 			{STAGES.map((s, i) => (
 				<li
 					key={s}
 					aria-current={i === at ? "step" : undefined}
 					className={cx(
-						"flex items-center gap-1.5",
-						i === at ? "font-semibold" : i > at && "text-text-muted",
+						"flex min-h-control items-center gap-2 px-3",
+						i > 0 && "border-0 border-s border-solid border-border-subtle",
+						i === at && "bg-bg-raised font-semibold",
+						i > at && "text-text-muted",
 					)}
 				>
-					<Glyph kind={i < at ? "pass" : i === at ? "run" : "idle"} size={14} />
-					{s}
+					<Glyph kind={i < at ? "pass" : i === at ? glyph : "idle"} size={14} />
+					<span>{s}</span>
 				</li>
 			))}
 		</ol>
 	);
+}
+
+/** Re-renders on an interval, so ages on a page left open stay true. */
+export function useTick(ms = 30_000) {
+	const [, setTick] = useState(0);
+	useEffect(() => {
+		const t = setInterval(() => setTick((n) => n + 1), ms);
+		return () => clearInterval(t);
+	}, [ms]);
 }
 
 /** `No results` and other centered panels. */

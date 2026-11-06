@@ -1289,7 +1289,7 @@ Strings in logic:
 (shell: 2 of 3 agents working · Synced 1m ago; footer Stop the line)
 Health
 3 work orders so far |
-Too little data to trust yet | Numbers show after 10 finished work orders, because 3 runs can swing from 100% to 33% on one failure. 7 to go.
+Too little data to trust yet | Numbers show after 10 finished work orders, because 3 runs can swing from 100% to 67% on one failure. 7 to go.
 [See finished work orders] → FloorBoard
 Shipped | 3 | so far
 First-try | – | Not enough runs

@@ -5,6 +5,7 @@ import type {
 	ErrorItem,
 	FloorResponse,
 	HealthResponse,
+	ProjectDetail,
 	QueueItem,
 	QueueResponse,
 	ShellResponse,
@@ -40,7 +41,7 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 			queue: queue.length,
 			floor,
 			prs: store.prs().length,
-			errors: store.errors().length,
+			errors: store.errors().filter((e) => e.triage?.action !== "dismiss").length,
 			projects: projects.length,
 		},
 		agents: { working: limits.build, limit: limits.agents },
@@ -290,9 +291,22 @@ export function readFloor(store: Store, engine: Engine, project?: string): Floor
 	const week = merged.filter((w) => w.mergedAt && Date.parse(w.mergedAt) >= weekAgo);
 	const firstTry = week.filter((w) => w.firstTry).length;
 	const limits = engine.limits();
+	// An untriaged error first seen after a change shipped to the same project is traced to that change.
+	const observeErrors = new Map<string, ErrorItem>();
+	const causedErrors: Record<number, number> = {};
+	const openErrors = store.errors(project).filter((e) => !e.triage);
+	for (const w of columns.Observe) {
+		if (!w.mergedAt) continue;
+		const shipped = Date.parse(w.mergedAt);
+		const caused = openErrors.filter((e) => e.project === w.project && Date.parse(e.firstSeen) >= shipped);
+		causedErrors[w.id] = caused.length;
+		for (const e of caused) observeErrors.set(e.id, e);
+	}
 	return {
 		projects: store.projects().map((p) => ({ slug: p.slug, name: p.name })),
 		columns,
+		observeErrors: [...observeErrors.values()],
+		causedErrors,
 		limits,
 		line: store.line(),
 		summary: {
@@ -317,6 +331,17 @@ function medianToPr(store: Store, list: WorkOrder[]): number | null {
 		.all() as Array<{ created_at: string; pr_opened_at: string }>;
 	const m = median(rows.map((r) => (Date.parse(r.pr_opened_at) - Date.parse(r.created_at)) / 60_000));
 	return m === null ? null : Math.round(m);
+}
+
+/** A project's record over the last 30 days, for its page. */
+export function readProjectRecord(store: Store, slug: string): ProjectDetail["last30"] {
+	const since = new Date(store.now().getTime() - 30 * 24 * 3_600_000).toISOString();
+	const list = store.workOrders("project = ? AND merged_at >= ?", slug, since);
+	return {
+		shipped: list.length,
+		firstTry: list.filter((w) => w.firstTry).length,
+		medianToPrMinutes: medianToPr(store, list),
+	};
 }
 
 export function readHealth(store: Store, days = 14): HealthResponse {
@@ -358,10 +383,22 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 		});
 	}
 	const first = merged.filter((w) => w.firstTry).length;
+	const dayMs = 24 * 3_600_000;
+	const inWindow = merged.filter((w) => (w.mergedAt ?? "") >= (daily[0]?.day ?? ""));
+	const previousStart = new Date(Date.parse(daily[0]?.day ?? "") - days * dayMs).toISOString().slice(0, 10);
+	const previous = merged.filter(
+		(w) => (w.mergedAt ?? "") >= previousStart && (w.mergedAt ?? "") < (daily[0]?.day ?? ""),
+	);
 	return {
 		finished: merged.length,
 		byType,
 		daily,
+		window: {
+			shipped: inWindow.length,
+			firstTry: inWindow.filter((w) => w.firstTry).length,
+			medianToPrMinutes: medianToPr(store, inWindow),
+			previousMedianToPrMinutes: medianToPr(store, previous),
+		},
 		totals: {
 			shipped: merged.length,
 			firstTryPct: merged.length ? Math.round((first / merged.length) * 100) : null,

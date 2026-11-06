@@ -128,6 +128,8 @@ export interface Project {
 	pushedAt: string | null;
 	addedAt: string;
 	readAt: string | null;
+	/** When work the factory merged last finished shipping. No deploy connector exists, so nothing else feeds it. */
+	lastDeployAt: string | null;
 	openPrs: number;
 	openErrors: number;
 	openWorkOrders: number;
@@ -210,6 +212,8 @@ export interface ErrorItem {
 export interface ErrorDetail extends ErrorItem {
 	stack: StackFrame[];
 	likelySource: string | null;
+	/** PRs in the release it first appeared in. Empty until a connector can say. */
+	releasePrs: Array<{ number: number; title: string; url: string; additions: number; deletions: number }>;
 }
 
 export interface TriageState {
@@ -316,6 +320,10 @@ export interface ShellResponse {
 export interface FloorResponse {
 	projects: Array<{ slug: string; name: string }>;
 	columns: Record<Stage, WorkOrder[]>;
+	/** Errors first seen after a work order in Observe shipped to the same project. */
+	observeErrors: ErrorItem[];
+	/** How many such errors each work order in Observe caused, by id. */
+	causedErrors: Record<number, number>;
 	limits: Limits;
 	line: { stopped: boolean; stoppedAt: string | null };
 	summary: { shippedThisWeek: number; firstTryPct: number | null; medianToPrMinutes: number | null };
@@ -335,6 +343,7 @@ export interface ProjectDetail extends Project {
 	shipped: WorkOrder[];
 	main: MainBranchState | null;
 	blockedRemove: "open_work" | "last_project" | null;
+	last30: { shipped: number; firstTry: number; medianToPrMinutes: number | null };
 }
 
 export interface WorkTypeHealth {
@@ -365,6 +374,13 @@ export interface HealthResponse {
 		firstTryPct: number | null;
 		medianToPrMinutes: number | null;
 		regressions: number;
+	};
+	/** The asked-for window, and the median from the window before it. */
+	window: {
+		shipped: number;
+		firstTry: number;
+		medianToPrMinutes: number | null;
+		previousMedianToPrMinutes: number | null;
 	};
 }
 

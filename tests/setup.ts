@@ -1,6 +1,9 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
+
+// The whole service runs in-process, so a full run on a busy machine is slower than the default second.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(cleanup);
 

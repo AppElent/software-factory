@@ -56,7 +56,7 @@ const errors = createRoute({
 	getParentRoute: () => shell,
 	path: "/errors",
 	component: ErrorsScreen,
-	validateSearch: projectFilter,
+	validateSearch: projectFilter.extend({ dismissed: z.string().optional() }),
 });
 const errorDetail = createRoute({
 	getParentRoute: () => shell,

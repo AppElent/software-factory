@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, extname, join, normalize, resolve } from "node:path";
 import { backup } from "node:sqlite";
 import { Hono } from "hono";
@@ -32,7 +33,7 @@ import { ActionError } from "./engine.ts";
 import { NewProjects, type ScaffoldRunner, TEMPLATES } from "./newproject.ts";
 import type { Notifier } from "./notify.ts";
 import type { Poller } from "./poller.ts";
-import { readFloor, readHealth, readQueue, readShell, triageBaseline } from "./read.ts";
+import { readFloor, readHealth, readProjectRecord, readQueue, readShell, triageBaseline } from "./read.ts";
 import { CSP, guard, SESSION_HEADER } from "./security.ts";
 import type { Store } from "./store.ts";
 
@@ -140,9 +141,14 @@ export function createApp(d: AppDeps): Hono {
 		audit(store.db, "add project", repo, "you", null, store.now());
 		bus.publish(["shell", "projects", "queue"]);
 		poller.soon();
-		poller.soonSentry();
+		// The demo has no Sentry to read, and a read would replace its sample errors.
+		if (!config.demo) poller.soonSentry();
 		return slug;
 	}
+
+	/** For showing a path. The page never sends it back. */
+	const shortPath = (path: string | null) =>
+		path?.startsWith(`${homedir()}/`) ? `~${path.slice(homedir().length)}` : path;
 
 	const findFolder = (repo: string, cloneFolder: string) => {
 		const path = join(cloneFolder, repo.split("/")[1] ?? "");
@@ -175,7 +181,7 @@ export function createApp(d: AppDeps): Hono {
 						name,
 						pushedAt: r.pushedAt,
 						isPrivate: r.isPrivate,
-						localPath: findFolder(r.repo, cloneFolder),
+						localPath: shortPath(findFolder(r.repo, cloneFolder)),
 						added: added.has(r.repo.toLowerCase()),
 					};
 				})
@@ -185,6 +191,22 @@ export function createApp(d: AppDeps): Hono {
 		};
 		kvSet(store.db, "skipped_repos", skipped.length);
 		return c.json(res);
+	});
+
+	app.post("/api/repos/clone", async (c) => {
+		const { repo } = await body(c.req, z.object({ repo: z.string() }));
+		if (!REPO_RE.test(repo)) throw new ActionError("That isn't a GitHub repo.", 400);
+		const { cloneFolder } = store.settings().projects;
+		const dest = join(cloneFolder, repo.split("/")[1] ?? "");
+		// The rule check comes before the clone.
+		const { kept } = applyNeverTouch(store.neverTouch(), [{ repo, path: dest }]);
+		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
+		const found = findFolder(repo, cloneFolder);
+		if (found) return c.json({ ok: true, path: shortPath(found) });
+		const res = await cloneRepo(cli, repo, dest);
+		audit(store.db, "clone repo", repo, "you", res.code === 0 ? null : res.stderr, store.now());
+		if (res.code !== 0) throw new ActionError(scrub(res.stderr.trim()) || "The clone failed.", 502);
+		return c.json({ ok: true, path: shortPath(dest) });
 	});
 
 	app.post("/api/projects", async (c) => {
@@ -225,14 +247,22 @@ export function createApp(d: AppDeps): Hono {
 	app.get("/api/reading", (c) => {
 		const projects = store.projects().map((p) => {
 			const read = !!p.readAt;
-			const parts = [`${p.openPrs} ${p.openPrs === 1 ? "PR" : "PRs"}`];
-			if (p.sentryProject) parts.push(`${p.openErrors} ${p.openErrors === 1 ? "error" : "errors"}`);
+			const parts = [`${p.openPrs} open ${p.openPrs === 1 ? "PR" : "PRs"}`];
+			if (p.sentryProject) {
+				parts.push(
+					p.openErrors === 0
+						? "no errors"
+						: `${p.openErrors} production ${p.openErrors === 1 ? "error" : "errors"}`,
+				);
+			}
+			if (p.toolkit.status === "current") parts.push("toolkit current");
+			if (p.toolkit.status === "behind") parts.push("toolkit behind");
 			return {
 				slug: p.slug,
 				name: p.name,
 				state: read ? ("done" as const) : ("reading" as const),
-				summary: read ? parts.join(", ") : "Reading…",
-				warning: read && !p.sentryProject ? "No Sentry project linked." : null,
+				summary: read ? parts.join(" · ") : "Reading open PRs",
+				warning: read && !p.sentryProject ? `${p.name} has no Sentry project linked` : null,
 			};
 		});
 		const res: ReadingResponse = {
@@ -267,6 +297,7 @@ export function createApp(d: AppDeps): Hono {
 			shipped,
 			main: store.main(slug),
 			blockedRemove: blockedRemove(slug, open.length),
+			last30: readProjectRecord(store, slug),
 		};
 		return c.json(res);
 	});
@@ -405,6 +436,20 @@ export function createApp(d: AppDeps): Hono {
 		kvSet(store.db, "visit_state", { back, firstLook: !!state.firstLookPending });
 		kvSet(store.db, "visit_flags", {});
 		kvSet(store.db, "last_seen", store.iso());
+		return c.json({ ok: true });
+	});
+
+	/** `Check again` on a failing source. Demo mode never runs a connector. */
+	app.post("/api/sources/check", async (c) => {
+		if (!config.demo) {
+			const failing = store.health().filter((h) => !h.ok);
+			await Promise.all(
+				failing.map((h) =>
+					h.source === "GitHub" ? poller.readGithub() : h.source === "Sentry" ? poller.readSentry() : null,
+				),
+			);
+		}
+		bus.publish(["queue", "shell"]);
 		return c.json({ ok: true });
 	});
 
@@ -644,14 +689,17 @@ export function createApp(d: AppDeps): Hono {
 
 	/* ---------- errors ---------- */
 
+	/** A dismissed error stays gone until it gets worse. A snoozed one still shows, as Snoozed. */
+	const isOpen = (e: { triage: { action: string } | null }) => e.triage?.action !== "dismiss";
+
 	app.get("/api/errors", (c) => {
 		const project = c.req.query("project") || undefined;
 		const projects = store.projects();
 		return c.json({
-			errors: store.errors(project),
+			errors: store.errors(project).filter(isOpen),
 			checkedAt: store.health().find((h) => h.source === "Sentry")?.lastOk ?? null,
 			withoutSentry: projects.filter((p) => !p.sentryProject).length,
-			quiet: projects.filter((p) => p.sentryProject && p.openErrors === 0).length,
+			quiet: projects.filter((p) => p.sentryProject && !store.errors(p.slug).some(isOpen)).length,
 		});
 	});
 
@@ -662,7 +710,12 @@ export function createApp(d: AppDeps): Hono {
 			detail: string | null;
 		};
 		const detail = row.detail ? JSON.parse(row.detail) : null;
-		return { ...e, stack: detail?.stack ?? [], likelySource: detail?.likelySource ?? null };
+		return {
+			...e,
+			stack: detail?.stack ?? [],
+			likelySource: detail?.likelySource ?? null,
+			releasePrs: detail?.releasePrs ?? [],
+		};
 	}
 
 	app.get("/api/errors/:id", (c) => {
@@ -771,7 +824,8 @@ export function createApp(d: AppDeps): Hono {
 			c.req,
 			z.object({ cloneFolder: z.string().min(1), neverTouch: z.array(z.string().min(1)) }),
 		);
-		kvSet(store.db, "settings:cloneFolder", next.cloneFolder);
+		// Paths from here go straight to git and the file system, which don't expand a typed ~.
+		kvSet(store.db, "settings:cloneFolder", next.cloneFolder.replace(/^~(?=$|\/)/, homedir()));
 		writeNeverTouch(config.dataDir, next.neverTouch);
 		audit(store.db, "change never touch rules", `${next.neverTouch.length} rules`, "you", null, store.now());
 		bus.publish(["settings", "projects", "queue", "floor", "prs", "errors", "shell"]);

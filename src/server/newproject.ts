@@ -156,6 +156,8 @@ export class NewProjects {
 				line.detail = result.detail;
 				run.failure = result.detail ?? `${LABELS[step](run)} failed.`;
 				run.step = step === "baseline" ? "baseline" : "failed";
+				// The template built, so the project exists and an agent can be given the fix.
+				if (step === "baseline") run.projectSlug = this.addProject(run.repo, run.localPath);
 				this.save(run);
 				return;
 			}

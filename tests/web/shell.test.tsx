@@ -15,12 +15,13 @@ describe("shell", () => {
 	it("stops the line through the confirm dialog, with focus starting on Cancel", async () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/floor");
-		await user.click(await screen.findByRole("button", { name: "Stop the line" }));
+		const nav = screen.getByRole("navigation", { name: "Main" });
+		await user.click(await within(nav).findByRole("button", { name: "Stop the line" }));
 		const dialog = await screen.findByRole("alertdialog", { name: "Stop the line?" });
 		await waitFor(() => expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus());
 		await user.click(within(dialog).getByRole("button", { name: "Stop the line" }));
 		await waitFor(() => expect(h.mutations).toContain('POST /api/line {"stopped":true}'));
-		expect(await screen.findByRole("button", { name: "Restart the line" })).toBeInTheDocument();
+		expect(await within(nav).findByRole("button", { name: "Restart the line" })).toBeInTheDocument();
 	});
 
 	it("keeps the description and shows the error when a new work order fails", async () => {

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { TriageRecord } from "../shared/rules.ts";
-import { applyNeverTouch, noGates } from "../shared/rules.ts";
+import { applyNeverTouch, noGates, triageHides } from "../shared/rules.ts";
 import type {
 	ActivityEntry,
 	AgentSettings,
@@ -145,6 +145,13 @@ export class Store {
 			pushedAt: r.pushed_at,
 			addedAt: r.added_at,
 			readAt: r.read_at,
+			lastDeployAt: (
+				this.db
+					.prepare(
+						"SELECT MAX(merged_at) at FROM work_orders WHERE project = ? AND state IN ('observing', 'done')",
+					)
+					.get(r.slug) as { at: string | null }
+			).at,
 			openPrs: count("SELECT COUNT(*) n FROM prs WHERE project = ?", r.slug),
 			openErrors: count("SELECT COUNT(*) n FROM errors WHERE project = ?", r.slug),
 			openWorkOrders: count(
@@ -209,7 +216,12 @@ export class Store {
 		}>;
 		return rows
 			.filter((r) => visible.has(r.project) && (!project || r.project === project))
-			.map((r) => this.decorateError(JSON.parse(r.json), visible.get(r.project)?.name ?? r.project))
+			.map((r) =>
+				this.decorateError(
+					{ ...JSON.parse(r.json), project: r.project },
+					visible.get(r.project)?.name ?? r.project,
+				),
+			)
 			.sort((a, b) => b.users - a.users || Date.parse(a.firstSeen) - Date.parse(b.firstSeen));
 	}
 
@@ -224,7 +236,12 @@ export class Store {
 				`SELECT id FROM work_orders WHERE fingerprint = ? AND ${OPEN_FILTER} AND stage NOT IN ('Observe')`,
 			)
 			.get(fp) as { id: number } | undefined;
-		return { ...e, projectName, workOrderId: open?.id ?? null, triage: this.triage(fp) };
+		// A snooze that woke, or a dismissal that got worse, no longer counts as triaged.
+		const rec = this.triageRecord(fp);
+		const held =
+			rec &&
+			triageHides(rec, { events: e.events, users: e.users, release: e.firstRelease }, this.now().getTime());
+		return { ...e, projectName, workOrderId: open?.id ?? null, triage: held ? this.triage(fp) : null };
 	}
 
 	/* ---------- triage ---------- */

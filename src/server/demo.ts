@@ -1,11 +1,14 @@
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { Hono } from "hono";
 import { z } from "zod";
-import { mapGates, noGates, prGroup } from "../shared/rules.ts";
+import { mapGates, noGates, prGroup, snoozeUntil } from "../shared/rules.ts";
 import type {
 	CheckRun,
 	ErrorItem,
 	Gates,
 	MainBranchState,
+	NewProjectRun,
 	Plan,
 	PullRequest,
 	Stage,
@@ -15,11 +18,12 @@ import type {
 } from "../shared/types.ts";
 import type { Bus } from "./bus.ts";
 import type { Cli } from "./cli.ts";
+import { writeNeverTouch } from "./config.ts";
 import { kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import { FakeExecutor } from "./executor/fake.ts";
 import type { ThreadState } from "./executor/types.ts";
-import type { ScaffoldRunner } from "./newproject.ts";
+import { SCAFFOLD_STEPS, type ScaffoldRunner } from "./newproject.ts";
 import type { Store } from "./store.ts";
 
 /** Sample data for checking screens. Public, invented names only, and no connector ever runs in this mode. */
@@ -34,7 +38,7 @@ class DemoExecutor extends FakeExecutor {
 		const t = this.threads.get(threadId);
 		if (t) return t.state;
 		return {
-			status: "running",
+			status: threadId === "demo:waiting" ? "waiting_native" : "running",
 			link: "https://t3.example/thread",
 			branch: null,
 			worktree: null,
@@ -79,6 +83,23 @@ const demoCli: Cli = async (cmd, args) => {
 					isArchived: false,
 				})),
 			),
+		);
+	}
+	if (cmd === "gh" && args[0] === "repo" && args[1] === "clone") {
+		mkdirSync(args[3] as string, { recursive: true });
+		return ok();
+	}
+	if (cmd === "gh" && args[0] === "pr" && args[1] === "view" && args[2] === "170") {
+		return ok(
+			JSON.stringify({
+				files: [
+					{
+						path: "packages/scorecards/src/features/shared-rounds/components/round-summary/RoundSummaryCard.integration.test.tsx",
+						additions: 12046,
+						deletions: 9981,
+					},
+				],
+			}),
 		);
 	}
 	if (cmd === "gh" && args[0] === "pr" && args[1] === "view") {
@@ -144,10 +165,14 @@ interface WoSeed {
 	output?: string[];
 	mergedDaysAgo?: number;
 	firstTry?: boolean;
+	/** How long the work order took to open its PR. */
+	toPrMin?: number;
 	regressed?: boolean;
 	fingerprint?: string;
 	source?: object;
 	activity?: Array<[string, string?]>;
+	/** A thread id with its own demo behaviour, or null for a run that never got one. */
+	thread?: string | null;
 }
 
 const PLAN: Plan = {
@@ -174,7 +199,42 @@ const QUESTION = {
 	],
 };
 
+const PR_BODIES: Record<string, string> = {
+	"Update the changelog":
+		"Adds this release's changes to the changelog.\n- Lists the scorecard fixes\n- Follows the approved plan with no changes",
+	"Sync toolkit standards":
+		"Brings this project up to the current developer-tools standards. No app code changed.\n- Replaces 3 local rules with the shared preset\n- Updates the CI workflow to the shared action",
+	"Fix the leaderboard sort": "Sorts the leaderboard by score, highest first.",
+	"Add invoice export": "Adds a button that exports invoices as a CSV file.",
+	"Rename the event model": "Renames Event to Gathering across the data layer.",
+	"Try the new router": "Moves two screens to the new router to see how it feels.",
+	"Course search empty state":
+		"Shows a message and a clear-search action when a course search finds nothing.",
+	"Export your data as JSON":
+		"Adds an export button in settings that downloads all your lists as a JSON file.",
+	"Make the scorecard loader handle courses that were imported from the legacy federation export without any hole data and then re-synced":
+		"Cached rounds now include their holes. Rounds cached before this change refetch once, which can take a moment on a slow connection, so the scorecard shows its loading state until the refetch finishes and then renders exactly as it did before.",
+};
+
 export function installDemo(store: Store) {
+	/** Folders that must exist or go missing for real, inside the demo's own data folder. */
+	const demoFolders = join(store.dataDir, "demo-folders");
+	/** Clones stay in the demo's own folder, so a demo clone never lands in the real clone folder. */
+	const clones = join(store.dataDir, "clones");
+	/** Tools that first run and Settings should find missing or signed out. */
+	let toolFaults: Record<string, "missing" | "signed_out"> = {};
+
+	const prepareRepos = () => {
+		rmSync(clones, { recursive: true, force: true });
+		for (const name of ["fairway", "foundry", "gather"]) {
+			mkdirSync(join(clones, name, ".git"), { recursive: true });
+		}
+		kvSet(store.db, "settings:cloneFolder", clones);
+		// The client-* repos on the demo's GitHub list are skipped before reading, as a real rule would.
+		writeNeverTouch(store.dataDir, ["client-*"]);
+	};
+	prepareRepos();
+
 	const seedProject = (p: ProjectSeed) => {
 		const now = store.now().getTime();
 		const main: MainBranchState = {
@@ -195,7 +255,7 @@ export function installDemo(store: Store) {
 				`${OWNER}/${p.slug}`,
 				p.name,
 				`https://github.com/${OWNER}/${p.slug}`,
-				p.missing ? "/nowhere/on/this/mac" : "/tmp",
+				p.missing ? join(demoFolders, p.slug) : "/tmp",
 				p.paused ? 1 : 0,
 				p.merging ?? "follow",
 				p.noSentry ? null : p.slug,
@@ -219,7 +279,7 @@ export function installDemo(store: Store) {
 			number,
 			title,
 			url: `https://github.com/${OWNER}/${project}/pull/${number}`,
-			body: "",
+			body: PR_BODIES[title] ?? "",
 			isDraft: false,
 			additions: 36,
 			deletions: 3,
@@ -285,6 +345,22 @@ export function installDemo(store: Store) {
 						{ file: "node_modules/react/index.js", line: 901, context: "renderWithHooks", inApp: false },
 					],
 					likelySource: "src/scorecard/load.ts:42",
+					releasePrs: [
+						{
+							number: 92,
+							title: "Share a round with a link",
+							url: `https://github.com/${OWNER}/${project}/pull/92`,
+							additions: 312,
+							deletions: 40,
+						},
+						{
+							number: 93,
+							title: "Cache finished rounds",
+							url: `https://github.com/${OWNER}/${project}/pull/93`,
+							additions: 88,
+							deletions: 12,
+						},
+					],
 				}
 			: null;
 		store.db
@@ -317,8 +393,8 @@ export function installDemo(store: Store) {
 				w.retries ?? 0,
 				w.firstTry === false ? 0 : 1,
 				w.hold ? 1 : 0,
-				w.state === "waiting" ? null : "demo:thread",
-				w.state === "waiting" ? null : "https://t3.example/thread",
+				w.state === "waiting" || w.thread === null ? null : (w.thread ?? "demo:thread"),
+				w.state === "waiting" || w.thread === null ? null : "https://t3.example/thread",
 				`factory/wo-${w.title.length}-demo`,
 				`~/Developer/.worktrees/${w.project}/factory-wo`,
 				w.prNumber ?? null,
@@ -327,7 +403,7 @@ export function installDemo(store: Store) {
 				at,
 				at,
 				at,
-				w.prNumber ? at : null,
+				w.prNumber ? new Date(Date.parse(at) + (w.toPrMin ?? 0) * MIN).toISOString() : null,
 				merged,
 				merged,
 				w.regressed ? 1 : 0,
@@ -343,6 +419,8 @@ export function installDemo(store: Store) {
 	};
 
 	const reset = () => {
+		toolFaults = {};
+		rmSync(demoFolders, { recursive: true, force: true });
 		for (const t of [
 			"projects",
 			"prs",
@@ -357,6 +435,7 @@ export function installDemo(store: Store) {
 			store.db.prepare(`DELETE FROM ${t}`).run();
 		}
 		store.db.prepare("DELETE FROM kv WHERE key NOT LIKE 'settings:cloneFolder'").run();
+		prepareRepos();
 	};
 
 	const healthy = (over: Partial<Record<"GitHub" | "Sentry" | "T3", object>> = {}) => {
@@ -399,6 +478,8 @@ export function installDemo(store: Store) {
 				stage: "Observe",
 				state: "done",
 				mergedDaysAgo: i % 14,
+				ageMin: (i % 14) * 1440 + 120,
+				toPrMin: 18 + ((i * 7) % 40),
 				firstTry: i % 5 !== 0,
 				prNumber: 100 + i,
 				gates: noGates("passed"),
@@ -484,6 +565,7 @@ export function installDemo(store: Store) {
 			type: "Feature",
 			stage: "Intake",
 			state: "waiting",
+			activity: [["Added by you"]],
 		});
 		seedWo({
 			project: "roadmaps",
@@ -511,6 +593,17 @@ export function installDemo(store: Store) {
 			prNumber: 90,
 			gates: noGates("passed"),
 		});
+		// Shipped before the Fairway error was first seen, so the floor traces the error to it.
+		seedWo({
+			project: "fairway",
+			title: "Share a round with a link",
+			type: "Feature",
+			stage: "Observe",
+			state: "observing",
+			mergedDaysAgo: 5 / 24,
+			prNumber: 88,
+			gates: noGates("passed"),
+		});
 		seedWo({
 			project: "foundry",
 			title: "Remove the old export",
@@ -524,8 +617,127 @@ export function installDemo(store: Store) {
 		return q;
 	};
 
+	/** One new-project run per step of the wizard. `done` is how many log lines finished. */
+	const seedRun = (
+		id: number,
+		step: NewProjectRun["step"],
+		done: number,
+		last: { state: "running" | "failed"; detail?: string } | null,
+		over: Partial<NewProjectRun> = {},
+	) => {
+		const created = [`repo:${OWNER}/caddie`, `folder:${join(clones, "caddie")}`].slice(0, done);
+		const run: Omit<NewProjectRun, "id"> = {
+			name: "caddie",
+			description: "Tracks my clubs and how far each one goes.",
+			template: "expo",
+			visibility: "private",
+			repo: `${OWNER}/caddie`,
+			localPath: join(clones, "caddie"),
+			step,
+			log: SCAFFOLD_STEPS.map((s, i) => {
+				if (i < done)
+					return { step: s, state: "done" as const, at: `0:${String(4 + i * 17).padStart(2, "0")}` };
+				if (i === done && last) {
+					const at = last.state === "failed" ? `0:${String(4 + i * 17).padStart(2, "0")}` : null;
+					return { step: s, state: last.state, at, detail: last.detail };
+				}
+				return { step: s, state: "pending" as const, at: null };
+			}),
+			failure: last?.state === "failed" ? (last.detail ?? null) : null,
+			created,
+			services: {},
+			serviceTools: {},
+			projectSlug: null,
+			workOrderId: null,
+			...over,
+		};
+		store.db.prepare("INSERT INTO new_projects (id, json) VALUES (?, ?)").run(id, JSON.stringify(run));
+	};
+
 	const SCENARIOS: Record<string, () => void> = {
-		first_run: () => {},
+		first_run: () => healthy(),
+		/** FRTools: the required tools are ready, one optional tool signed out and one missing. */
+		first_run_tools: () => {
+			healthy();
+			toolFaults = { eas: "signed_out", infisical: "missing" };
+		},
+		/** FRToolsBlocked: gh is signed out, so first run can't go on. */
+		first_run_blocked: () => {
+			healthy();
+			toolFaults = { gh: "signed_out", sentry: "signed_out", eas: "signed_out", infisical: "missing" };
+		},
+		first_run_no_t3: () => {
+			healthy();
+			toolFaults = { t3: "missing" };
+		},
+		/** FRReading: two projects read, one still reading, one with no Sentry project. */
+		reading: () => {
+			seedProject({ slug: "foundry", name: "Foundry" });
+			seedProject({ slug: "fairway", name: "Fairway", noSentry: true });
+			seedProject({ slug: "gather", name: "Gather" });
+			store.db.prepare("UPDATE projects SET read_at = NULL WHERE slug = 'gather'").run();
+			seedPr("foundry", 168, "Add invoice export", {});
+			seedPr("foundry", 165, "Sync toolkit standards", {});
+			seedPr("fairway", 94, "Course search empty state", {});
+			seedPr("fairway", 96, "Fix the handicap rounding", {});
+			kvSet(store.db, "skipped_repos", 2);
+		},
+		/** Settings > Tools with a signed-out tool and a missing one. */
+		tools_problem: () => {
+			full();
+			toolFaults = { wrangler: "signed_out", infisical: "missing" };
+		},
+		/** SettingsNotifyBlocked: the last test failed to send, and the next one works. */
+		notify_failed: () => {
+			full();
+			kvSet(store.db, "settings:notifications", { ...store.settings().notifications, lastTest: "failed" });
+		},
+		notify_missing: () => {
+			full();
+			toolFaults = { "terminal-notifier": "missing" };
+			kvSet(store.db, "settings:notifications", { ...store.settings().notifications, lastTest: "failed" });
+		},
+		/** SettingsApprovals: one type merging alone, one turned off by a regression, one project that always asks. */
+		approvals_regressed: () => {
+			full();
+			const a = store.settings().approvals;
+			kvSet(store.db, "settings:approvals", {
+				...a,
+				mergeWithoutMe: { ...a.mergeWithoutMe, "Toolkit sync": true },
+				turnedOffByRegression: { ...a.turnedOffByRegression, "Bug fix": true },
+			});
+			store.db.prepare("UPDATE projects SET merging = 'ask' WHERE slug = 'labs'").run();
+		},
+		/** The New project wizard: each id is a run stopped at one of its steps. */
+		new_project_runs: () => {
+			full();
+			seedProject({ slug: "caddie", name: "caddie", noSentry: true });
+			const tools = {
+				sentry: { installed: true, fix: null },
+				eas: { installed: true, fix: null },
+				infisical: { installed: false, fix: "brew install infisical" },
+			};
+			seedRun(1, "approve", 0, null);
+			seedRun(2, "failed", 2, { state: "failed", detail: "pnpm install failed: registry timeout" });
+			seedRun(
+				3,
+				"baseline",
+				3,
+				{ state: "failed", detail: "Tests failed: 1 of 3\nexpected 200, got 500" },
+				{ projectSlug: "caddie" },
+			);
+			seedRun(4, "connect", 5, null, {
+				projectSlug: "caddie",
+				services: { sentry: "open", eas: "open", infisical: "skipped" },
+				serviceTools: tools,
+			});
+			seedRun(5, "connect", 5, null, {
+				projectSlug: "caddie",
+				services: { sentry: "connected", eas: "connected", infisical: "skipped" },
+				serviceTools: tools,
+			});
+			seedRun(6, "scaffold", 2, { state: "running" });
+		},
 		full,
 		back: () => {
 			full();
@@ -538,6 +750,8 @@ export function installDemo(store: Store) {
 				},
 				firstLook: false,
 			});
+			// The page's own visit recomputes the summary, so a browser needs the away time as well.
+			kvSet(store.db, "last_seen", new Date(store.now().getTime() - 16 * HOUR).toISOString());
 		},
 		first_look: () => {
 			baseProjects();
@@ -545,6 +759,7 @@ export function installDemo(store: Store) {
 			seedError("fairway", "6001", "TypeError: Cannot read properties of undefined (reading 'holes')");
 			seedPr("satisfactory", 12, "Sync toolkit standards", {});
 			kvSet(store.db, "visit_state", { back: null, firstLook: true });
+			kvSet(store.db, "visit_flags", { firstLookPending: true });
 		},
 		empty: () => {
 			baseProjects();
@@ -560,8 +775,17 @@ export function installDemo(store: Store) {
 		},
 		limit: () => {
 			full();
+			seedWo({
+				project: "foundry",
+				title: "Weekly summary",
+				type: "Feature",
+				stage: "Build",
+				state: "building",
+				ageMin: 3,
+				output: ["Reading the summary query."],
+			});
 			kvSet(store.db, "settings:agents", {
-				agentsAtOnce: 1,
+				agentsAtOnce: 3,
 				pauseOnReview: false,
 				retries: 1,
 				agent: "claude",
@@ -569,8 +793,33 @@ export function installDemo(store: Store) {
 		},
 		review_hold: () => {
 			full();
+			seedWo({
+				project: "fairway",
+				title: "Course search empty state",
+				stage: "Review",
+				state: "ready",
+				ageMin: 180,
+				prNumber: 94,
+				gates: { Typecheck: "passed", Tests: "passed", Lint: "passed", Preview: "failed" },
+			});
+			seedPr("fairway", 94, "Course search empty state", { checks: FAIL });
+			seedWo({
+				project: "gather",
+				title: "Export your data as JSON",
+				type: "Feature",
+				stage: "Review",
+				state: "ready",
+				ageMin: 18 * 24 * 60,
+				prNumber: 240,
+				gates: noGates("out_of_date"),
+			});
+			seedPr("gather", 240, "Export your data as JSON", {
+				mergeable: "CONFLICTING",
+				mergeState: "DIRTY",
+				ageDays: 18,
+			});
 			kvSet(store.db, "settings:agents", {
-				agentsAtOnce: 1,
+				agentsAtOnce: 3,
 				pauseOnReview: true,
 				retries: 1,
 				agent: "claude",
@@ -578,7 +827,10 @@ export function installDemo(store: Store) {
 		},
 		loading: () => {
 			baseProjects();
-			store.db.prepare("UPDATE projects SET read_at = NULL").run();
+			// Nothing is known before the first read, including the toolkit, which would otherwise be a row.
+			store.db
+				.prepare("UPDATE projects SET read_at = NULL, toolkit = ?")
+				.run(JSON.stringify({ status: "unknown", behindDays: 0, changed: 0 }));
 		},
 		degraded: () => {
 			full();
@@ -593,6 +845,18 @@ export function installDemo(store: Store) {
 		},
 		stopped: () => {
 			full();
+			seedWo({
+				project: "gather",
+				title: "Task sync retries twice",
+				stage: "Build",
+				state: "build_done",
+				ageMin: 14,
+				activity: [
+					["Wrote a failing test"],
+					["Edited src/tasks/sync.ts"],
+					["Stopped before running the gates"],
+				],
+			});
 			kvSet(store.db, "line", {
 				stopped: true,
 				stoppedAt: new Date(store.now().getTime() - 12 * MIN).toISOString(),
@@ -641,6 +905,98 @@ export function installDemo(store: Store) {
 				},
 			});
 		},
+		/** Every Projects board at once: four behind, one folder gone, one quiet, and the toolkit's own repo. */
+		projects: () => {
+			full();
+			seedProject({
+				slug: "developer-tools",
+				name: "developer-tools",
+				noSentry: true,
+				toolkit: { status: "source" },
+			});
+			for (const [slug, behindDays, changed] of [
+				["arcade-club", 4, 3],
+				["labs", 41, 12],
+				["satisfactory", 69, 14],
+				["roadmaps", 69, 14],
+			] as const) {
+				store.db
+					.prepare("UPDATE projects SET toolkit = ? WHERE slug = ?")
+					.run(JSON.stringify({ status: "behind", behindDays, changed }), slug);
+			}
+			store.db
+				.prepare("UPDATE projects SET local_path = ? WHERE slug = 'labs'")
+				.run(join(demoFolders, "labs"));
+			for (const slug of ["labs", "roadmaps", "satisfactory"]) {
+				store.db.prepare("DELETE FROM prs WHERE project = ?").run(slug);
+				store.db.prepare("DELETE FROM work_orders WHERE project = ?").run(slug);
+			}
+			// The window before this one, so Median to PR has something to compare with.
+			for (let i = 0; i < 6; i += 1) {
+				seedWo({
+					project: "fairway",
+					title: `Older change ${i + 1}`,
+					stage: "Observe",
+					state: "done",
+					mergedDaysAgo: 15 + i,
+					ageMin: (15 + i) * 1440 + 120,
+					toPrMin: 40 + i * 6,
+					prNumber: 60 + i,
+					gates: noGates("passed"),
+					activity: [["Shipped"]],
+				});
+			}
+		},
+		/** ProjectLong: a long name, repo, folder, and branch, on a project with long open work. */
+		project_long: () => {
+			baseProjects();
+			healthy();
+			const repo = "fairway-scorecards-for-weekend-golf-societies-and-long-tournaments";
+			const folder = join(demoFolders, "clients-and-side-projects", "2026", repo);
+			mkdirSync(folder, { recursive: true });
+			store.db
+				.prepare(
+					"UPDATE projects SET name = ?, repo = ?, url = ?, local_path = ?, default_branch = ? WHERE slug = 'fairway'",
+				)
+				.run(
+					"Fairway Scorecards for Weekend Golf Societies and Long Tournaments",
+					`${OWNER}/${repo}`,
+					`https://github.com/${OWNER}/${repo}`,
+					folder,
+					"release/2026-11-spring-season-scorecard-migration",
+				);
+			seedWo({
+				project: "fairway",
+				title:
+					"Fix TypeError: Cannot read properties of undefined (reading 'holes') in RoundSummaryCard while rendering the scorecard for a shared round",
+				stage: "Plan",
+				state: "plan_ready",
+				plan: PLAN,
+			});
+			seedPr(
+				"fairway",
+				94,
+				"Show a helpful empty state with a clear-search action when a course search finds nothing in the selected region or season",
+				{ checks: FAIL },
+			);
+		},
+		/** HealthEarly: three finished work orders, seven short of showing numbers. */
+		few_runs: () => {
+			baseProjects();
+			healthy();
+			for (let i = 0; i < 3; i += 1) {
+				seedWo({
+					project: "fairway",
+					title: `Shipped change ${i + 1}`,
+					stage: "Observe",
+					state: "done",
+					mergedDaysAgo: i,
+					prNumber: 100 + i,
+					gates: noGates("passed"),
+					activity: [["Shipped"]],
+				});
+			}
+		},
 		merge_ready: () => {
 			baseProjects();
 			healthy();
@@ -657,6 +1013,174 @@ export function installDemo(store: Store) {
 					gates: noGates("passed"),
 				});
 			}
+			seedWo({
+				project: "foundry",
+				title: "Sync toolkit standards",
+				type: "Toolkit sync",
+				stage: "Review",
+				state: "ready",
+				ageMin: 60,
+				prNumber: 168,
+				gates: noGates("passed"),
+			});
+			seedPr("foundry", 168, "Sync toolkit standards", { additions: 214, deletions: 98 });
+			seedPr("arcade-club", 62, "Sync toolkit standards", { additions: 96, deletions: 41 });
+			// Merging this one fails, for the partly done state.
+			seedPr("satisfactory", 31, "Sync toolkit standards", { additions: 302, deletions: 117 });
+			// No preview in this project, which doesn't block merging by hand.
+			seedPr("roadmaps", 12, "Sync toolkit standards", {
+				additions: 188,
+				deletions: 64,
+				checks: [check("check", "pass")],
+			});
+		},
+		/** The Errors list board: new, regression, and snoozed across two projects. */
+		errors_list: () => {
+			baseProjects();
+			healthy();
+			seedError("fairway", "6001", "TypeError: Cannot read properties of undefined (reading 'holes')");
+			const fix = seedWo({
+				project: "fairway",
+				title: "Retry the course list",
+				stage: "Observe",
+				state: "done",
+				mergedDaysAgo: 6,
+				prNumber: 88,
+				regressed: true,
+				gates: noGates("passed"),
+				fingerprint: "error:6002",
+			});
+			seedError("fairway", "6002", "NetworkError fetching course list", {
+				kind: "regression",
+				events: 12,
+				users: 5,
+				regressionOf: {
+					workOrderId: fix,
+					prNumber: 88,
+					fixedAt: new Date(store.now().getTime() - 6 * DAY).toISOString(),
+				},
+			});
+			seedError("gather", "6003", "Task sync timed out", {
+				kind: "ongoing",
+				events: 6,
+				users: 2,
+				firstSeen: new Date(store.now().getTime() - 2 * DAY).toISOString(),
+			});
+			store.db
+				.prepare(
+					"INSERT INTO triage (fingerprint, action, until, baseline_events, baseline_users, baseline_release, at) VALUES (?, 'snooze', ?, 6, 2, '1.4.2', ?)",
+				)
+				.run("error:6003", snoozeUntil(store.now()).toISOString(), store.iso());
+		},
+		/** One work order per state the other scenarios don't reach. */
+		wo_states: () => {
+			baseProjects();
+			healthy();
+			// Exactly full, so the slot-waiting and Intake rows stay where they are.
+			kvSet(store.db, "settings:agents", {
+				agentsAtOnce: 5,
+				pauseOnReview: false,
+				retries: 1,
+				agent: "claude",
+			});
+			seedWo({
+				project: "fairway",
+				title: "Agent waiting in T3",
+				stage: "Build",
+				state: "waiting_in_t3",
+				thread: "demo:waiting",
+				activity: [["Plan approved by you"], ["The agent is waiting in T3"]],
+			});
+			seedWo({
+				project: "foundry",
+				title: "Run that T3 couldn't start",
+				stage: "Build",
+				state: "run_failed",
+				failure: "t3 thread start: exit 2\nworktree already exists: factory/wo-demo",
+				activity: [["Plan approved by you"], ["The run failed", "t3 thread start: exit 2"]],
+			});
+			seedWo({
+				project: "gather",
+				title: "Run with no thread",
+				stage: "Plan",
+				state: "run_failed",
+				thread: null,
+				failure: "t3: command not found",
+				activity: [["The run failed", "t3: command not found"]],
+			});
+			seedWo({
+				project: "arcade-club",
+				title: "Stopping at the next step",
+				stage: "Build",
+				state: "building",
+				hold: true,
+				output: ["Reading the leaderboard query."],
+				activity: [["Plan approved by you"], ["You stopped this work order"]],
+			});
+			seedWo({
+				project: "arcade-club",
+				title: "Stopped and held",
+				stage: "Build",
+				state: "build_done",
+				hold: true,
+				activity: [["Plan approved by you"], ["You stopped this work order"]],
+			});
+			seedWo({
+				project: "roadmaps",
+				title: "Write the first plan",
+				type: "Feature",
+				stage: "Plan",
+				state: "planning",
+				output: ["Reading the roadmap."],
+				activity: [["Added by you"]],
+			});
+			seedWo({
+				project: "roadmaps",
+				title: "Rewrite the plan",
+				stage: "Plan",
+				state: "planning",
+				plan: PLAN,
+				output: ["Rereading the loader."],
+				activity: [["Wrote the plan"], ["You asked for changes to the plan", "Clear the old entries."]],
+			});
+			seedWo({
+				project: "satisfactory",
+				title: "Approved, waiting for a slot",
+				stage: "Plan",
+				state: "plan_approved",
+				plan: PLAN,
+				activity: [["Plan approved by you"]],
+			});
+			seedWo({
+				project: "satisfactory",
+				title: "Fix the failed gate",
+				stage: "Verify",
+				state: "retrying",
+				prNumber: 12,
+				retries: 1,
+				firstTry: false,
+				gates: { Typecheck: "passed", Tests: "failed", Lint: "passed", Preview: "passed" },
+				output: ["Running the tests again."],
+				activity: [["Tests failed"], ["You retried with a note", "Use finishedAt."]],
+			});
+			seedWo({
+				project: "labs",
+				title: "Rebase on main",
+				stage: "Review",
+				state: "rebasing",
+				prNumber: 7,
+				gates: noGates("out_of_date"),
+				output: ["Resolving the conflict in the router."],
+				activity: [["Started the rebase"]],
+			});
+			seedWo({
+				project: "labs",
+				title: "Waits in Intake",
+				type: "Feature",
+				stage: "Intake",
+				state: "waiting",
+				activity: [["Added by you"]],
+			});
 		},
 		missing_folder: () => {
 			seedProject({ slug: "fairway", name: "Fairway" });
@@ -676,10 +1200,43 @@ export function installDemo(store: Store) {
 			});
 			healthy();
 		},
+		// The same projects with a row needing you, so the Later rows open a pane and a sync can be blocked.
+		missing_folder_queue: () => {
+			SCENARIOS.missing_folder?.();
+			seedError("fairway", "6001", "TypeError: Cannot read properties of undefined (reading 'holes')");
+		},
 	};
 
 	return {
-		cli: demoCli,
+		cli: (async (cmd, args, opts) => {
+			const fault = toolFaults[cmd];
+			const answer = { stdout: "", stderr: "", timedOut: false };
+			if (fault === "missing") return { ...answer, code: 127, missing: true };
+			if (fault === "signed_out" && (args.includes("auth") || args[0] === "whoami")) {
+				return { ...answer, code: 1, missing: false };
+			}
+			if (cmd === "gh" && args[0] === "api" && args[1] === "graphql") {
+				// A read finds nothing new, and keeps the seeded PRs. It still marks a just-added project as read.
+				store.db.prepare("UPDATE projects SET read_at = ? WHERE read_at IS NULL").run(store.iso());
+				return { ...answer, code: 0, stdout: '{"data":{}}', missing: false };
+			}
+			if (cmd === "gh" && args.join(" ") === `pr merge 31 -R ${OWNER}/satisfactory --squash`) {
+				// The base moved while it waited: it stays open and needs a rebase.
+				store.db
+					.prepare(
+						"UPDATE prs SET json = json_set(json, '$.mergeState', 'BEHIND', '$.group', 'rebase') WHERE project = 'satisfactory' AND number = 31",
+					)
+					.run();
+				return {
+					code: 1,
+					stdout: "",
+					stderr: "Pull request is behind the base branch",
+					timedOut: false,
+					missing: false,
+				};
+			}
+			return demoCli(cmd, args, opts);
+		}) as Cli,
 		executor: new DemoExecutor(),
 		scaffold: demoScaffold,
 		routes(app: Hono, engine: Engine, bus: Bus) {
