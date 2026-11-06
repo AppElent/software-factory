@@ -95,7 +95,7 @@ const launchdRestart = () => {
 
 export function createApp(d: AppDeps): Hono {
 	const { config, store, cli, engine, poller, notifier, bus } = d;
-	const webRoot = d.webRoot ?? WEB_ROOT;
+	const webRoot = d.webRoot ?? process.env.SF_WEB_ROOT ?? WEB_ROOT;
 	const app = new Hono();
 	const devOrigin = process.env.SF_DEV_ORIGIN;
 	const buildId = () => {

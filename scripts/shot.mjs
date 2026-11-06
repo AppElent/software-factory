@@ -11,7 +11,7 @@ if (!scenario || !path || !out) {
 }
 const base = `http://127.0.0.1:${process.env.SF_PORT ?? 4311}`;
 if (scenario !== "-") {
-	const token = readFileSync(".scratch/demo/session-token", "utf8").trim();
+	const token = readFileSync(`${process.env.SF_DATA_DIR ?? ".scratch/demo"}/session-token`, "utf8").trim();
 	const res = await fetch(`${base}/api/demo/scenario`, {
 		method: "POST",
 		headers: { "x-sf-session": token, "content-type": "application/json", host: "127.0.0.1" },
