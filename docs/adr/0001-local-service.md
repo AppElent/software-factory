@@ -1,4 +1,5 @@
 ---
+
 type: decision
 description: Read when changing where the factory runs, what it stores, or how the browser reaches it.
 version: 1.0.0

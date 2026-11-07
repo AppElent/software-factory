@@ -1,0 +1,59 @@
+# Adapt the profile choices before use. Pairs with eas-local-build.yml.
+name: Mobile Build
+
+# Opt-in native builds that spend no EAS Build credits (see eas-local-build.yml).
+#
+# - PR label `build:ios` / `build:android`: builds the `development` profile
+#   (dev client) when the label is added and on every push while it stays.
+#   Other label changes are ignored. Remove the label to stop rebuilding.
+# - Manual run (Actions tab): pick platform, profile and branch.
+#
+# The .ipa/.apk is a workflow artifact; nothing is submitted to a store.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      platform:
+        type: choice
+        options: [ios, android]
+        default: ios
+      profile:
+        type: choice
+        options: [development, preview-internal]
+        default: development
+
+jobs:
+  ios:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.platform == 'ios') ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'build:ios') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'build:ios'))
+    concurrency:
+      group: mobile-ios-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    uses: ./.github/workflows/eas-local-build.yml
+    with:
+      platform: ios
+      profile: ${{ inputs.profile || 'development' }}
+    secrets: inherit
+
+  android:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.platform == 'android') ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'build:android') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'build:android'))
+    concurrency:
+      group: mobile-android-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    uses: ./.github/workflows/eas-local-build.yml
+    with:
+      platform: android
+      profile: ${{ inputs.profile || 'development' }}
+    secrets: inherit

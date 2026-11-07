@@ -1,0 +1,40 @@
+# Copy to .github/workflows/ci.yml. Delete steps for targets the app does not
+# have, and steps a root script already covers (a root `typecheck` that filters
+# into core and mobile replaces the two filtered typecheck steps).
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Biome plus repository checks such as the mobile structure check.
+      - run: pnpm check
+      # Manifest and .env.example only; needs no credentials.
+      - run: pnpm env:check
+      - name: Typecheck web
+        run: pnpm typecheck
+      - name: Typecheck core
+        run: pnpm --filter "./packages/core" typecheck
+      - name: Typecheck mobile
+        run: pnpm --filter "./apps/mobile" typecheck
+      - name: Vitest
+        run: pnpm test
+      - name: Mobile Jest
+        run: pnpm --filter "./apps/mobile" run --if-present test
+      # Catches bundling, plugin, and SSR-compile failures that types and tests miss.
+      - run: pnpm build

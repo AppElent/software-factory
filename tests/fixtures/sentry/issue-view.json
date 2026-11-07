@@ -1,0 +1,64 @@
+{
+ "id": "7000000001",
+ "shortId": "FOUNDRY-R",
+ "title": "NSRangeException: *** -[__NSArray0 objectAtIndex:]: index 0 beyond bounds for empty array",
+ "event": {
+  "release": {
+   "version": "foundry@1.0.0"
+  },
+  "tags": [
+   {
+    "key": "environment",
+    "value": "production"
+   }
+  ],
+  "entries": [
+   {
+    "type": "exception",
+    "data": {
+     "values": [
+      {
+       "type": "NSRangeException",
+       "stacktrace": {
+        "frames": [
+         {
+          "filename": null,
+          "absPath": null,
+          "function": "-[RCTViewComponentView unmountChildComponentView:index:]",
+          "lineNo": null,
+          "inApp": true,
+          "context": []
+         },
+         {
+          "filename": null,
+          "absPath": null,
+          "function": "-[__NSArray0 objectAtIndex:]",
+          "lineNo": null,
+          "inApp": false,
+          "context": []
+         },
+         {
+          "filename": null,
+          "absPath": null,
+          "function": "objc_exception_throw",
+          "lineNo": null,
+          "inApp": false,
+          "context": []
+         },
+         {
+          "filename": null,
+          "absPath": null,
+          "function": "__exceptionPreprocess",
+          "lineNo": null,
+          "inApp": false,
+          "context": []
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

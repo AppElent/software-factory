@@ -1,0 +1,7 @@
+{
+  "threadId": "mcp:ed5a0cce-13b9-4280-8710-d749fbabe6a1",
+  "runId": "run:thread:mcp%3Aed5a0cce-13b9-4280-8710-d749fbabe6a1:ordinal:1",
+  "status": "failed",
+  "reply": null,
+  "error": "Claude gave up after repeated API errors."
+}

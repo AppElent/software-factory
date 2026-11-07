@@ -1,0 +1,85 @@
+import { randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join } from "node:path";
+import { applyNeverTouch } from "../shared/rules.ts";
+
+export interface Config {
+	dataDir: string;
+	port: number;
+	host: "127.0.0.1";
+	sessionToken: string;
+	demo: boolean;
+}
+
+const fromHome = (...p: string[]) => join(homedir(), ...p);
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+	const dataDir = env.SF_DATA_DIR ?? fromHome("Library", "Application Support", "Software Factory");
+	mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+	return {
+		dataDir,
+		port: Number(env.SF_PORT ?? 4310),
+		host: "127.0.0.1",
+		sessionToken: sessionToken(dataDir),
+		demo: env.SF_DEMO === "1",
+	};
+}
+
+/** One token per install. It lives only in the data folder and the served page. */
+function sessionToken(dataDir: string): string {
+	const file = join(dataDir, "session-token");
+	if (existsSync(file)) return readFileSync(file, "utf8").trim();
+	const token = randomBytes(32).toString("hex");
+	writeFileSync(file, token, { mode: 0o600 });
+	chmodSync(file, 0o600);
+	return token;
+}
+
+const realOr = (path: string): string => {
+	try {
+		return realpathSync(path);
+	} catch {
+		// Not there yet. Where it will land still depends on the folders above it.
+		const parent = dirname(path);
+		return parent === path ? path : join(realOr(parent), basename(path));
+	}
+};
+
+/** Never touch judges both the path given and where it really leads, so a symlink can't lead around a rule. */
+export function filterNeverTouch<T extends { repo?: string; path?: string | null }>(
+	rules: string[],
+	items: T[],
+) {
+	const { kept, skipped } = applyNeverTouch(rules, items);
+	const out: { kept: T[]; skipped: T[] } = { kept: [], skipped };
+	for (const item of kept) {
+		const real = item.path ? { ...item, path: realOr(item.path) } : item;
+		(applyNeverTouch(rules, [real]).kept.length ? out.kept : out.skipped).push(item);
+	}
+	return out;
+}
+
+/** The rules can't be read, so nothing can be shown or done safely until the file is fixed. */
+export class NeverTouchError extends Error {}
+
+/** Never-touch rules are private config: a JSON file in the data folder, never in the repo or the database. */
+export function readNeverTouch(dataDir: string): string[] {
+	const file = join(dataDir, "never-touch.json");
+	if (!existsSync(file)) return [];
+	// A broken file must not silently allow everything through, or drop a rule it couldn't read.
+	const refuse = () =>
+		new NeverTouchError(`${file} must be a JSON list of strings. Fix it before the factory reads any repo.`);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(readFileSync(file, "utf8"));
+	} catch {
+		throw refuse();
+	}
+	if (!Array.isArray(parsed) || !parsed.every((r) => typeof r === "string")) throw refuse();
+	return parsed;
+}
+
+export function writeNeverTouch(dataDir: string, rules: string[]): void {
+	writeFileSync(join(dataDir, "never-touch.json"), `${JSON.stringify(rules, null, "\t")}\n`, { mode: 0o600 });
+}

@@ -1,0 +1,44 @@
+{
+	"formatter": { "enabled": true, "indentStyle": "tab" },
+	"javascript": { "formatter": { "quoteStyle": "double" } },
+	"overrides": [
+		{
+			"includes": ["apps/mobile/**"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noReactNativeRawText": {
+							"level": "error",
+							"options": { "skip": ["AppText"] }
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": [
+				"apps/mobile/src/**",
+				"apps/mobile/app/**",
+				"!**/*.test.*",
+				"!apps/mobile/src/convex/query-cache.tsx"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"paths": {
+									"convex/react": {
+										"importNames": ["useQuery", "useQueries", "usePaginatedQuery"],
+										"message": "Import query hooks from src/convex/query-cache (see docs/standards/convex-query-caching.md)."
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	]
+}

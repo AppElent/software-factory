@@ -1,0 +1,8 @@
+# Optional. Copy to lefthook.yml, add lefthook as a devDependency, and allow
+# its build script (`lefthook: true # postinstall installs the git hooks`).
+# `--staged` needs `"vcs": { "enabled": true, "clientKind": "git" }` in biome.json.
+pre-commit:
+  commands:
+    biome:
+      glob: "*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc,css}"
+      run: pnpm exec biome check --staged --no-errors-on-unmatched

@@ -17,6 +17,44 @@ Build from this file. Use the boards as the visual reference.
 smoke test that fired 348 handlers. Layout claims here, such as where the floor stops fitting, come from
 calculation. Phase 5 compares each state on the running app with this file.
 
+## Changes after hand-off
+
+Decided while building. These win over the rest of this file, the boards, and the copy file. The boards and
+[`control-room_copy.md`](control-room_copy.md) are hand-off snapshots, so they still show cost and the older copy.
+
+- **Cost:** no cost UI anywhere, because T3 exposes no cost source. A plan `Estimate` keeps time only.
+- **New project:** the name check also refuses a folder with files in it. The run never adopts a repo or folder it didn't make, so `Remove` can't delete anything else.
+- **New project restart:** a run the service stopped midway goes to the Failed screen with Retry and Remove. Remove deletes only what the run proved it made, and says what to check by hand.
+- **Queue:** a failed new project shows under Needs you, with `Open setup`. A skipped service shows under Later.
+- **Baseline:** NLBaseline drops "won't take other work until the baseline is green", because nothing enforces it. A red baseline still pushes what it set up, so a fix has CI. It also offers `Remove what was created`.
+- **Failed run:** the status reads `This run failed.`, since a run can also fail after it started. The activity line says when T3 couldn't start it.
+- **Open question:** an agent question with no options takes a typed answer, and every question view can close the work order.
+- **PR status:** when the agent holds a PR with its gates finished, the status names the hold instead of `Checks running`.
+- **Folders:** a project's folder must be a checkout of its repo, checked by origin. Never touch also checks the folder's real path.
+- **Fixed errors:** a merged fix keeps its error off the queue until the error returns on a new release, not only during Observe.
+- **Observe:** the closing line says how many new errors appeared since the change shipped.
+- **Red main:** dismissing covers that commit. A later red commit comes back.
+- **Questions:** native questions in T3 can't be answered over the CLI. Agents use `factory-question` blocks. A native request shows `waiting_in_t3` with `Open in T3`.
+- **Stop:** there's no CLI interrupt, so Stop keeps its wording: `Stopping at the agent's next step.` A held work order has `Restart this work order` (Resume). Running and Stopping also offer `Close work order`, so a turn that never ends can't keep its Build slot.
+- **Agent at work on a PR:** while a linked work order's agent is working, or its push hasn't arrived, the PR reads as running and merge refuses: `The agent is still working on this PR.` or `The agent's changes haven't reached this PR yet.`
+- **Review:** a gate that fails or restarts during Review returns the work order to Verify (`A gate failed during review`, `New gates started during review`).
+- **Someone else's PR:** a rebase or requested change on a PR the factory didn't open never merges alone, and closing that work order leaves the PR open: `This deletes the worktree. PR #N stays open.`
+- **Refused merge:** when GitHub refuses a Merge without me, the activity says `GitHub refused to merge this without you` with its reason. The factory doesn't ask again until a new commit.
+- **Errors in Observe:** an error whose fix is being observed stays off the queue and links to that work order, until it counts as a regression.
+- **Live output:** the agent's assistant messages.
+- **Never touch:** `/api/repos` and reading send only a count of skips, never names. `2 repos match a Never touch rule, so nothing in them was opened.`
+- **Gates:** `Not set up` doesn't block a manual merge. Merge without me requires all four gates passed. A PR with no CI goes to Review after 5 minutes (`No gates set up`).
+- **Intake:** running plans count against Build room for leaving Intake.
+- **Queue:** errors with an open work order are hidden. PRs failing without a work order show only in the PR list.
+- **Notifications:** the blocked state comes from `terminal-notifier`'s exit code 3. `lastTest` is `ok`, `failed`, or `blocked`.
+- **New project:** the script is `scripts/new-project.mjs` in this repo, not upstream. Moving it to the toolkit is a follow-up. If `gh` has no `delete_repo` rights, Remove surfaces the failure.
+- **Codex:** runs use `--provider codex --model $SF_CODEX_MODEL`, default `gpt-6.1-terra`, because T3 requires a model with a provider and has no list command.
+- **Red main and PRs:** red main shows check names and `Open the log`, with no log excerpt. Stale PRs use the rebase page. Rebase and stale list rows show gates as out of date. `In that release` and conflict-file counts are dropped: no data source.
+- **Floor:** the summary shows weekly shipped, first try, and median to PR only. The failed banner says "keep going" rather than citing money. Observe traces an untriaged error in the same project, first seen after the merge.
+- **Project:** last deploy comes from the latest shipped merge, with no provider, because there's no deploy connector. Services shows Sentry only. `Open in T3` is hidden with no thread. Connect Sentry and Change folder are typed-entry dialogs: a Sentry project name and a folder path.
+- **Health:** `Too few runs` under 5 runs. By-type counts are all-time, and tiles cover 14 days. HealthEarly's copy is corrected from "100% to 33%" to "100% to 67%".
+- **Settings and setup:** Add projects is at `/settings/add-projects`. NLBaseline omits `Open in T3`, since no thread exists. NLScaffold's Prototype line isn't product copy. The FRReading warning uses Sentry, since the service has no EAS data. Ages use the relative format only.
+
 ## Reading a board
 
 Each `.dc.html` is a template plus a small logic class. They run only on the canvas: `./support.js` is
@@ -115,7 +153,7 @@ need no library. Radix is only for what native can't do reliably.
 | Field, Choice | Label above control, hint below; radio or checkbox and label as one target | Forms |
 | CodeBlock | `<pre>`, mono 12, `overflow-wrap: anywhere` | Commands, failures |
 | Skeleton | Static `bg-raised` block. No shimmer, so reduced motion needs no special case | QueueLoading |
-| NumberField | Ordinary entry per the number-fields standard: keep raw text, validate on blur, show the inline error, keep the value on a failed save | Agents at once, spend limit, thresholds |
+| NumberField | Ordinary entry per the number-fields standard: keep raw text, validate on blur, show the inline error, keep the value on a failed save | Agents at once, thresholds |
 
 **Radix:** one package, `import { AlertDialog, Dialog } from "radix-ui"`. Set `onOpenAutoFocus` on Content so
 focus lands on Cancel for destructive confirmations. Content handles the focus trap, Escape, and focus return.
@@ -158,7 +196,7 @@ The first row is selected and fills the pane. Clicking a row, or `j`/`k`, moves 
 | --- | --- | --- | --- |
 | Populated | Items exist | `N need you · M can wait` | Queue |
 | Pane by item kind | Selected row | Error, question, red CI, ready PR, stale PR, rebase, toolkit behind: each has its own pane | Queue (`sel`) |
-| Back after time away | Last visit over 4 hours ago (proposed) | Summary line: shipped, failed, new errors, spent; `See numbers`. Gone on next visit | QueueBack |
+| Back after time away | Last visit over 4 hours ago (proposed) | Summary line: shipped, failed, new errors; `See numbers`. Gone on next visit | QueueBack |
 | First look | First visit after first run | Banner `Your first queue, ranked from N projects`, stage counts near zero | QueueFirst |
 | Nothing needs you | No Needs you items | `Nothing needs you` panel with live counts, no pane; Later rows still show | QueueEmpty |
 | Agents at limit | No start allowed under the slot rule | Pane says slots are busy, `Start work order` becomes `Add to Intake` | QueueLimit |
@@ -191,14 +229,14 @@ closes. Bug fix and Feature go to Plan, Chore skips it per plan-review settings.
 ### Work order
 
 The track shows the current stage. The pane leads with one `role="status"` line, then the primary action,
-gates, agent, worktree, time, and cost.
+gates, agent, worktree, and time.
 
 | State | Status line | Actions | Board |
 | --- | --- | --- | --- |
 | Plan ready | `Plan ready for you` | Approve plan, Change plan, Reject plan, Open in T3 | WOPlan |
 | Change plan | Same | Textarea and `Send to agent`; then `Agent is rewriting the plan. You'll see it here and in the queue.` | WOPlan (`change`, `sent`) |
 | Running | `Agent working · 6m` | Stop this work order (inline confirm), Open in T3. Activity feed plus live output | WORunning, WORun211 |
-| Stopping | `Stopping at the agent's next step.` | None | WORunning (`stopped`) |
+| Stopping | `Stopping at the agent's next step.` | `Close work order` | WORunning (`stopped`) |
 | Question | `Waiting for your answer · 8m` | Agent's question, options, optional note, `Answer`; then `Answer sent. The agent is continuing.` | WOQuestion |
 | Gate failed | `Tests failed twice` | Failure text, note for the agent, Retry with this note, Take over in T3, Close work order (inline confirm) | WOFailed |
 | Line stopped | `Stopped with the line at 14:02` | Restart the line, Take over in T3 | WOStopped |
@@ -209,7 +247,7 @@ gates, agent, worktree, time, and cost.
 
 ### PR review
 
-Works for any open PR, including ones without a work order, where Work order and Cost rows are absent.
+Works for any open PR, including ones without a work order, where the Work order row is absent.
 
 | State | When | Primary | Board |
 | --- | --- | --- | --- |
@@ -292,8 +330,8 @@ Merging control: `Follow` (Settings) or `Always ask me`, per project.
 
 ### Health
 
-Four metric buttons switch the chart. `Show daily numbers` opens the table. By-work-type table shows Runs,
-First try, Median to PR, Cost per change, Merging. HealthEarly appears under 10 finished work orders. `Turn on`
+Three metric buttons switch the chart. `Show daily numbers` opens the table. By-work-type table shows Runs,
+First try, Median to PR, Merging. HealthEarly appears under 10 finished work orders. `Turn on`
 opens the same dialog as Approvals. Non-numeric cells use `–`; the Merging cell uses `Too few runs`.
 
 ### Settings
@@ -302,7 +340,7 @@ Section nav in a sub-column. Changes save as made, with `Saved` in `role="status
 
 | Section | States | Board |
 | --- | --- | --- |
-| Agents | Limit error `Enter a whole number from 1 to 8.`; `Pause new work when Review is full`, off by default; retries 0 to 2; agent; optional spend limit | SettingsAgents |
+| Agents | Limit error `Enter a whole number from 1 to 8.`; `Pause new work when Review is full`, off by default; retries 0 to 2; agent | SettingsAgents |
 | Approvals | Table of plan review, record, and merging per work type; thresholds with errors `Enter 5 or more.` and `Enter 50 to 100.`; turn-on dialog; turn off | SettingsApprovals |
 | Notifications | Allowed, checking, blocked; test; per-event checkboxes; only-when-away | SettingsNotifications, SettingsNotifyBlocked |
 | Notification samples | How each reads and where it opens | NotifSamples |
@@ -346,7 +384,6 @@ New copy, following existing patterns. Review it with the first implementation o
 | Single merge fails | `role="alert"` Banner on the PR | `#96 couldn't merge.` + GitHub's reason + `Start rebase work order` if behind |
 | A mutation fails | Inline `role="alert"` by the control; input kept | `Couldn't {verb} this. Try again.` |
 | An agent run can't start | Work order status line, `role="alert"` | `T3 couldn't start this run.` + stderr in CodeBlock + `Try again`, `Open in T3` |
-| Spend limit reached | Banner on Floor and Queue | `Daily spend limit reached` / `New work waits until tomorrow. Running agents finish.` / `Change limit` |
 | Starting while stopped | Same as at-limit pane | `The line is stopped. This waits in Intake until you restart.` `Add to Intake` |
 | Tab from an older build | `role="alert"` Banner | `This page is out of date.` `Reload` |
 | `t3` missing at first run | Same row as `gh` in FRToolsBlocked | `Required. Agents run in T3.` |
@@ -430,13 +467,16 @@ security are in [`docs/adr/0001-local-service.md`](../../docs/adr/0001-local-ser
 
 Each resolves in the T3 spike or first use. None changes the screens above except where noted.
 
-1. **Cost source.** `t3 thread show --json` has no cost, usage, or token field in the thread checked. `claude -p` offers `--max-budget-usd` and stream-json, but losing T3 costs the takeover. Cost appears on Queue, Work order, PR, Floor summary, Health, Project, and spend limit. If there's no source: remove those fields, the Cost tab, and spend limit rather than estimate. Plan `Estimate` keeps time only.
-2. **T3 runs.** Worktree runs and exit codes 1 and 2 are untested.
-3. **Stopping one agent.** `t3 thread` has no cancel, and `send` doesn't interrupt. The design holds at the next stage turn. T3's internal interrupt route may exist. Check it. If not, `Stop` keeps its copy ("at its next step") and immediate stop stays in T3.
-4. **Live output.** Whether `t3 thread show` exposes recent output in usable form. If not, the Activity list stands alone and `Open in T3` carries the rest.
-5. **Gates per project.** Which check runs map to Typecheck, Tests, Lint, and Preview, and what a project with no preview shows. Default: `Not set up`, which also blocks merging without you.
+The [T3 spike](../../docs/records/2026-11-06-t3-spike.md) and the [first real run](../../docs/records/2026-11-06-first-real-run.md) hold the evidence.
+
+1. **Cost source. Answered:** there's none, so cost fields, the Cost tab, and spend limit are gone.
+2. **T3 runs. Answered:** worktree runs work. Exit 1 is a failed run, and exit 2 is a native question.
+3. **Stopping one agent. Answered:** there's no CLI interrupt. `Stop` keeps its copy ("at its next step"), and immediate stop stays in T3.
+4. **Live output. Answered:** the agent's assistant messages, from `t3 thread show`. Tool output stays in T3.
+5. **Gates per project. Answered:** check-run names map to the four gates. A gate with no check says `Not set up`, which blocks merging without you but not a manual merge.
 6. **Bulk merge can't be undone.** Accepted, with the dialog saying so. Confirm it's right once real.
-7. **Notifications.** `terminal-notifier` hasn't been tested on this macOS: click-to-open, and whether a blocked state can be detected. If it can't, keep only the send-a-test path and drop SettingsNotifyBlocked's automatic detection.
+7. **Notifications. Partly answered:** the blocked state is detected from `terminal-notifier`'s exit code 3, so SettingsNotifyBlocked's detection stays. Click-to-open is still unverified, because notifications are turned off for it on this Mac.
 8. **EAS and Infisical auth.** Commands unconfirmed for the Tools rows.
 9. **Sentry JSON shapes.** Unconfirmed: spike with recorded samples.
-10. **Controls added during design:** spend limit, Pause, Remove, agent choice. Approved, but drop any that use shows no need for.
+10. **Controls added during design:** Pause, Remove, agent choice. Approved, but drop any that use shows no need for.
+11. **Native questions. Answered:** `send` can't answer them. Agents use `factory-question` blocks, and a native request shows `waiting_in_t3` with `Open in T3`.
