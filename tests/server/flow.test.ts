@@ -22,6 +22,8 @@ let clock: number;
 let writeNeverTouchBroken: () => void;
 let calls: Calls;
 let cliResult: Record<string, { code: number; stdout?: string; stderr?: string }>;
+let gitCalls: string[];
+let gitFails: Record<string, string>;
 
 const cli: Cli = async (cmd, args) => {
 	const line = `${cmd} ${args.join(" ")}`;
@@ -103,12 +105,79 @@ beforeEach(() => {
 		executor: exec,
 		publish: () => {},
 		pollSoon: () => {},
-		git: async () => {},
+		git: async (_cwd, args) => {
+			const line = args.join(" ");
+			gitCalls.push(line);
+			const fail = Object.entries(gitFails).find(([k]) => line.includes(k));
+			return fail ? { ok: false, error: fail[1] } : { ok: true, error: "" };
+		},
 	});
+	gitCalls = [];
+	gitFails = {};
 	addProject();
 });
 
 const planBlock = '```factory-plan\n{"summary":"Do it","steps":["one"]}\n```';
+
+describe("cleaning up after a work order", () => {
+	const merged = async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		expect((await engine.merge("fairway", 7)).ok).toBe(true);
+		clock += 2 * 60_000;
+		await settle();
+		return id;
+	};
+	const log = (id: number) => wo(id).activity.map((a) => a.text);
+
+	it("removes the worktree and local branch when a merged work order finishes", async () => {
+		const id = await merged();
+		expect(gitCalls).toEqual([]);
+		clock += OBSERVE_MS + 1;
+		await settle();
+		expect(wo(id).state).toBe("done");
+		expect(gitCalls[0]).toMatch(/^worktree remove \/tmp\/worktrees\//);
+		expect(gitCalls[0]).not.toContain("--force");
+		expect(gitCalls[1]).toMatch(/^branch -D factory\/wo-/);
+		expect(gitCalls.some((c) => c.startsWith("push"))).toBe(false);
+	});
+
+	it("keeps a worktree with uncommitted changes, its branch, and says why", async () => {
+		const id = await merged();
+		gitFails = { "worktree remove": "contains modified or untracked files" };
+		clock += OBSERVE_MS + 1;
+		await settle();
+		expect(wo(id).state).toBe("done");
+		expect(gitCalls.some((c) => c.startsWith("branch -D"))).toBe(false);
+		expect(log(id).join()).toContain("contains modified or untracked files");
+	});
+
+	it("names what it couldn't delete on Close, and audits only what it did", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		gitFails = { "push origin --delete": "could not read from remote" };
+		await engine.close(id);
+		expect(wo(id).state).toBe("closed");
+		expect(log(id).join()).toContain("could not read from remote");
+		const audited = store.db.prepare("SELECT 1 FROM audit_log WHERE action = 'delete branch'").all();
+		expect(audited).toEqual([]);
+	});
+
+	it("audits a delete that happened, and treats one already gone as done", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		gitFails = { "push origin --delete": "remote ref does not exist" };
+		await engine.close(id);
+		expect(log(id).join()).not.toContain("Couldn't delete");
+		const audited = store.db.prepare("SELECT 1 FROM audit_log WHERE action = 'delete branch'").all();
+		expect(audited).toHaveLength(1);
+	});
+});
 
 describe("a work order's path", () => {
 	it("goes from Intake to Observe with approvals at each gate", async () => {

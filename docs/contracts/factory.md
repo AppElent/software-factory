@@ -21,7 +21,8 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 - Observe traces an error to a work order when the error is untriaged, in the same project, and first seen after the merge.
 - Each work order has one worktree, branch, and T3 thread. One open work order per error fingerprint.
 - The factory sends one stage per agent turn, so a hold takes effect at the next step.
-- Closing a work order deletes its worktree and branch. The source error stays in the queue.
+- Closing a work order deletes its worktree and branch. The source error stays in the queue. A step that fails is named in the activity, and nothing reports a delete that didn't happen.
+- When a merged work order finishes Observe, the factory removes its worktree and local branch. When its PR is closed outside the factory, it removes only the worktree. A worktree with uncommitted changes stays, and the activity says so.
 - Closing a PR keeps the branch on GitHub and closes its work order.
 - A PR belongs to the work order whose branch it's on from the moment GitHub shows it, so merging refuses while that agent is still working, and while changes you asked for are waiting, failed, or never pushed. Try again or Close is the way past it.
 - Closing a work order closes its PR first. If GitHub refuses, nothing else changes.
@@ -68,7 +69,7 @@ Typecheck, Tests, Lint, Preview. Each is not set up, not started, running, passe
 | Plan                              | Per work type. Defaults: Always for Bug fix and Feature, Skip for Toolkit sync and Chore |
 | Merge                             | You, one PR at a time, with no dialog on the PR page. Bulk merge has a confirmation      |
 | New project                       | Each outside change is approved first, and each service is confirmed or skipped          |
-| Deleting anything outside the app | Named and confirmed. Never automatic                                                     |
+| Deleting anything outside the app | Named and confirmed. Never automatic, except a finished work order's own clean worktree  |
 
 ### Merge without me
 

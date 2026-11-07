@@ -91,7 +91,7 @@ export interface EngineDeps {
 	publish: (keys: string[]) => void;
 	/** Asks for a GitHub read soon. */
 	pollSoon: () => void;
-	git?: (cwd: string, args: string[]) => Promise<void>;
+	git?: GitRunner;
 	/** Events the queue can't show, for notifications. */
 	onEvent?: (event: EngineEvent) => void;
 }
@@ -106,10 +106,17 @@ const nextBranch = (branch: string) => {
 	return tried ? `${tried[1]}-try${Number(tried[2]) + 1}` : `${branch}-try2`;
 };
 
-const realGit = (cwd: string, args: string[]) =>
-	new Promise<void>((resolve) => {
-		execFile("git", args, { cwd, timeout: 60_000 }, () => resolve());
+export type GitRunner = (cwd: string, args: string[]) => Promise<{ ok: boolean; error: string }>;
+
+const realGit: GitRunner = (cwd, args) =>
+	new Promise((resolve) => {
+		execFile("git", args, { cwd, timeout: 60_000 }, (err, _stdout, stderr) => {
+			resolve({ ok: !err, error: err ? scrub(String(stderr).trim() || err.message) : "" });
+		});
 	});
+
+/** Something already gone is what the step wanted, so it isn't a failure. */
+const ALREADY_GONE = /is not a working tree|branch '.*' not found|remote ref does not exist/i;
 
 export class Engine {
 	private readonly store: Store;
@@ -117,7 +124,7 @@ export class Engine {
 	private readonly executor: Executor;
 	private readonly publish: (keys: string[]) => void;
 	private readonly pollSoon: () => void;
-	private readonly git: (cwd: string, args: string[]) => Promise<void>;
+	private readonly git: GitRunner;
 	private readonly onEvent: (event: EngineEvent) => void;
 	private ticking = false;
 	private tickAgain = false;
@@ -493,6 +500,7 @@ export class Engine {
 		}
 		if (state === "CLOSED") {
 			this.store.addActivity(wo.id, `PR #${wo.prNumber} was closed`);
+			await this.cleanUp(wo, { merged: false });
 			this.patch(wo.id, { state: "closed", finished_at: this.store.iso() });
 			return true;
 		}
@@ -695,6 +703,7 @@ export class Engine {
 				? "No errors traced to this change"
 				: `${caused} new ${caused === 1 ? "error" : "errors"} since this shipped`,
 		);
+		await this.cleanUp(wo, { merged: true });
 		this.patch(wo.id, { state: "done", finished_at: this.store.iso() });
 	}
 
@@ -883,17 +892,49 @@ export class Engine {
 			if (res.code !== 0 && !/already (been )?(closed|merged)/i.test(res.stderr))
 				throw new ActionError(res.stderr.trim() || "GitHub refused to close the PR.", 502);
 		}
+		const left: string[] = [];
 		if (project?.localPath && wo.branch) {
-			if (wo.worktree) await this.git(project.localPath, ["worktree", "remove", "--force", wo.worktree]);
-			await this.git(project.localPath, ["branch", "-D", wo.branch]);
+			if (wo.worktree) {
+				const res = await this.gitStep(project.localPath, ["worktree", "remove", "--force", wo.worktree]);
+				if (!res.ok) left.push(`the worktree ${wo.worktree} (${res.error})`);
+			}
+			const branch = await this.gitStep(project.localPath, ["branch", "-D", wo.branch]);
+			if (!branch.ok) left.push(`the local branch ${wo.branch} (${branch.error})`);
 			if (closesRemote) {
-				await this.git(project.localPath, ["push", "origin", "--delete", wo.branch]);
-				audit(this.store.db, "delete branch", `${project.repo}:${wo.branch}`, "you", null, this.store.now());
+				const remote = await this.gitStep(project.localPath, ["push", "origin", "--delete", wo.branch]);
+				if (remote.ok)
+					audit(this.store.db, "delete branch", `${project.repo}:${wo.branch}`, "you", null, this.store.now());
+				else left.push(`the branch ${wo.branch} on GitHub (${remote.error})`);
 			}
 		}
 		this.store.addActivity(id, text);
+		if (left.length > 0) this.store.addActivity(id, `Couldn't delete ${left.join(", and ")}. Delete it by hand.`);
 		this.patch(id, { state: "closed", finished_at: this.store.iso() });
 		this.pollSoon();
+	}
+
+	private async gitStep(cwd: string, args: string[]) {
+		const res = await this.git(cwd, args);
+		return res.ok || ALREADY_GONE.test(res.error) ? { ok: true, error: "" } : res;
+	}
+
+	/**
+	 * A finished work order's worktree is the factory's own scratch space, so it goes without asking. Uncommitted
+	 * changes keep it, because nothing else has a copy of them. A branch goes only once its work is merged.
+	 */
+	private async cleanUp(wo: WorkOrder, opts: { merged: boolean }) {
+		const project = this.store.project(wo.project);
+		if (!project?.localPath) return;
+		if (wo.worktree) {
+			const res = await this.gitStep(project.localPath, ["worktree", "remove", wo.worktree]);
+			if (!res.ok) {
+				this.store.addActivity(wo.id, `Kept the worktree ${wo.worktree}: ${res.error}`);
+				return;
+			}
+		}
+		if (!opts.merged || !wo.branch || ownsNoPr(wo.source.kind)) return;
+		const branch = await this.gitStep(project.localPath, ["branch", "-D", wo.branch]);
+		if (!branch.ok) this.store.addActivity(wo.id, `Kept the local branch ${wo.branch}: ${branch.error}`);
 	}
 
 	/** A rebase that finished and fell behind again goes back to the agent that has the branch checked out. */
