@@ -58,7 +58,8 @@ function NewAutomation() {
 	const chosenMode = mode ?? modes.data?.defaultMode ?? "";
 	const schedule = (): AutomationSchedule => {
 		if (when === "interval") return { type: "interval", everyMs: every * UNIT_MS[unit] };
-		if (when === "once") return { type: "once", runAt };
+		// The picker gives your local time with no zone, which T3 could read as UTC.
+		if (when === "once") return { type: "once", runAt: new Date(runAt).toISOString() };
 		const weekdays = DAY_CHOICES.find(([label]) => label === day)?.[1];
 		return { type: "fixed_time", timeOfDay: time, ...(weekdays ? { weekdays } : {}) };
 	};
@@ -189,7 +190,11 @@ function Row({ item }: { item: Automation }) {
 		<tr className="border-0 border-t border-solid border-border-subtle">
 			<td className="px-3 py-2 [overflow-wrap:anywhere]">{item.title}</td>
 			<td className="px-3 py-2 text-text-muted">{item.projectName}</td>
-			<td className="px-3 py-2 font-mono text-data text-text-muted">{scheduleWords(item.schedule)}</td>
+			<td className="px-3 py-2 font-mono text-data text-text-muted">
+				{item.schedule.type === "once"
+					? `Once, ${new Date(item.schedule.runAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+					: scheduleWords(item.schedule)}
+			</td>
 			<td className="px-3 py-2">
 				<span className="flex items-center gap-2">
 					<Glyph kind={item.enabled ? "pass" : "idle"} size={14} /> {item.enabled ? "On" : "Off"}
