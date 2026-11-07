@@ -11,6 +11,16 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS prs (
 	project TEXT NOT NULL, number INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (project, number)
 );
+CREATE TABLE IF NOT EXISTS issues (
+	project TEXT NOT NULL, number INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (project, number)
+);
+CREATE TABLE IF NOT EXISTS issue_state (
+	project TEXT NOT NULL, number INTEGER NOT NULL,
+	read_hash TEXT, read_at TEXT,
+	hidden TEXT, hidden_hash TEXT, hidden_until TEXT,
+	advice TEXT, advice_hash TEXT,
+	PRIMARY KEY (project, number)
+);
 CREATE TABLE IF NOT EXISTS errors (
 	id TEXT PRIMARY KEY, project TEXT NOT NULL, json TEXT NOT NULL, detail TEXT
 );

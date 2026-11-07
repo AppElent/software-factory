@@ -3,12 +3,22 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { defaultModes } from "../shared/modes.ts";
 import type { TriageRecord } from "../shared/rules.ts";
-import { agentHoldsMerge, isRegression, noGates, triageHides } from "../shared/rules.ts";
+import {
+	agentHoldsMerge,
+	isRegression,
+	issueGroup,
+	issueLocked,
+	issueSignals,
+	noGates,
+	triageHides,
+} from "../shared/rules.ts";
 import type {
 	ActivityEntry,
 	AgentSettings,
 	ApprovalSettings,
 	ErrorItem,
+	Issue,
+	IssueAdvice,
 	Mode,
 	NotificationSettings,
 	Project,
@@ -24,8 +34,21 @@ import type {
 import { scrub } from "./cli.ts";
 import { filterNeverTouch, readNeverTouch } from "./config.ts";
 import { ConfigFile } from "./config-file.ts";
+import type { IssueRead } from "./connectors/github.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
+
+interface IssueStateRow {
+	project: string;
+	number: number;
+	read_hash: string | null;
+	read_at: string | null;
+	hidden: string | null;
+	hidden_hash: string | null;
+	hidden_until: string | null;
+	advice: string | null;
+	advice_hash: string | null;
+}
 
 export const OPEN_FILTER = "state NOT IN ('done', 'closed')";
 
@@ -275,6 +298,104 @@ export class Store {
 
 	pr(project: string, number: number): PullRequest | null {
 		return this.prs(project).find((p) => p.number === number) ?? null;
+	}
+
+	/* ---------- issues ---------- */
+
+	/** GitHub's list replaces the old one. What you've read stays, pinned to the text you read. */
+	saveIssues(project: string, issues: IssueRead[]) {
+		this.db.prepare("DELETE FROM issues WHERE project = ?").run(project);
+		const insert = this.db.prepare("INSERT INTO issues (project, number, json) VALUES (?, ?, ?)");
+		for (const i of issues) insert.run(project, i.number, JSON.stringify(i));
+	}
+
+	/** Open issues, without those you've put away. An edit brings one back. */
+	issues(project?: string): Issue[] {
+		return this.allIssues(project).filter((i) => !i.hidden);
+	}
+
+	issue(project: string, number: number): Issue | null {
+		return this.allIssues(project).find((i) => i.number === number) ?? null;
+	}
+
+	private allIssues(project?: string): Array<Issue & { hidden: boolean }> {
+		const names = new Map(this.projects().map((p) => [p.slug, p.name]));
+		const now = this.now().getTime();
+		const states = new Map(
+			(this.db.prepare("SELECT * FROM issue_state").all() as unknown as IssueStateRow[]).map((s) => [
+				`${s.project}:${s.number}`,
+				s,
+			]),
+		);
+		const owners = new Map(
+			(
+				this.db
+					.prepare(
+						`SELECT id, fingerprint FROM work_orders WHERE fingerprint LIKE 'issue:%' AND ${OPEN_FILTER}`,
+					)
+					.all() as Array<{ id: number; fingerprint: string }>
+			).map((o) => [o.fingerprint, o.id]),
+		);
+		const rows = this.db.prepare("SELECT project, number, json FROM issues").all() as Array<{
+			project: string;
+			number: number;
+			json: string;
+		}>;
+		return rows
+			.filter((r) => names.has(r.project) && (!project || r.project === project))
+			.map((r) => {
+				const i = JSON.parse(r.json) as IssueRead;
+				const s = states.get(`${r.project}:${r.number}`);
+				const read = !!s && s.read_hash === i.bodyHash;
+				const signals = issueSignals(i, now);
+				const fp = `issue:${r.project}:${r.number}`;
+				const expired = !!s?.hidden_until && Date.parse(s.hidden_until) <= now;
+				return {
+					...i,
+					project: r.project,
+					projectName: names.get(r.project) ?? r.project,
+					signals,
+					group: issueGroup(signals, read),
+					readAt: read ? (s?.read_at ?? null) : null,
+					editedSinceRead: !!s?.read_hash && !read,
+					locked: issueLocked(signals, read),
+					advice: s?.advice && s.advice_hash === i.bodyHash ? (JSON.parse(s.advice) as IssueAdvice) : null,
+					asking: this.askingIssues.has(fp),
+					workOrderId: owners.get(fp) ?? null,
+					hidden: !!s?.hidden && s.hidden_hash === i.bodyHash && !expired,
+				};
+			})
+			.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+	}
+
+	/** Issues an agent is reading right now. Not saved: after a restart you can just ask again. */
+	readonly askingIssues = new Set<string>();
+
+	markIssueRead(project: string, number: number, hash: string) {
+		this.db
+			.prepare(
+				`INSERT INTO issue_state (project, number, read_hash, read_at) VALUES (?, ?, ?, ?)
+				ON CONFLICT(project, number) DO UPDATE SET read_hash = excluded.read_hash, read_at = excluded.read_at`,
+			)
+			.run(project, number, hash, this.iso());
+	}
+
+	hideIssue(project: string, number: number, how: string | null, hash: string | null, until: string | null) {
+		this.db
+			.prepare(
+				`INSERT INTO issue_state (project, number, hidden, hidden_hash, hidden_until) VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT(project, number) DO UPDATE SET hidden = excluded.hidden, hidden_hash = excluded.hidden_hash, hidden_until = excluded.hidden_until`,
+			)
+			.run(project, number, how, hash, until);
+	}
+
+	saveIssueAdvice(project: string, number: number, advice: IssueAdvice, hash: string) {
+		this.db
+			.prepare(
+				`INSERT INTO issue_state (project, number, advice, advice_hash) VALUES (?, ?, ?, ?)
+				ON CONFLICT(project, number) DO UPDATE SET advice = excluded.advice, advice_hash = excluded.advice_hash`,
+			)
+			.run(project, number, JSON.stringify(advice), hash);
 	}
 
 	/* ---------- errors ---------- */

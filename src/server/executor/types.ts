@@ -22,6 +22,12 @@ export interface StartRequest {
 	model?: string | null;
 }
 
+export interface AskRequest {
+	projectPath: string;
+	title: string;
+	prompt: string;
+}
+
 /** The seam for running agents. T3 is the default adapter. See docs/adr/0002-t3-runner.md. */
 export interface Executor {
 	/** Throws ExecutorError when the run can't start. */
@@ -29,6 +35,8 @@ export interface Executor {
 	status(threadId: string): Promise<ThreadState>;
 	/** Sends the next turn. Nothing is interrupted. */
 	send(threadId: string, prompt: string): Promise<void>;
+	/** Runs one turn outside any work order and returns the reply. Throws ExecutorError when it can't. */
+	ask(req: AskRequest): Promise<string>;
 }
 
 export class ExecutorError extends Error {

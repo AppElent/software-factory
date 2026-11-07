@@ -8,11 +8,12 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { defaultModes, modeProblems, t3Command, USEFUL_SKILLS } from "../shared/modes.ts";
-import { mergeBlockers, originIs, qualifies, slugify, snoozeUntil } from "../shared/rules.ts";
+import { ISSUE_DATA_MAX, mergeBlockers, originIs, qualifies, slugify, snoozeUntil } from "../shared/rules.ts";
 import type {
 	BackSummary,
 	BulkMergeResult,
 	ErrorDetail,
+	IssuesResponse,
 	Mode,
 	ModesResponse,
 	PrDetail,
@@ -22,6 +23,7 @@ import type {
 	Settings,
 	SyncResult,
 	WorkOrder,
+	WorkOrderSource,
 } from "../shared/types.ts";
 import { WORK_TYPES } from "../shared/types.ts";
 import type { Bus } from "./bus.ts";
@@ -35,9 +37,10 @@ import { checkTools, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import { ActionError } from "./engine.ts";
+import type { Executor } from "./executor/types.ts";
 import { NewProjects, type ScaffoldRunner, TEMPLATES } from "./newproject.ts";
 import type { Notifier } from "./notify.ts";
-import { commandPrompt } from "./playbooks/index.ts";
+import { commandPrompt, parseAdvice, readerPrompt } from "./playbooks/index.ts";
 import type { Poller } from "./poller.ts";
 import { readFloor, readHealth, readProjectRecord, readQueue, readShell, triageBaseline } from "./read.ts";
 import { CSP, guard, SESSION_HEADER } from "./security.ts";
@@ -64,6 +67,7 @@ export interface AppDeps {
 	store: Store;
 	cli: Cli;
 	engine: Engine;
+	executor: Executor;
 	poller: Poller;
 	notifier: Notifier;
 	bus: Bus;
@@ -102,7 +106,7 @@ const launchdRestart = () => {
 };
 
 export function createApp(d: AppDeps): Hono {
-	const { config, store, cli, engine, poller, notifier, bus } = d;
+	const { config, store, cli, engine, executor, poller, notifier, bus } = d;
 	const webRoot = d.webRoot ?? process.env.SF_WEB_ROOT ?? WEB_ROOT;
 	const app = new Hono();
 	const devOrigin = process.env.SF_DEV_ORIGIN;
@@ -372,6 +376,8 @@ export function createApp(d: AppDeps): Hono {
 		// Removing stops watching. The repo, folder, and services stay.
 		store.db.prepare("UPDATE projects SET removed_at = ? WHERE slug = ?").run(store.iso(), slug);
 		store.db.prepare("DELETE FROM prs WHERE project = ?").run(slug);
+		store.db.prepare("DELETE FROM issues WHERE project = ?").run(slug);
+		store.db.prepare("DELETE FROM issue_state WHERE project = ?").run(slug);
 		store.db.prepare("DELETE FROM errors WHERE project = ?").run(slug);
 		audit(store.db, "remove project", p.repo, "you", null, store.now());
 		bus.publish(["projects", "floor", "queue", "shell", "prs", "errors"]);
@@ -575,17 +581,28 @@ export function createApp(d: AppDeps): Hono {
 			.optional(),
 	});
 
+	/** An issue's words come from here, so the page can't start work on text you didn't see. */
+	const issueOf = (source: WorkOrderSource, project: string) => {
+		if (source.kind !== "issue") return null;
+		const issue = source.issueNumber ? store.issue(project, source.issueNumber) : null;
+		if (!issue) throw new ActionError("That issue isn't open any more.", 409);
+		return issue;
+	};
+
 	app.post("/api/work-orders", async (c) => {
 		const input = await body(c.req, workOrderInput);
 		const source = await sourceFor(input.source ?? { kind: "person" }, input.project);
 		const mode = modeFor(input.mode);
 		if (mode?.merge === "factory" && source.kind === "error" && !input.confirmed)
 			throw new ActionError(`${mode.name} on a production error needs confirming.`, 409);
+		const issue = issueOf(source, input.project);
+		if (mode?.merge === "factory" && issue?.locked)
+			throw new ActionError(`Read #${issue.number} before starting ${mode.name}.`, 409);
 		const id = engine.create({
 			project: input.project,
 			type: input.type,
-			title: input.title ?? firstLine(input.description),
-			description: input.description,
+			title: issue ? `#${issue.number} ${issue.title}` : (input.title ?? firstLine(input.description)),
+			description: issue ? `Fix issue #${issue.number}` : input.description,
 			source,
 			prNumber: source.prNumber ?? null,
 			mode,
@@ -600,12 +617,13 @@ export function createApp(d: AppDeps): Hono {
 		if (!project.localPath) throw new ActionError("That project has no folder on this Mac.", 409);
 		const source = await sourceFor(input.source ?? { kind: "person" }, input.project);
 		const mode = modeFor(input.mode);
-		const title = input.title ?? firstLine(input.description);
+		const issue = issueOf(source, input.project);
+		const title = issue ? `#${issue.number} ${issue.title}` : (input.title ?? firstLine(input.description));
 		const prompt = commandPrompt({
 			mode,
 			source,
 			title,
-			description: input.description,
+			description: issue ? `Fix issue #${issue.number}` : input.description,
 		} as unknown as WorkOrder);
 		return c.json({
 			command: t3Command({
@@ -664,7 +682,7 @@ export function createApp(d: AppDeps): Hono {
 			const detail = errorDetail(id);
 			if (e) {
 				return {
-					kind,
+					kind: "error",
 					fingerprint: s.fingerprint,
 					data: [
 						`${e.title}`,
@@ -680,6 +698,20 @@ export function createApp(d: AppDeps): Hono {
 				};
 			}
 		}
+		if (s.fingerprint?.startsWith("issue:")) {
+			const [, slug, number] = s.fingerprint.split(":");
+			const n = Number(number);
+			if (slug !== project || !Number.isInteger(n))
+				throw new ActionError("That issue isn't in this project.", 400);
+			const issue = store.issue(project, n);
+			return {
+				// The fingerprint decides, so another kind can't step around what's asked of an issue.
+				kind: "issue",
+				fingerprint: s.fingerprint,
+				issueNumber: n,
+				data: issue ? `${issue.title}\n\n${issue.body}`.slice(0, ISSUE_DATA_MAX) : undefined,
+			};
+		}
 		if (s.fingerprint?.startsWith("main:")) {
 			const main = store.main(project);
 			return {
@@ -692,6 +724,113 @@ export function createApp(d: AppDeps): Hono {
 		}
 		return { kind, fingerprint: s.fingerprint, prNumber: s.prNumber };
 	}
+
+	/* ---------- issues ---------- */
+
+	const needIssue = (project: string, number: number) => {
+		const issue = store.issue(project, number);
+		if (!issue) throw new ActionError("That issue isn't open any more.", 404);
+		return issue;
+	};
+	const issueRef = z.object({ project: z.string(), number: z.number().int().positive() });
+
+	app.get("/api/issues", (c) => {
+		const project = c.req.query("project") || undefined;
+		const response: IssuesResponse = {
+			issues: store.issues(project),
+			checkedAt: store.health().find((h) => h.source === "GitHub")?.lastOk ?? null,
+			projects: store.projects().length,
+		};
+		return c.json(response);
+	});
+
+	/** Pinned to the version on your screen. If it changed underneath you, you haven't read this one. */
+	app.post("/api/issues/read", async (c) => {
+		const input = await body(c.req, issueRef.extend({ hash: z.string() }));
+		const issue = needIssue(input.project, input.number);
+		if (issue.bodyHash !== input.hash)
+			throw new ActionError("This issue changed on GitHub since you opened it. Read the new version.", 409);
+		store.markIssueRead(input.project, input.number, input.hash);
+		audit(store.db, "read issue", `${input.project}#${input.number}`, "you", null, store.now());
+		bus.publish(["issues", "shell"]);
+		return c.json({ ok: true });
+	});
+
+	app.post("/api/issues/triage", async (c) => {
+		const input = await body(
+			c.req,
+			z.object({
+				items: z.array(issueRef).min(1),
+				action: z.enum(["snooze", "dismiss", "not_legit", "undo"]),
+			}),
+		);
+		// Undo reaches issues that are hidden, so this reads the row and not the visible list.
+		const hashes = new Map(
+			(
+				store.db.prepare("SELECT project, number, json FROM issues").all() as Array<{
+					project: string;
+					number: number;
+					json: string;
+				}>
+			).map((r) => [`${r.project}:${r.number}`, (JSON.parse(r.json) as { bodyHash: string }).bodyHash]),
+		);
+		for (const { project, number } of input.items) {
+			const hash = hashes.get(`${project}:${number}`);
+			if (!hash) continue;
+			if (input.action === "undo") store.hideIssue(project, number, null, null, null);
+			else
+				store.hideIssue(
+					project,
+					number,
+					input.action,
+					hash,
+					input.action === "snooze" ? snoozeUntil(store.now()).toISOString() : null,
+				);
+		}
+		bus.publish(["issues", "shell"]);
+		return c.json({ ok: true });
+	});
+
+	/**
+	 * A second opinion, and nothing more: no rule reads it. It runs in an empty folder, so text written to
+	 * mislead the reader has no project to work on.
+	 */
+	app.post("/api/issues/ask", async (c) => {
+		const input = await body(c.req, issueRef);
+		const issue = needIssue(input.project, input.number);
+		const fp = `issue:${input.project}:${input.number}`;
+		if (store.askingIssues.has(fp)) return c.json({ ok: true });
+		store.askingIssues.add(fp);
+		bus.publish(["issues"]);
+		const room = join(store.dataDir, "reader");
+		mkdirSync(room, { recursive: true });
+		void executor
+			.ask({
+				projectPath: room,
+				title: `Read issue #${issue.number}`,
+				prompt: readerPrompt(issue),
+			})
+			.then((reply) => {
+				store.saveIssueAdvice(input.project, input.number, parseAdvice(reply, store.iso()), issue.bodyHash);
+			})
+			.catch((e) => {
+				store.saveIssueAdvice(
+					input.project,
+					input.number,
+					{
+						verdict: "unsure",
+						why: `Couldn't get an answer: ${scrub(e instanceof Error ? e.message : String(e)).slice(0, 200)}`,
+						at: store.iso(),
+					},
+					issue.bodyHash,
+				);
+			})
+			.finally(() => {
+				store.askingIssues.delete(fp);
+				bus.publish(["issues"]);
+			});
+		return c.json({ ok: true });
+	});
 
 	app.get("/api/work-orders/:id", (c) => {
 		const wo = store.workOrder(num(c.req.param("id")));

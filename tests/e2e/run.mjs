@@ -56,11 +56,14 @@ const SCENARIOS = [
 	"regression",
 	"merge_ready",
 	"missing_folder",
+	"issues_inbox",
+	"no_issues",
 ];
 const PATHS = [
 	"/",
 	"/floor",
 	"/prs",
+	"/issues",
 	"/errors",
 	"/projects",
 	"/health",

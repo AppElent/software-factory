@@ -80,6 +80,7 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		store,
 		cli: demo.cli,
 		engine,
+		executor: demo.executor,
 		poller,
 		notifier,
 		bus,

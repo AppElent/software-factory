@@ -810,7 +810,9 @@ export class Engine {
 				? "Added by you"
 				: input.source.kind === "pr_changes"
 					? "You asked for changes on the PR"
-					: "Started from the queue",
+					: input.source.kind === "issue"
+						? `Started from issue #${input.source.issueNumber}`
+						: "Started from the queue",
 			input.source.kind === "pr_changes" ? input.description : null,
 		);
 		// The PR's gates describe its current commit. Verify waits for the agent's push before reading them.

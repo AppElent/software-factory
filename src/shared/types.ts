@@ -357,9 +357,69 @@ export interface QueueResponse {
 	nextCheckAt: string | null;
 }
 
+export type IssueGroup = "needs_read" | "looks_legit" | "looks_off";
+
+/** What can be told about an issue without running a model. */
+export interface IssueSignals {
+	/** The owner, or someone GitHub lists as working on the repo. */
+	trusted: boolean;
+	association: string;
+	accountAgeDays: number | null;
+	links: number;
+	outsideLinks: number;
+	/** Passages asking the reader to run something. */
+	instructions: number;
+	/** Passages written to steer an agent. */
+	aimedAtAgents: number;
+	hidden: number;
+}
+
+export interface IssueAdvice {
+	verdict: "legit" | "off" | "unsure";
+	why: string;
+	at: string;
+}
+
+export interface Issue {
+	project: string;
+	projectName: string;
+	number: number;
+	title: string;
+	url: string;
+	body: string;
+	author: string | null;
+	authorAssociation: string;
+	authorCreatedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+	labels: string[];
+	comments: number;
+	/** Pins a read to this text. An edit on GitHub changes it. */
+	bodyHash: string;
+	signals: IssueSignals;
+	group: IssueGroup;
+	/** When you read this version. */
+	readAt: string | null;
+	/** You read an earlier version, and it has changed since. */
+	editedSinceRead: boolean;
+	/** A mode that merges on its own can't start until you've read it. */
+	locked: boolean;
+	advice: IssueAdvice | null;
+	/** An agent is reading it now. */
+	asking: boolean;
+	workOrderId: number | null;
+}
+
+export interface IssuesResponse {
+	issues: Issue[];
+	checkedAt: string | null;
+	/** Projects read, including those with nothing open. */
+	projects: number;
+}
+
 export interface ShellResponse {
 	hasProjects: boolean;
-	counts: { queue: number; floor: number; prs: number; errors: number; projects: number };
+	counts: { queue: number; floor: number; prs: number; issues: number; errors: number; projects: number };
 	agents: { working: number; limit: number };
 	line: { stopped: boolean; stoppedAt: string | null };
 	sources: SourceHealth[];

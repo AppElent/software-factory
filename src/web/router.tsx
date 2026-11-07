@@ -4,6 +4,7 @@ import { ErrorDetailScreen } from "./screens/error-detail.tsx";
 import { ErrorsScreen } from "./screens/errors.tsx";
 import { FloorScreen } from "./screens/floor.tsx";
 import { HealthScreen } from "./screens/health.tsx";
+import { IssuesScreen } from "./screens/issues.tsx";
 import { NewProjectScreen } from "./screens/new-project.tsx";
 import { NotificationSamplesScreen } from "./screens/notification-samples.tsx";
 import { PrReviewScreen } from "./screens/pr-review.tsx";
@@ -51,6 +52,12 @@ const prReview = createRoute({
 	getParentRoute: () => shell,
 	path: "/prs/$project/$number",
 	component: PrReviewScreen,
+});
+const issues = createRoute({
+	getParentRoute: () => shell,
+	path: "/issues",
+	component: IssuesScreen,
+	validateSearch: projectFilter.extend({ select: z.string().optional() }),
 });
 const errors = createRoute({
 	getParentRoute: () => shell,
@@ -111,6 +118,7 @@ export const routeTree = rootRoute.addChildren([
 		floor,
 		prs,
 		prReview,
+		issues,
 		errors,
 		errorDetail,
 		workOrder,

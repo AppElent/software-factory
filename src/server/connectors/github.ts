@@ -1,14 +1,20 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { mapGates, prGroup } from "../../shared/rules.ts";
 import type {
 	CheckBucket,
 	CheckRun,
+	Issue,
 	MainBranchState,
 	PullRequest,
 	ToolkitState,
 } from "../../shared/types.ts";
 import type { Cli } from "../cli.ts";
 import { scrub } from "../cli.ts";
+
+/** Covers what an agent would get, so an edit to either means reading it again. */
+export const issueHash = (title: string, body: string) =>
+	createHash("sha256").update(`${title}\0${body}`).digest("hex");
 
 export const TOOLKIT_REPO = "AppElent/developer-tools";
 
@@ -82,6 +88,31 @@ const RepoNode = z.object({
 			}),
 		),
 	}),
+	// Optional, so a repo with Issues turned off still reads. One bad row loses that row and not the repo.
+	issues: z
+		.object({
+			nodes: z.array(
+				z
+					.object({
+						number: z.number(),
+						title: z.string(),
+						url: z.string(),
+						body: z.string().nullable(),
+						authorAssociation: z.string().nullable().optional(),
+						author: z.object({ login: z.string(), createdAt: z.string().optional() }).nullable().optional(),
+						createdAt: z.string(),
+						updatedAt: z.string(),
+						labels: z
+							.object({ nodes: z.array(z.object({ name: z.string() }).nullable()) })
+							.nullable()
+							.optional(),
+						comments: z.object({ totalCount: z.number() }).optional(),
+					})
+					.nullable(),
+			),
+		})
+		.nullable()
+		.optional(),
 	devtools: Blob,
 	appJson: Blob,
 });
@@ -96,6 +127,23 @@ const Response = z.object({
 const CommitDate = z.object({ commit: z.object({ committer: z.object({ date: z.string() }) }) });
 const Compare = z.object({ ahead_by: z.number(), files: z.array(z.unknown()).optional() });
 
+/** An issue as GitHub has it. What the factory thinks of it is worked out when it's read back. */
+export type IssueRead = Pick<
+	Issue,
+	| "number"
+	| "title"
+	| "url"
+	| "body"
+	| "author"
+	| "authorAssociation"
+	| "authorCreatedAt"
+	| "createdAt"
+	| "updatedAt"
+	| "labels"
+	| "comments"
+	| "bodyHash"
+>;
+
 export interface RepoRead {
 	repo: string;
 	url: string;
@@ -105,6 +153,7 @@ export interface RepoRead {
 	defaultBranch: string;
 	main: MainBranchState | null;
 	prs: Array<Omit<PullRequest, "project" | "projectName" | "workOrderId" | "workType">>;
+	issues: IssueRead[];
 	devtoolsCommit: string | null;
 }
 
@@ -120,6 +169,12 @@ const FIELDS = `
 	pullRequests(states: OPEN, first: 40, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
 		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName baseRefName createdAt updatedAt
 		commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
+	} }
+	issues(states: OPEN, first: 30, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
+		number title url body authorAssociation createdAt updatedAt
+		author { login ... on User { createdAt } }
+		labels(first: 10) { nodes { name } }
+		comments { totalCount }
 	} }
 	devtools: object(expression: "HEAD:.appelent/devtools.json") { ... on Blob { text } }
 	appJson: object(expression: "HEAD:app.json") { ... on Blob { text } }
@@ -245,6 +300,26 @@ function toRepoRead(node: z.infer<typeof RepoNode>, now: number): RepoRead {
 		defaultBranch: node.defaultBranchRef?.name ?? "main",
 		main: node.defaultBranchRef ? readMain(node.defaultBranchRef.target) : null,
 		devtoolsCommit: devtoolsCommit(node.devtools?.text),
+		issues: (node.issues?.nodes ?? []).flatMap((i) =>
+			i
+				? [
+						{
+							number: i.number,
+							title: i.title,
+							url: i.url,
+							body: i.body ?? "",
+							author: i.author?.login ?? null,
+							authorAssociation: i.authorAssociation ?? "NONE",
+							authorCreatedAt: i.author?.createdAt ?? null,
+							createdAt: i.createdAt,
+							updatedAt: i.updatedAt,
+							labels: (i.labels?.nodes ?? []).flatMap((l) => (l ? [l.name] : [])),
+							comments: i.comments?.totalCount ?? 0,
+							bodyHash: issueHash(i.title, i.body ?? ""),
+						},
+					]
+				: [],
+		),
 		prs: node.pullRequests.nodes.map((pr) => {
 			const checks = readChecks(pr.commits.nodes[0]?.commit.statusCheckRollup);
 			const gates = mapGates(checks);

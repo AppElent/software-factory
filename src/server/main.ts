@@ -85,6 +85,7 @@ const app = createApp({
 	store,
 	cli,
 	engine,
+	executor,
 	poller,
 	notifier,
 	bus,

@@ -5,6 +5,7 @@ import type {
 	ErrorItem,
 	FloorResponse,
 	HealthResponse,
+	IssuesResponse,
 	ModesResponse,
 	NewProjectRun,
 	PrDetail,
@@ -60,6 +61,12 @@ export interface ErrorsResponse {
 	withoutSentry: number;
 	quiet: number;
 }
+export const useIssues = (project?: string) =>
+	useQuery({
+		queryKey: ["issues", project ?? ""],
+		queryFn: () =>
+			api.get<IssuesResponse>(`/api/issues${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+	});
 export const useErrors = (project?: string) =>
 	useQuery({
 		queryKey: ["errors", project ?? ""],

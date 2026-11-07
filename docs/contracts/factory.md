@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.1.0
+version: 2.2.0
 status: current
 ---
 
@@ -14,7 +14,7 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 
 `Intake → Plan → Build → Verify → Review → Ship → Observe`
 
-- Sources: a person, a production error, a CI failure, a stale or conflicted PR, or toolkit drift.
+- Sources: a person, a GitHub issue, a production error, a CI failure, a stale or conflicted PR, or toolkit drift.
 - Observe watches for new errors after shipping. An error feeds a new work order back to Intake, carrying the earlier fix as context when it's a regression.
 - An error is a regression when it's seen more than an hour after its fix merged, unless its latest event is from the release it was on when the fix merged, which means an old build is still running.
 - Every merge names the commit its gates were read for, and refuses while the agent is changing the PR. A gate that fails or restarts during Review returns the work order to Verify.
@@ -93,6 +93,22 @@ A mode is a way to start work: a prompt added before the work order's own instru
 - **Always yours, in every mode and setting:** changes to `.github/workflows/`, and on this app's own repo also `src/server/security.ts`, `src/shared/rules.ts` and `docs/adr/`. When the factory can't read which files changed, it waits and reads again.
 - Starting a merging mode on a production error asks once more, and the server refuses it without that confirmation.
 - Copy as command gives the same work as a `t3 thread start` command that runs without this app. Text from outside stays delimited as data, and can't end the command's quoted prompt.
+
+### Issues
+
+Open issues read from GitHub, in three groups. They stay out of the queue, because they ask for a decision and don't report damage.
+
+| Group        | Means                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------ |
+| Needs a read | Someone outside the repo wrote it, and you haven't read this version                                   |
+| Looks legit  | The owner, a member or a collaborator wrote it, or you've read this version                            |
+| Looks off    | Someone outside wrote it, it has text aimed at an agent or hidden from view, and you haven't read this |
+
+- The check runs on every read and uses no model. It looks at who wrote it, links, requests to run something, text aimed at an agent, and hidden text. A hit is a reason to read closely, never a verdict. Text is shown plain, with those passages underlined, so nothing is hidden by rendering.
+- **The lock:** a mode that merges on its own won't start on an outsider's issue until you've read it. The server enforces this, and a read is pinned to a hash of the title and body. An edit on GitHub takes the read away, and the same is true of a snooze or dismissal: an edit brings the issue back.
+- **An agent's read** is advice. You ask for it per issue, it runs in an empty folder so it has no project to act on, and nothing depends on it, least of all the lock. It's dropped when the issue is edited.
+- The agent fixing an issue gets the title and body the factory read, as delimited data, up to 20,000 characters. The page names the issue and sends no text. Comments aren't included.
+- In the command menu, `fix #12 full send`, `fix ledger #12`, `fix FAIRWAY-3K council` and `fix everything red with full stop` start work directly. A mode it can't find is reported and the default isn't used instead. A merging mode on a production error, or on everything red, asks once more.
 
 ### Config file
 

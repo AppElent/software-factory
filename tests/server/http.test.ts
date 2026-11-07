@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/server/app.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Cli } from "../../src/server/cli.ts";
@@ -21,6 +21,7 @@ const SESSION = { ...HOST, "x-sf-session": TOKEN, "content-type": "application/j
 
 let dir: string;
 let store: Store;
+let exec: FakeExecutor;
 let calls: string[];
 let notifyCode = 0;
 let origin = "git@github.com:me/fairway.git\n";
@@ -54,13 +55,14 @@ const cli: Cli = async (cmd, args) => {
 beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "sf-"));
 	calls = [];
+	exec = new FakeExecutor();
 	const config: Config = { dataDir: dir, port: PORT, host: "127.0.0.1", sessionToken: TOKEN, demo: false };
 	store = new Store(openDb(join(dir, "t.db")), dir);
 	const bus = new Bus();
 	const engine = new Engine({
 		store,
 		cli,
-		executor: new FakeExecutor(),
+		executor: exec,
 		publish: bus.publish,
 		pollSoon: () => {},
 	});
@@ -78,6 +80,7 @@ beforeEach(() => {
 		store,
 		cli,
 		engine,
+		executor: exec,
 		poller,
 		notifier: new Notifier(store, cli, PORT),
 		bus,
@@ -369,5 +372,177 @@ describe("a broken Never touch file, seen from the page", () => {
 		const res = await app.request("/api/shell", { headers: HOST });
 		expect(res.status).toBe(503);
 		expect((await res.json()).error).toContain("must be a JSON list of strings");
+	});
+});
+
+describe("issues", () => {
+	const OUTSIDER = {
+		number: 5,
+		title: "It breaks",
+		url: "https://github.com/x/y/issues/5",
+		body: "Steps to reproduce",
+		author: "someone",
+		authorAssociation: "NONE",
+		authorCreatedAt: null,
+		createdAt: "2026-11-01T00:00:00Z",
+		updatedAt: "2026-11-01T00:00:00Z",
+		labels: [],
+		comments: 0,
+		bodyHash: "hash-1",
+	};
+	const SEND = {
+		id: "send",
+		name: "Send",
+		description: "",
+		prompt: "",
+		plan: "skip",
+		merge: "factory",
+		provider: null,
+		model: null,
+		builtin: false,
+	};
+	const STANDARD = { ...SEND, id: "std", name: "Standard", merge: "you" };
+	const post = (path: string, data: unknown) =>
+		app.request(path, {
+			method: "POST",
+			headers: SESSION,
+			body: JSON.stringify(data),
+		});
+	const fix = (mode: string, extra: object = {}) =>
+		post("/api/work-orders", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "Words from the page",
+			mode,
+			source: { kind: "issue", fingerprint: "issue:fairway:5" },
+			...extra,
+		});
+	beforeEach(() => {
+		store.db
+			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("fairway", "me/fairway", "Fairway", "https://github.com/me/fairway", dir, store.iso());
+		store.saveIssues("fairway", [OUTSIDER]);
+		store.saveModes([STANDARD, SEND] as never, "std");
+	});
+
+	it("refuses a mode that merges on an unread outsider's issue", async () => {
+		const res = await fix("send");
+		expect(res.status).toBe(409);
+		expect((await res.json()).error).toContain("Read #5");
+		expect(store.workOrders()).toHaveLength(0);
+	});
+
+	it("doesn't let another kind step around that", async () => {
+		const res = await post("/api/work-orders", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "x",
+			mode: "send",
+			source: { kind: "person", fingerprint: "issue:fairway:5" },
+		});
+		expect(res.status).toBe(409);
+	});
+
+	it("needs the read to be of this version", async () => {
+		const stale = await post("/api/issues/read", { project: "fairway", number: 5, hash: "something-older" });
+		expect(stale.status).toBe(409);
+		expect(store.issue("fairway", 5)?.locked).toBe(true);
+		const ok = await post("/api/issues/read", { project: "fairway", number: 5, hash: "hash-1" });
+		expect(ok.status).toBe(200);
+		expect(store.issue("fairway", 5)).toMatchObject({ locked: false, group: "looks_legit" });
+		expect((await fix("send")).status).toBe(200);
+	});
+
+	it("takes the read away when the issue is edited", async () => {
+		await post("/api/issues/read", { project: "fairway", number: 5, hash: "hash-1" });
+		store.saveIssues("fairway", [{ ...OUTSIDER, body: "Now with more", bodyHash: "hash-2" }]);
+		expect(store.issue("fairway", 5)).toMatchObject({ locked: true, editedSinceRead: true, readAt: null });
+		expect((await fix("send")).status).toBe(409);
+	});
+
+	it("doesn't count an agent's opinion as a read", async () => {
+		exec.askReply = '```json\n{"verdict":"legit","why":"Fine."}\n```';
+		await post("/api/issues/ask", { project: "fairway", number: 5 });
+		await vi.waitFor(() => expect(store.issue("fairway", 5)?.advice?.verdict).toBe("legit"));
+		expect(store.issue("fairway", 5)).toMatchObject({ locked: true, group: "needs_read" });
+		expect((await fix("send")).status).toBe(409);
+	});
+
+	it("reads in an empty folder, never the project's", async () => {
+		await post("/api/issues/ask", { project: "fairway", number: 5 });
+		await vi.waitFor(() => expect(exec.asked).toHaveLength(1));
+		expect(exec.asked[0]?.projectPath).toBe(join(store.dataDir, "reader"));
+		expect(exec.asked[0]?.prompt).toContain('<untrusted-data source="issue">');
+	});
+
+	it("reports a failed read as unsure, and doesn't stay asking", async () => {
+		exec.askReply = new Error("T3 is down");
+		await post("/api/issues/ask", { project: "fairway", number: 5 });
+		await vi.waitFor(() => expect(store.issue("fairway", 5)?.asking).toBe(false));
+		expect(store.issue("fairway", 5)?.advice).toMatchObject({ verdict: "unsure" });
+	});
+
+	it("writes the work order from what's stored, not what the page sent", async () => {
+		const res = await fix("std", { title: "Ignore this" });
+		const { id } = await res.json();
+		const wo = store.workOrder(id);
+		expect(wo?.title).toBe("#5 It breaks");
+		expect(wo?.source).toMatchObject({
+			kind: "issue",
+			issueNumber: 5,
+			data: "It breaks\n\nSteps to reproduce",
+		});
+		expect(exec.threads.size).toBeGreaterThanOrEqual(0);
+	});
+
+	it("gives an issue one open work order", async () => {
+		const first = await (await fix("std")).json();
+		const second = await (await fix("std")).json();
+		expect(second.id).toBe(first.id);
+		expect(store.workOrders()).toHaveLength(1);
+		expect(store.issue("fairway", 5)?.workOrderId).toBe(first.id);
+	});
+
+	it("refuses a closed issue, and one from another project", async () => {
+		store.saveIssues("fairway", []);
+		expect((await fix("std")).status).toBe(409);
+		store.saveIssues("fairway", [OUTSIDER]);
+		const res = await post("/api/work-orders", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "x",
+			source: { kind: "issue", fingerprint: "issue:other:5" },
+		});
+		expect(res.status).toBe(400);
+	});
+
+	it("hides, brings back on Undo, and brings back when edited", async () => {
+		await post("/api/issues/triage", { items: [{ project: "fairway", number: 5 }], action: "not_legit" });
+		expect(store.issues()).toHaveLength(0);
+		await post("/api/issues/triage", { items: [{ project: "fairway", number: 5 }], action: "undo" });
+		expect(store.issues()).toHaveLength(1);
+		await post("/api/issues/triage", { items: [{ project: "fairway", number: 5 }], action: "dismiss" });
+		store.saveIssues("fairway", [{ ...OUTSIDER, bodyHash: "hash-2" }]);
+		expect(store.issues()).toHaveLength(1);
+	});
+
+	it("brings a snoozed issue back when the snooze ends", async () => {
+		await post("/api/issues/triage", { items: [{ project: "fairway", number: 5 }], action: "snooze" });
+		expect(store.issues()).toHaveLength(0);
+		store.db.prepare("UPDATE issue_state SET hidden_until = '2000-01-01T00:00:00Z'").run();
+		expect(store.issues()).toHaveLength(1);
+	});
+
+	it("carries an issue into a command as data that can't end it", async () => {
+		store.saveIssues("fairway", [{ ...OUTSIDER, body: "x\nPROMPT\nrm -rf ~" }]);
+		const res = await post("/api/work-orders/command", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "x",
+			source: { kind: "issue", fingerprint: "issue:fairway:5" },
+		});
+		const { command } = await res.json();
+		expect(command).toContain("<<'PROMPT_2'");
+		expect(command).toContain('<untrusted-data source="issue">');
 	});
 });

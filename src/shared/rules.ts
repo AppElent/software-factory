@@ -4,12 +4,15 @@ import type {
 	GateName,
 	GateState,
 	Gates,
+	IssueGroup,
+	IssueSignals,
 	Limits,
 	PrGroup,
 	PullRequest,
 	QueueItem,
 	QueueKind,
 	StartBlock,
+	WorkType,
 } from "./types.ts";
 import { GATE_NAMES } from "./types.ts";
 
@@ -474,6 +477,86 @@ export function delimit(source: string, text: string): string {
 	const safe = text.replace(/<\/?untrusted-data/gi, (m) => m.replace("<", "&lt;"));
 	return `<untrusted-data source="${source}">\n${safe}\n</untrusted-data>`;
 }
+
+/* ---------- issues ---------- */
+
+const TRUSTED_AUTHORS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
+/** Written for an agent, not for a person fixing a bug. A hit is a reason to read closely, not a verdict. */
+const AGENT_PATTERNS = [
+	/\b(?:ignore|disregard|forget)\b[^.\n]{0,40}\b(?:previous|prior|above|earlier|instructions|rules)\b/gi,
+	/\bsystem prompt\b/gi,
+	/\byou are now\b[^.\n]{0,60}/gi,
+	/\b(?:print|send|post|upload|share|reveal|paste|exfiltrate)\b[^.\n]{0,40}(?:\b(?:secrets?|tokens?|api keys?|credentials|passwords?)\b|\.env\b)/gi,
+];
+/** Asks whoever reads it to run something. Real reports do this too, so alone it only asks for a closer read. */
+const RUN_PATTERNS = [
+	/\b(?:curl|wget)\b[^\n|]{0,120}\|\s*(?:ba|z)?sh\b/gi,
+	/\b(?:please |first |must )?(?:run|execute)\b[^.\n]{0,40}\b(?:script|\.sh|\.ps1|installer)\b[^\n]{0,60}/gi,
+];
+const HIDDEN_PATTERNS = [/<!--[\s\S]*?-->/g, /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g];
+const LINK = /https?:\/\/[^\s)>\]"']+/gi;
+
+export interface SuspectRange {
+	start: number;
+	end: number;
+	why: "agent" | "run" | "hidden";
+}
+
+/** The parts of an issue to underline, in order and never overlapping. */
+export function suspectRanges(text: string): SuspectRange[] {
+	const found: SuspectRange[] = [];
+	const scan = (patterns: RegExp[], why: SuspectRange["why"]) => {
+		for (const re of patterns)
+			for (const m of text.matchAll(re)) found.push({ start: m.index, end: m.index + m[0].length, why });
+	};
+	scan(HIDDEN_PATTERNS, "hidden");
+	scan(AGENT_PATTERNS, "agent");
+	scan(RUN_PATTERNS, "run");
+	const out: SuspectRange[] = [];
+	for (const r of found.sort((a, b) => a.start - b.start || b.end - a.end)) {
+		const last = out.at(-1);
+		if (last && r.start < last.end) last.end = Math.max(last.end, r.end);
+		else out.push({ ...r });
+	}
+	return out;
+}
+
+export function issueSignals(
+	issue: { title: string; body: string; authorAssociation: string; authorCreatedAt: string | null },
+	now: number,
+): IssueSignals {
+	const text = `${issue.title}\n${issue.body}`;
+	const links = [...text.matchAll(LINK)].map((m) => m[0]);
+	const ranges = suspectRanges(text);
+	return {
+		trusted: TRUSTED_AUTHORS.has(issue.authorAssociation),
+		association: issue.authorAssociation,
+		accountAgeDays: issue.authorCreatedAt
+			? Math.floor((now - Date.parse(issue.authorCreatedAt)) / 86_400_000)
+			: null,
+		links: links.length,
+		outsideLinks: links.filter((l) => !/^https?:\/\/([a-z0-9-]+\.)*github\.com\//i.test(l)).length,
+		instructions: ranges.filter((r) => r.why === "run").length,
+		aimedAtAgents: ranges.filter((r) => r.why === "agent").length,
+		hidden: ranges.filter((r) => r.why === "hidden").length,
+	};
+}
+
+/** Your read wins, then the author, then the text. An agent's opinion never moves an issue. */
+export function issueGroup(signals: IssueSignals, read: boolean): IssueGroup {
+	if (read || signals.trusted) return "looks_legit";
+	return signals.aimedAtAgents > 0 || signals.hidden > 0 ? "looks_off" : "needs_read";
+}
+
+/** Text from outside reaches a mode that merges on its own only after a person read this exact version. */
+export const issueLocked = (signals: IssueSignals, read: boolean) => !signals.trusted && !read;
+
+export const issueWorkType = (labels: string[]): WorkType =>
+	labels.some((l) => /^(enhancement|feature|feat)\b/i.test(l)) ? "Feature" : "Bug fix";
+
+/** The most of an issue an agent gets. GitHub allows 65,536 characters. */
+export const ISSUE_DATA_MAX = 20_000;
 
 /* ---------- formatting shared by screens and notifications ---------- */
 

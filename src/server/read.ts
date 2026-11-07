@@ -52,6 +52,7 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 			queue: queue.length,
 			floor,
 			prs: store.prs().length,
+			issues: store.issues().length,
 			errors: store.errors().filter((e) => e.triage?.action !== "dismiss").length,
 			projects: projects.length,
 		},
