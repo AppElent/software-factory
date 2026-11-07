@@ -48,6 +48,7 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 	const limits = engine.limits();
 	return {
 		hasProjects: projects.length > 0,
+		newDevice: kvGet(store.db, "new_device") === true,
 		counts: {
 			queue: queue.length,
 			floor,

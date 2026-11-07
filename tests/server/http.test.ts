@@ -991,3 +991,68 @@ describe("versions", () => {
 		expect((await post("/api/versions/activate", { sha: "../../etc" })).status).toBe(400);
 	});
 });
+
+describe("setting up a new Mac", () => {
+	const post = (path: string, data: unknown = {}) =>
+		app.request(path, { method: "POST", headers: SESSION, body: JSON.stringify(data) });
+	const insert = (path: string | null) =>
+		store.db
+			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("ledger", "me/ledger", "Ledger", "https://github.com/me/ledger", path, "2026-11-01T00:00:00Z");
+
+	it("installs with the listed command", async () => {
+		expect((await post("/api/tools/install", { name: "infisical" })).status).toBe(200);
+		expect(calls).toContainEqual(expect.stringMatching(/^brew install infisical/));
+	});
+
+	it("runs nothing for a name it doesn't know", async () => {
+		const before = calls.length;
+		expect((await post("/api/tools/install", { name: "rm -rf" })).status).toBe(404);
+		expect((await post("/api/tools/sign-in", { name: "$(touch x)" })).status).toBe(404);
+		expect(calls).toHaveLength(before);
+	});
+
+	it("opens the listed login in Terminal", async () => {
+		expect((await post("/api/tools/sign-in", { name: "gh" })).status).toBe(200);
+		const line = calls.find((c) => c.startsWith("osascript"));
+		expect(line).toContain('do script "gh auth login"');
+	});
+
+	it("says what's missing when a tool has no sign-in", async () => {
+		expect((await post("/api/tools/sign-in", { name: "t3" })).status).toBe(502);
+		expect(calls.some((c) => c.startsWith("osascript"))).toBe(false);
+	});
+
+	it("doesn't take another install while one runs", async () => {
+		const first = post("/api/tools/install", { name: "infisical" });
+		const second = await post("/api/tools/install", { name: "wrangler" });
+		expect(second.status).toBe(409);
+		expect((await first).status).toBe(200);
+	});
+
+	it("needs a session", async () => {
+		const res = await app.request("/api/tools/install", {
+			method: "POST",
+			headers: { ...HOST, "content-type": "application/json" },
+			body: JSON.stringify({ name: "gh" }),
+		});
+		expect(res.status).toBe(403);
+	});
+
+	it("clones a path from another Mac into this Mac's clone folder", async () => {
+		insert("/Users/someone-else/code/ledger");
+		expect((await post("/api/projects/ledger/clone")).status).toBe(200);
+		const path = store.project("ledger")?.localPath ?? "";
+		expect(path).not.toContain("someone-else");
+		expect(path.endsWith("/ledger")).toBe(true);
+	});
+
+	it("finishing clears the flag", async () => {
+		kvSet(store.db, "new_device", true);
+		const shell = async () =>
+			((await (await app.request("/api/shell", { headers: HOST })).json()) as ShellResponse).newDevice;
+		expect(await shell()).toBe(true);
+		await post("/api/new-device/done");
+		expect(await shell()).toBe(false);
+	});
+});

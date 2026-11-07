@@ -1,5 +1,6 @@
 import type { ToolStatus } from "../../shared/types.ts";
 import type { Cli } from "../cli.ts";
+import { scrub } from "../cli.ts";
 
 interface ToolDef {
 	name: string;
@@ -104,3 +105,31 @@ export async function checkTool(cli: Cli, def: ToolDef): Promise<ToolStatus> {
 }
 
 export const checkTools = (cli: Cli) => Promise.all(TOOLS.map((t) => checkTool(cli, t)));
+
+/** Runs the install command from the list above. Nothing typed by anyone reaches this. */
+export async function installTool(cli: Cli, def: ToolDef) {
+	const [cmd, ...args] = def.install.split(" ");
+	const res = await cli(cmd as string, args, { timeoutMs: 10 * 60_000 });
+	if (res.missing) {
+		const need =
+			cmd === "brew" ? "Homebrew isn't installed. Get it from brew.sh" : `${cmd} isn't installed. Install it`;
+		return { ok: false, error: `${need}, then try again.` };
+	}
+	if (res.code !== 0)
+		return { ok: false, error: scrub(res.stderr).trim().slice(-300) || `${def.install} failed.` };
+	return { ok: true, error: null };
+}
+
+/** Sign-ins ask questions and open a browser, so they happen in Terminal, where you can answer. */
+export async function openSignIn(cli: Cli, def: ToolDef) {
+	if (!def.login) return { ok: false, error: `${def.name} has no sign-in.` };
+	const res = await cli("osascript", [
+		"-e",
+		`tell application "Terminal" to do script "${def.login}"`,
+		"-e",
+		'tell application "Terminal" to activate',
+	]);
+	if (res.code !== 0)
+		return { ok: false, error: `Couldn't open Terminal. Run ${def.login} yourself, then check again.` };
+	return { ok: true, error: null };
+}

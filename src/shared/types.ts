@@ -538,6 +538,8 @@ export interface IssuesResponse {
 
 export interface ShellResponse {
 	hasProjects: boolean;
+	/** Projects came back from the config file, so this Mac still needs setting up. */
+	newDevice: boolean;
 	counts: {
 		queue: number;
 		floor: number;

@@ -14,14 +14,16 @@ import {
 	Skeleton,
 	StatusLine,
 } from "../kit.tsx";
-import { useAction, useReading, useRepos, useTools } from "../queries.ts";
+import { useAction, useProjects, useReading, useRepos, useShell, useTools } from "../queries.ts";
 import { SetupLayout } from "../shell.tsx";
 
 const STEPS = ["Check your tools", "Choose projects", "Read projects", "Open your queue"];
+const NEW_DEVICE_STEPS = ["Check your tools", "Restore projects", "Open your queue"];
 
 export function WelcomeScreen() {
 	const { step } = useParams({ strict: false }) as { step?: string };
 	if (step === "tools") return <ToolsStep />;
+	if (step === "restore") return <RestoreStep />;
 	if (step === "repos") return <ReposStep />;
 	if (step === "reading") return <ReadingStep />;
 	return <Navigate to="/welcome/$step" params={{ step: "tools" }} replace />;
@@ -40,6 +42,29 @@ const RowsLoading = ({ label }: { label: string }) => (
 
 /** The service joins the status and the reason. The rows show them apart. */
 const toolWhy = (t: ToolStatus) => t.detail.replace(/^Not (signed in|installed)\. ?/, "");
+
+function FixTool({ tool, onDone }: { tool: ToolStatus; onDone: () => void }) {
+	const [opened, setOpened] = useState(false);
+	const missing = tool.state === "missing";
+	const install = useAction(() => api.post("/api/tools/install", { name: tool.name }), { onSuccess: onDone });
+	const signIn = useAction(() => api.post("/api/tools/sign-in", { name: tool.name }), {
+		onSuccess: () => setOpened(true),
+	});
+	const act = missing ? install : signIn;
+	return (
+		<div className="flex flex-wrap items-center gap-2">
+			<Button disabled={act.pending} onClick={() => void act.run()}>
+				{missing
+					? install.pending
+						? `Installing ${tool.name}…`
+						: `Install ${tool.name}`
+					: `Sign in to ${tool.name}`}
+			</Button>
+			{opened && <span className="text-meta text-text-muted">Finish in Terminal, then check again.</span>}
+			<InlineError>{act.error}</InlineError>
+		</div>
+	);
+}
 
 function ToolRow({
 	tool,
@@ -83,19 +108,24 @@ function ToolRow({
 				<div className="flex flex-col gap-2 ps-7">
 					{tool.fix && <CodeBlock>{tool.fix}</CodeBlock>}
 					<span className="text-meta text-text-muted">{toolWhy(tool)}</span>
+					<FixTool tool={tool} onDone={onCheck} />
 				</div>
 			)}
 			{bad && !required && blocked && <div className="ps-7 text-meta text-text-muted">{toolWhy(tool)}</div>}
 			{bad && !required && !blocked && tool.state === "missing" && (
-				<div className="ps-7 text-meta text-text-muted">
-					{toolWhy(tool)} Install it with{" "}
-					<span className="font-mono text-data text-text-primary">{tool.fix}</span>
+				<div className="flex flex-col gap-2 ps-7">
+					<div className="text-meta text-text-muted">
+						{toolWhy(tool)} Install it with{" "}
+						<span className="font-mono text-data text-text-primary">{tool.fix}</span>
+					</div>
+					<FixTool tool={tool} onDone={onCheck} />
 				</div>
 			)}
 			{bad && !required && !blocked && tool.state !== "missing" && (
 				<div className="flex flex-col gap-2 ps-7">
 					{tool.fix && <CodeBlock>{tool.fix}</CodeBlock>}
-					<div>
+					<div className="flex flex-wrap items-center gap-2">
+						<FixTool tool={tool} onDone={onCheck} />
 						<Button disabled={checking} onClick={onCheck}>
 							{checking ? "Checking…" : "Check again"}
 						</Button>
@@ -108,6 +138,7 @@ function ToolRow({
 
 function ToolsStep() {
 	const tools = useTools();
+	const newDevice = useShell().data?.newDevice === true;
 	const check = useAction(() => api.post<ToolStatus[]>("/api/tools/check"));
 	const missing = tools.data?.filter((t) => t.required && t.state !== "ready") ?? [];
 	const blocked = missing.length > 0;
@@ -116,10 +147,10 @@ function ToolsStep() {
 	const first = need[0] ?? "";
 	return (
 		<SetupLayout
-			steps={STEPS}
+			steps={newDevice ? NEW_DEVICE_STEPS : STEPS}
 			current={0}
 			title="Check your tools"
-			lead="Software Factory runs on the tools you already use. Nothing has been changed on this Mac."
+			lead="Software Factory runs on the tools you already use. Nothing changes on this Mac until you press a button."
 		>
 			{tools.isError ? (
 				<>
@@ -159,7 +190,11 @@ function ToolsStep() {
 							</>
 						) : (
 							<>
-								<ButtonLink variant="primary" to="/welcome/$step" params={{ step: "repos" }}>
+								<ButtonLink
+									variant="primary"
+									to="/welcome/$step"
+									params={{ step: newDevice ? "restore" : "repos" }}
+								>
 									Continue
 								</ButtonLink>
 								{later.length > 0 && (
@@ -168,6 +203,88 @@ function ToolsStep() {
 									</span>
 								)}
 							</>
+						)}
+					</div>
+				</>
+			)}
+		</SetupLayout>
+	);
+}
+
+/* ---------- restore ---------- */
+
+function RestoreStep() {
+	const navigate = useNavigate();
+	const projects = useProjects();
+	const [failed, setFailed] = useState<Record<string, string>>({});
+	const missing = projects.data?.filter((p) => p.folderMissing) ?? [];
+	const shell = useShell();
+	const finish = useAction(
+		async () => {
+			await api.post("/api/new-device/done");
+			// The redirect to this flow reads the shell, so it has to be current first.
+			await shell.refetch();
+		},
+		{ onSuccess: () => void navigate({ to: "/" }) },
+	);
+	const clone = useAction(async () => {
+		const errors: Record<string, string> = {};
+		// One at a time, so a slow network fails one clone and not all of them.
+		for (const p of missing) {
+			try {
+				await api.post(`/api/projects/${p.slug}/clone`);
+			} catch (e) {
+				errors[p.slug] = e instanceof Error ? e.message : "The clone failed.";
+			}
+		}
+		setFailed(errors);
+		await projects.refetch();
+	});
+	return (
+		<SetupLayout
+			steps={NEW_DEVICE_STEPS}
+			current={1}
+			title="Restore projects"
+			lead="These came from your config file. Reading them doesn't change anything, and cloning only adds folders."
+		>
+			{projects.isError ? (
+				<LoadFailed what="your projects" error={projects.error} />
+			) : !projects.data ? (
+				<RowsLoading label="Reading your config file" />
+			) : (
+				<>
+					<div>
+						{projects.data.map((p) => (
+							<div
+								key={p.slug}
+								className="flex min-h-row flex-wrap items-center gap-x-3 gap-y-1 border-0 border-b border-solid border-border-subtle py-1"
+							>
+								<Glyph kind={failed[p.slug] ? "fail" : p.folderMissing ? "idle" : "pass"} />
+								<span className="flex-[1_1_240px] font-medium [overflow-wrap:anywhere]">{p.name}</span>
+								<span className="text-text-muted [overflow-wrap:anywhere]">
+									{failed[p.slug] ?? (p.folderMissing ? "Not on this Mac" : "On this Mac")}
+								</span>
+							</div>
+						))}
+					</div>
+					<InlineError>{clone.error ?? finish.error}</InlineError>
+					<div className="flex flex-wrap items-center gap-3">
+						{missing.length > 0 && (
+							<Button variant="primary" disabled={clone.pending} onClick={() => void clone.run()}>
+								{clone.pending ? "Cloning…" : `Clone ${plural(missing.length, "project")}`}
+							</Button>
+						)}
+						<Button
+							variant={missing.length > 0 ? "secondary" : "primary"}
+							disabled={clone.pending || finish.pending}
+							onClick={() => void finish.run()}
+						>
+							Open your queue
+						</Button>
+						{missing.length > 0 && (
+							<span className="text-meta text-text-muted">
+								Work on a project without a folder waits until you clone it.
+							</span>
 						)}
 					</div>
 				</>

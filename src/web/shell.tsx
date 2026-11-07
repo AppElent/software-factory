@@ -93,7 +93,7 @@ export function Root() {
 		return () => clearInterval(t);
 	}, [offline, shell.refetch]);
 
-	const firstRun = shell.data && !shell.data.hasProjects;
+	const firstRun = shell.data && (!shell.data.hasProjects || shell.data.newDevice);
 	const onSetup = location.pathname.startsWith("/welcome") || location.pathname.startsWith("/projects/new");
 	useEffect(() => {
 		if (firstRun && !onSetup) void navigate({ to: "/welcome/$step", params: { step: "tools" } });

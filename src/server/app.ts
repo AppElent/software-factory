@@ -37,7 +37,7 @@ import type { Config } from "./config.ts";
 import { filterNeverTouch, NeverTouchError, writeNeverTouch } from "./config.ts";
 import { ConfigFileError, EnvironmentSchema, ModeSchema } from "./config-file.ts";
 import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
-import { checkTools, TOOLS } from "./connectors/tools.ts";
+import { checkTools, installTool, openSignIn, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import { ActionError } from "./engine.ts";
@@ -413,9 +413,17 @@ export function createApp(d: AppDeps): Hono {
 		const slug = c.req.param("slug");
 		const p = needProject(slug);
 		// The repo's name, not the display name: that comes from a file in the repo.
-		const dest = p.localPath ?? join(store.settings().projects.cloneFolder, p.repo.split("/")[1] ?? slug);
+		const { cloneFolder } = store.settings().projects;
+		// A path from another Mac's config file means nothing here.
+		const mine = p.localPath?.startsWith(`${homedir()}/`) ? p.localPath : null;
+		const dest = mine ?? join(cloneFolder, p.repo.split("/")[1] ?? slug);
 		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo: p.repo, path: dest }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that folder.", 403);
+		if (await isCheckoutOf(dest, p.repo)) {
+			store.db.prepare("UPDATE projects SET local_path = ? WHERE slug = ?").run(dest, slug);
+			bus.publish(["projects", `project:${slug}`, "floor", "shell"]);
+			return c.json({ ok: true, path: dest });
+		}
 		const res = await cloneRepo(cli, p.repo, dest);
 		audit(store.db, "clone repo", p.repo, "you", res.code === 0 ? null : res.stderr, store.now());
 		if (res.code !== 0) throw new ActionError(scrub(res.stderr.trim()) || "It didn't clone.", 502);
@@ -1334,6 +1342,41 @@ export function createApp(d: AppDeps): Hono {
 		kvSet(store.db, "settings:notifications", { ...prev, lastTest: result });
 		bus.publish(["settings"]);
 		return c.json({ ok: result === "ok", result });
+	});
+
+	const toolNamed = (name: string) => {
+		const def = TOOLS.find((t) => t.name === name);
+		if (!def) throw new ActionError("That isn't a tool the factory knows.", 404);
+		return def;
+	};
+	let installing: string | null = null;
+
+	app.post("/api/tools/install", async (c) => {
+		const def = toolNamed((await body(c.req, z.object({ name: z.string() }))).name);
+		if (installing) throw new ActionError(`${installing} is still installing. Wait for it to finish.`, 409);
+		installing = def.name;
+		try {
+			const res = await installTool(cli, def);
+			audit(store.db, "install tool", def.name, "you", res.error, store.now());
+			if (res.error) throw new ActionError(res.error, 502);
+		} finally {
+			installing = null;
+		}
+		bus.publish(["tools"]);
+		return c.json(await checkTools(cli));
+	});
+
+	app.post("/api/tools/sign-in", async (c) => {
+		const def = toolNamed((await body(c.req, z.object({ name: z.string() }))).name);
+		const res = await openSignIn(cli, def);
+		if (res.error) throw new ActionError(res.error, 502);
+		return c.json({ ok: true });
+	});
+
+	app.post("/api/new-device/done", (c) => {
+		kvSet(store.db, "new_device", false);
+		bus.publish(["shell"]);
+		return c.json({ ok: true });
 	});
 
 	app.get("/api/tools", async (c) => c.json(await checkTools(cli)));

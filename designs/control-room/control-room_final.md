@@ -359,7 +359,7 @@ with `node:sqlite`'s backup and reveals the file in Finder. Add projects reuses 
 | Reading | Progress per project in `role="status"`, warning for missing links, Open your queue once one project is read | FRReading |
 | Queue | First look | QueueFirst |
 
-Required: `gh`, and `t3` (not drawn missing; see below). Optional: `sentry`, `eas`, `wrangler`, `infisical`, `terminal-notifier`. Nothing outside the app changes during first run except clones you ask for.
+Required: `gh`, and `t3` (not drawn missing; see below). Optional: `sentry`, `eas`, `wrangler`, `infisical`, `terminal-notifier`. Nothing outside the app changes during first run except what you press: clones, `Install` and `Sign in`, per the contract's New device section. Projects restored from a config file get `/welcome/restore` in place of the project and reading steps.
 
 ### New project
 

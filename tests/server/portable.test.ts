@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
 import { writeNeverTouch } from "../../src/server/config.ts";
-import { openDb } from "../../src/server/db.ts";
+import { kvGet, openDb } from "../../src/server/db.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
 import { mirrorProjects, rebuildWorkOrders, restoreProjects } from "../../src/server/portable.ts";
 import { Store } from "../../src/server/store.ts";
@@ -114,6 +114,16 @@ describe("deleting the data folder", () => {
 		expect(after.project("client-work")).toBeNull();
 		await rebuildWorkOrders(after, cli, exec);
 		expect(calls.filter((c) => c.includes("client-work"))).toEqual([]);
+	});
+
+	it("marks this Mac as new only when projects came back", () => {
+		const empty = freshStore();
+		restoreProjects(empty);
+		expect(kvGet(empty.db, "new_device")).toBeNull();
+		const store = freshStore();
+		store.file.update((d) => ({ ...d, projects: [{ repo: "me/one", localPath: null }] }));
+		restoreProjects(store);
+		expect(kvGet(store.db, "new_device")).toBe(true);
 	});
 
 	it("doesn't restore into a database that has held projects", () => {

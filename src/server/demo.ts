@@ -25,6 +25,7 @@ import type { Bus } from "./bus.ts";
 import type { Cli } from "./cli.ts";
 import { writeNeverTouch } from "./config.ts";
 import { type IssueRead, issueHash } from "./connectors/github.ts";
+import { TOOLS } from "./connectors/tools.ts";
 import { kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import type { DeployRunner, HealthFetch } from "./environments.ts";
@@ -1032,6 +1033,16 @@ export function installDemo(store: Store) {
 			healthy();
 			toolFaults = { gh: "signed_out", sentry: "signed_out", eas: "signed_out", infisical: "missing" };
 		},
+		/** A new Mac with a config file: projects came back, and a tool is missing. */
+		new_device: () => {
+			baseProjects();
+			healthy();
+			toolFaults = { sentry: "missing" };
+			kvSet(store.db, "new_device", true);
+			store.db
+				.prepare("UPDATE projects SET local_path = NULL WHERE slug IN (SELECT slug FROM projects LIMIT 2)")
+				.run();
+		},
 		first_run_no_t3: () => {
 			healthy();
 			toolFaults = { t3: "missing" };
@@ -1601,8 +1612,15 @@ export function installDemo(store: Store) {
 
 	return {
 		cli: (async (cmd, args, opts) => {
-			const fault = toolFaults[cmd];
 			const answer = { stdout: "", stderr: "", timedOut: false };
+			const line = [cmd, ...args].join(" ");
+			// Installing works, so the step that offers it can finish. A sign-in waits on you in Terminal, so it stays signed out.
+			const fixed = TOOLS.find((t) => t.install === line);
+			if (fixed) {
+				delete toolFaults[fixed.name];
+				return { ...answer, code: 0, missing: false };
+			}
+			const fault = toolFaults[cmd];
 			if (fault === "missing") return { ...answer, code: 127, missing: true };
 			if (fault === "signed_out" && (args.includes("auth") || args[0] === "whoami")) {
 				return { ...answer, code: 1, missing: false };

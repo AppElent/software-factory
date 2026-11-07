@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.5.0
+version: 2.6.0
 status: current
 ---
 
@@ -179,6 +179,31 @@ Open issues read from GitHub, in three groups. They stay out of the queue, becau
 - An error with an open work order doesn't show in the queue.
 - A PR failing without a work order shows only in the PR list.
 - Red main shows the failing check names and `Open the log`, with no log excerpt.
+
+## Improve yourself
+
+A person writes a change, and it becomes an ordinary work order on the factory's own repo. Changes to security files wait for the owner in every mode, as they do on any repo.
+
+- **Private names.** The repo may be public, so the text is checked first against private project names, Never touch rules, the home path, the username and the git email. Any match is named before anything is sent. The owner can still send it, because a project called `dashboard` shouldn't ban the word. The server refuses unconfirmed text as well.
+- **Project.** The factory's repo is added when it isn't in yet. Running from a version folder, it gets a clone of its own, because version folders get replaced.
+
+## Versions
+
+Each version runs from its own folder, and `current` points at one. See ADR 0005.
+
+- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A commit with red or unfinished checks waits. Otherwise it's cloned, installed and built in a new folder, then started on a spare port with sample data. It must report its own commit and serve the page. A commit that fails stays failed, and the next one gets a new try.
+- **Updating.** Only by pressing `Update`. A running deploy blocks it, because the restart would cut the deploy off.
+- **Going back.** A guard outside the service expects the new commit to answer within 90 seconds. If not, it switches back, marks the version failed, and restarts. `Roll back` switches to an older folder the same way. The running version and the two newest before it are kept.
+- **Database.** Migrations stay additive, so an older version runs on a newer database. There are no backups.
+- **Checkout.** A copy running from a checkout has no versions, and says how to get them.
+
+## New device
+
+The first page on a new Mac sets it up. It shows when there are no projects, or when projects just came back from the config file.
+
+- **Tools.** `Install` runs the command listed for that tool, and nothing typed by anyone reaches it. `Sign in` opens that tool's login in Terminal, where it can ask questions. Neither happens without pressing the button.
+- **Projects.** Projects from the config file show whether their folder is on this Mac. `Clone` adds the missing ones. It can be skipped, and work on that project waits for its folder.
+- **Never touch** applies before any of this, as it does everywhere.
 
 ## Screens
 

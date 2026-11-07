@@ -142,6 +142,8 @@ for (const name of SCENARIOS) {
 	}
 }
 
+await scenario("new_device");
+for (const path of ["/welcome/tools", "/welcome/restore"]) await checkState("new_device", path, 1440);
 await scenario("first_run");
 for (const path of ["/welcome/tools", "/welcome/repos", "/projects/new/describe"])
 	await checkState("first_run", path, 1440);

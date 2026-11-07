@@ -4,6 +4,7 @@ import type { Mode } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { filterNeverTouch } from "./config.ts";
 import { ConfigFileError } from "./config-file.ts";
+import { kvSet } from "./db.ts";
 import { type Executor, ExecutorError } from "./executor/types.ts";
 import type { Store } from "./store.ts";
 
@@ -84,6 +85,7 @@ export function restoreProjects(store: Store): number {
 			store.iso(),
 		);
 	}
+	if (kept.length > 0) kvSet(store.db, "new_device", true);
 	return kept.length;
 }
 
