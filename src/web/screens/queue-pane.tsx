@@ -20,6 +20,7 @@ import {
 	Pane,
 } from "../kit.tsx";
 import { useAction, useError, useProjects } from "../queries.ts";
+import { CheckNow, DeployActions, FixEnvironment } from "./environments.tsx";
 
 /* The right-hand pane, one body per queue item kind. Everything from outside the factory renders as text. */
 
@@ -38,7 +39,17 @@ export interface PaneActions {
 }
 
 const STARTS: QueueKind[] = ["error", "red_main", "stale_pr", "rebase_pr", "toolkit"];
-const TRIAGES: QueueKind[] = ["error", "red_main", "ready_pr", "stale_pr", "rebase_pr", "toolkit", "tool"];
+const TRIAGES: QueueKind[] = [
+	"env_down",
+	"env_down_later",
+	"error",
+	"red_main",
+	"ready_pr",
+	"stale_pr",
+	"rebase_pr",
+	"toolkit",
+	"tool",
+];
 
 /** Kinds that begin a new work order. The rest already have one, or a PR to review. */
 export const canStart = (kind: QueueKind) => STARTS.includes(kind);
@@ -241,6 +252,37 @@ function RedMainPane({ item, actions }: { item: QueueItem; actions: PaneActions 
 					Open the log
 				</ButtonOut>
 			)}
+		</>
+	);
+}
+
+function EnvDownPane({ item, actions }: { item: QueueItem; actions: PaneActions }) {
+	const e = item.environment;
+	if (!e) return null;
+	const after =
+		e.deployedAt && e.health.downSince
+			? Math.round((Date.parse(e.health.downSince) - Date.parse(e.deployedAt)) / 60_000)
+			: null;
+	return (
+		<>
+			<Heading meta={`${item.projectName} · ${e.name} · ${item.meta}`} title={item.title} />
+			<Facts
+				rows={[
+					["Down for", spanWords(e.health.downSince ?? item.since)],
+					["Commit", e.deployedSha ? e.deployedSha.slice(0, 7) : "–", true],
+					["Errors", plural(e.errors, "error")],
+				]}
+			/>
+			{after !== null && after >= 0 && (
+				<p className="m-0 text-text-muted">It went down {after}m after the last deploy.</p>
+			)}
+			<FixEnvironment e={e} />
+			<DeployActions e={e} folder={e.folder} again />
+			<CheckNow e={e} grow />
+			<Triage actions={actions} />
+			<ButtonLink to="/projects/$slug/environments" params={{ slug: e.project }} grow>
+				Open project page
+			</ButtonLink>
 		</>
 	);
 }
@@ -465,6 +507,9 @@ function RunFailedPane({ item, w }: { item: QueueItem; w: WorkOrder }) {
 function PaneBody({ item, actions }: { item: QueueItem; actions: PaneActions }) {
 	const w = item.workOrder;
 	switch (item.kind) {
+		case "env_down":
+		case "env_down_later":
+			return <EnvDownPane item={item} actions={actions} />;
 		case "error":
 			return <ErrorPane item={item} actions={actions} />;
 		case "red_main":

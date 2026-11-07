@@ -5,6 +5,8 @@ import { z } from "zod";
 import { mapGates, noGates, prGroup, snoozeUntil } from "../shared/rules.ts";
 import type {
 	CheckRun,
+	DeployRun,
+	EnvironmentConfig,
 	ErrorItem,
 	Gates,
 	MainBranchState,
@@ -22,6 +24,7 @@ import { writeNeverTouch } from "./config.ts";
 import { type IssueRead, issueHash } from "./connectors/github.ts";
 import { kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
+import type { DeployRunner, HealthFetch } from "./environments.ts";
 import { FakeExecutor } from "./executor/fake.ts";
 import type { ThreadState } from "./executor/types.ts";
 import { SCAFFOLD_STEPS, type ScaffoldRunner } from "./newproject.ts";
@@ -229,6 +232,8 @@ export function installDemo(store: Store) {
 	const clones = join(store.dataDir, "clones");
 	/** Tools that first run and Settings should find missing or signed out. */
 	let toolFaults: Record<string, "missing" | "signed_out"> = {};
+	/** Health URLs that answer 503 in this scenario. */
+	const downUrls = new Set<string>();
 
 	const prepareRepos = () => {
 		rmSync(clones, { recursive: true, force: true });
@@ -504,6 +509,7 @@ export function installDemo(store: Store) {
 
 	const reset = () => {
 		toolFaults = {};
+		downUrls.clear();
 		rmSync(demoFolders, { recursive: true, force: true });
 		for (const t of [
 			"projects",
@@ -517,6 +523,8 @@ export function installDemo(store: Store) {
 			"audit_log",
 			"notified",
 			"new_projects",
+			"deploys",
+			"env_health",
 		]) {
 			store.db.prepare(`DELETE FROM ${t}`).run();
 		}
@@ -537,6 +545,151 @@ export function installDemo(store: Store) {
 				...over[source],
 			});
 		}
+	};
+
+	const setEnvironments = (project: string, environments: EnvironmentConfig[]) =>
+		store.file.update((c) => ({ ...c, environments: { ...c.environments, [project]: environments } }));
+
+	const envConfig = (
+		project: string,
+		name: string,
+		over: Partial<EnvironmentConfig> = {},
+	): EnvironmentConfig => {
+		const lower = name.toLowerCase();
+		const host = `${lower === "production" ? "" : `${lower}.`}${project}.example`;
+		return {
+			name,
+			url: `https://${host}`,
+			healthUrl: `https://${host}/health`,
+			deployCommand: `pnpm deploy:${lower}`,
+			sentryEnvironment: null,
+			issueLabel: null,
+			production: lower === "production",
+			...over,
+		};
+	};
+
+	const seedHealth = (
+		project: string,
+		env: string,
+		o: {
+			ms?: number;
+			status?: number;
+			error?: string;
+			downMinutes?: number;
+			behind?: number;
+			sha?: string;
+			deployedMinutes?: number;
+		} = {},
+	) => {
+		const now = store.now().getTime();
+		const down = o.downMinutes !== undefined;
+		store.db
+			.prepare(
+				`INSERT INTO env_health (project, env, ok, status, ms, error, checked_at, down_since, fails, deployed_sha, deployed_at, deployed_read_at, behind)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				project,
+				env,
+				down ? 0 : 1,
+				o.status ?? 200,
+				o.ms ?? 142,
+				o.error ?? null,
+				new Date(now - 40_000).toISOString(),
+				down ? new Date(now - (o.downMinutes as number) * MIN).toISOString() : null,
+				down ? 6 : 0,
+				o.sha ?? "8f2c1a0d3e",
+				new Date(now - (o.deployedMinutes ?? 26 * 60) * MIN).toISOString(),
+				new Date(now - MIN).toISOString(),
+				o.behind ?? 0,
+			);
+	};
+
+	const seedDeploy = (
+		project: string,
+		env: string,
+		state: DeployRun["state"],
+		o: { sha?: string; message?: string; minutes?: number; log?: string; exitCode?: number } = {},
+	) => {
+		const now = store.now().getTime();
+		const started = new Date(now - (o.minutes ?? 60) * MIN);
+		store.db
+			.prepare(
+				"INSERT INTO deploys (project, env, command, state, started_at, finished_at, exit_code, sha, message, log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			)
+			.run(
+				project,
+				env,
+				`pnpm deploy:${env.toLowerCase()}`,
+				state,
+				started.toISOString(),
+				state === "running" ? null : new Date(started.getTime() + 2 * MIN).toISOString(),
+				state === "running" ? null : (o.exitCode ?? (state === "passed" ? 0 : 1)),
+				o.sha ?? "8f2c1a0d3e",
+				o.message ?? "Update lockfile",
+				o.log ?? `$ pnpm deploy:${env.toLowerCase()}\nBuilding\nUploading 41 files\n`,
+			);
+	};
+
+	const seedFleet = () => {
+		const three = (p: string) => ["Preview", "Staging", "Production"].map((n) => envConfig(p, n));
+		setEnvironments("fairway", three("fairway"));
+		seedHealth("fairway", "Preview");
+		seedHealth("fairway", "Staging");
+		seedHealth("fairway", "Production", { sha: "c41e9d2b70", behind: 3, ms: 188 });
+		seedDeploy("fairway", "Staging", "running", {
+			sha: "8f2c1a0d3e",
+			message: "Add the scorecard export",
+			minutes: 1,
+			log: "$ pnpm deploy:staging\nIn /tmp, on main at 8f2c1a0\n\nBuilding\nUploading 41 files\n",
+		});
+		seedDeploy("fairway", "Production", "passed", {
+			sha: "c41e9d2b70",
+			message: "Fix the handicap rounding",
+			minutes: 26 * 60,
+		});
+		seedDeploy("fairway", "Preview", "failed", {
+			sha: "aa03c1e942",
+			message: "Try the new chart",
+			minutes: 3 * 60,
+			exitCode: 2,
+			log: "$ pnpm deploy:preview\nBuilding\nerror: chart.ts(4,1) Cannot find module\n",
+		});
+		const foundry = three("foundry");
+		setEnvironments("foundry", foundry);
+		seedHealth("foundry", "Preview");
+		seedHealth("foundry", "Staging", { behind: 1 });
+		seedHealth("foundry", "Production", {
+			status: 503,
+			error: "Health check returned HTTP 503.",
+			downMinutes: 6,
+			sha: "d90ab14c02",
+			deployedMinutes: 9,
+		});
+		for (const e of foundry) if (e.production && e.healthUrl) downUrls.add(e.healthUrl);
+		seedDeploy("foundry", "Production", "passed", {
+			sha: "d90ab14c02",
+			message: "Move sessions to the new table",
+			minutes: 11,
+		});
+		setEnvironments("gather", [
+			envConfig("gather", "Staging"),
+			envConfig("gather", "Production", { sentryEnvironment: "prod" }),
+		]);
+		seedHealth("gather", "Staging");
+		seedHealth("gather", "Production", { behind: 5 });
+		setEnvironments("arcade-club", [
+			envConfig("arcade-club", "Preview"),
+			envConfig("arcade-club", "Staging", { healthUrl: null }),
+			envConfig("arcade-club", "Production"),
+		]);
+		seedHealth("arcade-club", "Preview");
+		seedHealth("arcade-club", "Production", { ms: 2840 });
+		seedError("foundry", "901", "Sessions table is missing a column", {
+			environment: "production",
+			users: 9,
+		});
 	};
 
 	const baseProjects = () => {
@@ -749,6 +902,15 @@ export function installDemo(store: Store) {
 			seedInbox();
 		},
 		no_issues: () => {
+			baseProjects();
+			healthy();
+		},
+		environments: () => {
+			baseProjects();
+			healthy();
+			seedFleet();
+		},
+		no_environments: () => {
 			baseProjects();
 			healthy();
 		},
@@ -1362,6 +1524,32 @@ export function installDemo(store: Store) {
 		}) as Cli,
 		executor: new DemoExecutor(),
 		scaffold: demoScaffold,
+		/** Nothing runs. It only prints, slowly enough to watch. */
+		deployRunner: ((command, _cwd, onOutput) => {
+			let finish: (code: number) => void = () => {};
+			const done = new Promise<number>((r) => {
+				finish = r;
+			});
+			const lines = ["Building", "Uploading 41 files", "Done"];
+			const timer = setInterval(() => {
+				const line = lines.shift();
+				if (line) onOutput(`${line}\n`);
+				else {
+					clearInterval(timer);
+					finish(command.includes("fail") ? 1 : 0);
+				}
+			}, 700);
+			timer.unref();
+			return {
+				done,
+				kill: () => {
+					clearInterval(timer);
+					finish(143);
+				},
+			};
+		}) as DeployRunner,
+		healthFetch: (async (url) =>
+			downUrls.has(url) ? { status: 503, error: null } : { status: 200, error: null }) as HealthFetch,
 		routes(app: Hono, engine: Engine, bus: Bus) {
 			app.post("/api/demo/scenario", async (c) => {
 				const { name } = z.object({ name: z.string() }).parse(await c.req.json());
@@ -1376,6 +1564,8 @@ export function installDemo(store: Store) {
 					"prs",
 					"issues",
 					"errors",
+					"environments",
+					"project-environments",
 					"projects",
 					"shell",
 					"work-orders",

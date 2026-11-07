@@ -413,6 +413,7 @@ export function triageHides(
 /* ---------- ranking ---------- */
 
 const NEEDS_YOU_ORDER: QueueKind[] = [
+	"env_down",
 	"error",
 	"question",
 	"plan",
@@ -423,7 +424,7 @@ const NEEDS_YOU_ORDER: QueueKind[] = [
 	"failed_gates",
 	"ready_pr",
 ];
-const LATER_ORDER: QueueKind[] = ["stale_pr", "rebase_pr", "toolkit", "tool"];
+const LATER_ORDER: QueueKind[] = ["env_down_later", "stale_pr", "rebase_pr", "toolkit", "tool"];
 
 export const isNeedsYou = (k: QueueKind) => NEEDS_YOU_ORDER.includes(k);
 

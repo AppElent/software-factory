@@ -34,7 +34,11 @@ export const ModeSchema = z.object({
 });
 
 export const EnvironmentSchema = z.object({
-	name: z.string().trim().min(1).max(40),
+	// Part of a fingerprint and shown in commands, so no colons or quotes.
+	name: z
+		.string()
+		.trim()
+		.regex(/^[\w .-]{1,40}$/),
 	url: z.url({ protocol: /^https?$/ }).nullable(),
 	healthUrl: z.url({ protocol: /^https?$/ }).nullable(),
 	deployCommand: z.string().max(2000).nullable(),

@@ -34,6 +34,7 @@ import {
 } from "../kit.tsx";
 import { useAction, useProject } from "../queries.ts";
 import { useOpenNewWorkOrder } from "../shell.tsx";
+import { ProjectTabs } from "./environments.tsx";
 import { behindWords, failed, openSync, toolkitWords } from "./projects.tsx";
 
 /* ---------- words ---------- */
@@ -498,6 +499,7 @@ function ProjectPage({ project: p }: { project: ProjectDetail }) {
 					</Button>
 				</div>
 			</header>
+			<ProjectTabs slug={p.slug} current="overview" />
 
 			<StatusLine className="contents">
 				{p.paused && (

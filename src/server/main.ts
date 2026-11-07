@@ -7,6 +7,7 @@ import { loadConfig, selfRepo } from "./config.ts";
 import { openDb } from "./db.ts";
 import { installDemo } from "./demo.ts";
 import { Engine, type EngineEvent } from "./engine.ts";
+import { Environments, realDeployRunner, realHealthFetch } from "./environments.ts";
 import { t3Executor } from "./executor/t3.ts";
 import { Notifier } from "./notify.ts";
 import { Poller } from "./poller.ts";
@@ -80,11 +81,20 @@ poller = new Poller({
 	onRead: () => notifier.observe(readItemsForNotify(store)),
 });
 
+const environments = new Environments({
+	store,
+	cli,
+	publish: bus.publish,
+	deployRunner: demo?.deployRunner ?? realDeployRunner,
+	healthFetch: demo?.healthFetch ?? realHealthFetch,
+});
+
 const app = createApp({
 	config,
 	store,
 	cli,
 	engine,
+	environments,
 	executor,
 	poller,
 	notifier,
@@ -98,7 +108,10 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
 	console.log(`Software Factory on http://${config.host}:${info.port}${config.demo ? " (demo)" : ""}`);
 });
 
-if (!config.demo) poller.start();
+if (!config.demo) {
+	poller.start();
+	environments.start();
+}
 
 // The engine needs a heartbeat even when GitHub is quiet: agent turns finish on their own time.
 const heartbeat = setInterval(() => void engine.tick().catch((e) => console.error(String(e))), 5000);
@@ -106,6 +119,7 @@ heartbeat.unref();
 
 const stop = () => {
 	poller?.stop();
+	environments.stop();
 	clearInterval(heartbeat);
 	server.close(() => process.exit(0));
 	setTimeout(() => process.exit(0), 2000).unref();

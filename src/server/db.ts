@@ -21,6 +21,17 @@ CREATE TABLE IF NOT EXISTS issue_state (
 	advice TEXT, advice_hash TEXT,
 	PRIMARY KEY (project, number)
 );
+CREATE TABLE IF NOT EXISTS deploys (
+	id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, env TEXT NOT NULL, command TEXT NOT NULL,
+	state TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, exit_code INTEGER,
+	sha TEXT, message TEXT, log TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS env_health (
+	project TEXT NOT NULL, env TEXT NOT NULL, ok INTEGER, status INTEGER, ms INTEGER, error TEXT,
+	checked_at TEXT, down_since TEXT, fails INTEGER NOT NULL DEFAULT 0,
+	deployed_sha TEXT, deployed_at TEXT, deployed_read_at TEXT, behind INTEGER, behind_of TEXT,
+	PRIMARY KEY (project, env)
+);
 CREATE TABLE IF NOT EXISTS errors (
 	id TEXT PRIMARY KEY, project TEXT NOT NULL, json TEXT NOT NULL, detail TEXT
 );

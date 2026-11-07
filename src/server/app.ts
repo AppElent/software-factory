@@ -12,12 +12,14 @@ import { ISSUE_DATA_MAX, mergeBlockers, originIs, qualifies, slugify, snoozeUnti
 import type {
 	BackSummary,
 	BulkMergeResult,
+	EnvironmentsResponse,
 	ErrorDetail,
 	IssuesResponse,
 	Mode,
 	ModesResponse,
 	PrDetail,
 	ProjectDetail,
+	ProjectEnvironmentsResponse,
 	ReadingResponse,
 	RepoListResponse,
 	Settings,
@@ -31,12 +33,13 @@ import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import type { Config } from "./config.ts";
 import { filterNeverTouch, NeverTouchError, writeNeverTouch } from "./config.ts";
-import { ConfigFileError, ModeSchema } from "./config-file.ts";
+import { ConfigFileError, EnvironmentSchema, ModeSchema } from "./config-file.ts";
 import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
 import { checkTools, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import { ActionError } from "./engine.ts";
+import type { Environments } from "./environments.ts";
 import type { Executor } from "./executor/types.ts";
 import { NewProjects, type ScaffoldRunner, TEMPLATES } from "./newproject.ts";
 import type { Notifier } from "./notify.ts";
@@ -67,6 +70,7 @@ export interface AppDeps {
 	store: Store;
 	cli: Cli;
 	engine: Engine;
+	environments: Environments;
 	executor: Executor;
 	poller: Poller;
 	notifier: Notifier;
@@ -106,7 +110,7 @@ const launchdRestart = () => {
 };
 
 export function createApp(d: AppDeps): Hono {
-	const { config, store, cli, engine, executor, poller, notifier, bus } = d;
+	const { config, store, cli, engine, environments, executor, poller, notifier, bus } = d;
 	const webRoot = d.webRoot ?? process.env.SF_WEB_ROOT ?? WEB_ROOT;
 	const app = new Hono();
 	const devOrigin = process.env.SF_DEV_ORIGIN;
@@ -378,6 +382,7 @@ export function createApp(d: AppDeps): Hono {
 		store.db.prepare("DELETE FROM prs WHERE project = ?").run(slug);
 		store.db.prepare("DELETE FROM issues WHERE project = ?").run(slug);
 		store.db.prepare("DELETE FROM issue_state WHERE project = ?").run(slug);
+		store.db.prepare("DELETE FROM env_health WHERE project = ?").run(slug);
 		store.db.prepare("DELETE FROM errors WHERE project = ?").run(slug);
 		audit(store.db, "remove project", p.repo, "you", null, store.now());
 		bus.publish(["projects", "floor", "queue", "shell", "prs", "errors"]);
@@ -581,6 +586,9 @@ export function createApp(d: AppDeps): Hono {
 			.optional(),
 	});
 
+	const envOf = (source: WorkOrderSource) =>
+		environments.all().find((e) => `env:${e.project}:${e.name}` === source.fingerprint) ?? null;
+
 	/** An issue's words come from here, so the page can't start work on text you didn't see. */
 	const issueOf = (source: WorkOrderSource, project: string) => {
 		if (source.kind !== "issue") return null;
@@ -596,6 +604,9 @@ export function createApp(d: AppDeps): Hono {
 		if (mode?.merge === "factory" && source.kind === "error" && !input.confirmed)
 			throw new ActionError(`${mode.name} on a production error needs confirming.`, 409);
 		const issue = issueOf(source, input.project);
+		const env = source.kind === "environment" ? envOf(source) : null;
+		if (mode?.merge === "factory" && env?.production && !input.confirmed)
+			throw new ActionError(`${mode.name} on ${env.name} needs confirming.`, 409);
 		if (mode?.merge === "factory" && issue?.locked)
 			throw new ActionError(`Read #${issue.number} before starting ${mode.name}.`, 409);
 		const id = engine.create({
@@ -712,6 +723,23 @@ export function createApp(d: AppDeps): Hono {
 				data: issue ? `${issue.title}\n\n${issue.body}`.slice(0, ISSUE_DATA_MAX) : undefined,
 			};
 		}
+		if (s.fingerprint?.startsWith("env:")) {
+			const e = environments.all().find((x) => `env:${x.project}:${x.name}` === s.fingerprint);
+			if (!e || e.project !== project) throw new ActionError("That environment isn't in this project.", 400);
+			return {
+				kind: "environment",
+				fingerprint: s.fingerprint,
+				data: [
+					`${e.name} of ${e.projectName}: ${e.health.error ?? `health is ${e.health.state}`}`,
+					e.health.downSince ? `Down since ${e.health.downSince}` : "",
+					e.url ? `URL: ${e.url}` : "",
+					e.deployedSha ? `Deployed commit: ${e.deployedSha}` : "",
+					e.deploy?.state === "failed" ? `Last deploy failed:\n${e.deploy.log.slice(-4000)}` : "",
+				]
+					.filter(Boolean)
+					.join("\n"),
+			};
+		}
 		if (s.fingerprint?.startsWith("main:")) {
 			const main = store.main(project);
 			return {
@@ -724,6 +752,71 @@ export function createApp(d: AppDeps): Hono {
 		}
 		return { kind, fingerprint: s.fingerprint, prNumber: s.prNumber };
 	}
+
+	/* ---------- environments ---------- */
+
+	app.get("/api/environments", (c) => {
+		const projects = store.projects().map((p) => ({
+			slug: p.slug,
+			name: p.name,
+			environments: environments.viewsFor(p),
+		}));
+		const every = projects.flatMap((p) => p.environments);
+		const names = [
+			...new Set([...every].sort((a, b) => Number(a.production) - Number(b.production)).map((e) => e.name)),
+		];
+		const checks = every.flatMap((e) => (e.health.checkedAt ? [e.health.checkedAt] : [])).sort();
+		const response: EnvironmentsResponse = {
+			projects,
+			names,
+			down: every.filter((e) => e.health.state === "down").length,
+			behind: every.filter((e) => (e.behind ?? 0) > 0).length,
+			checkedAt: checks.at(-1) ?? null,
+		};
+		return c.json(response);
+	});
+
+	app.get("/api/projects/:slug/environments", (c) => {
+		const project = needProject(c.req.param("slug"));
+		const response: ProjectEnvironmentsResponse = {
+			environments: environments.viewsFor(project),
+			deploys: environments.history(project.slug),
+			configPath: store.file.path,
+			folder: project.localPath,
+		};
+		return c.json(response);
+	});
+
+	app.put("/api/projects/:slug/environments", async (c) => {
+		const project = needProject(c.req.param("slug"));
+		const input = await body(c.req, z.object({ environments: z.array(EnvironmentSchema) }));
+		environments.saveConfig(project.slug, input.environments);
+		return c.json({ ok: true });
+	});
+
+	app.get("/api/projects/:slug/environments/suggest", async (c) =>
+		c.json(await environments.suggest(needProject(c.req.param("slug")))),
+	);
+
+	const envRef = z.object({ project: z.string(), env: z.string() });
+
+	app.post("/api/environments/deploy", async (c) => {
+		const input = await body(c.req, envRef.extend({ confirmed: z.boolean().optional() }));
+		const id = await environments.deploy(input.project, input.env, !!input.confirmed);
+		return c.json({ id });
+	});
+
+	app.post("/api/environments/stop", async (c) => {
+		const input = await body(c.req, envRef);
+		environments.stopDeploy(input.project, input.env);
+		return c.json({ ok: true });
+	});
+
+	app.post("/api/environments/check", async (c) => {
+		const input = await body(c.req, envRef);
+		await environments.checkNow(input.project, input.env);
+		return c.json({ ok: true });
+	});
 
 	/* ---------- issues ---------- */
 

@@ -43,6 +43,8 @@ const scenario = async (name) => {
 
 const SCENARIOS = [
 	"full",
+	"environments",
+	"no_environments",
 	"back",
 	"first_look",
 	"empty",
@@ -65,6 +67,8 @@ const PATHS = [
 	"/prs",
 	"/issues",
 	"/errors",
+	"/environments",
+	"/projects/fairway/environments",
 	"/projects",
 	"/health",
 	"/settings/agents",

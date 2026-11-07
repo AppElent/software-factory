@@ -16,6 +16,7 @@ import type {
 	ActivityEntry,
 	AgentSettings,
 	ApprovalSettings,
+	EnvironmentView,
 	ErrorItem,
 	Issue,
 	IssueAdvice,
@@ -367,6 +368,9 @@ export class Store {
 			})
 			.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 	}
+
+	/** Set by Environments, whose reads need more than the database. */
+	envViews: () => EnvironmentView[] = () => [];
 
 	/** Issues an agent is reading right now. Not saved: after a restart you can just ask again. */
 	readonly askingIssues = new Set<string>();

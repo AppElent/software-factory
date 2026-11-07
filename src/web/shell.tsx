@@ -135,6 +135,7 @@ const GO: Record<string, string> = {
 	p: "/prs",
 	i: "/issues",
 	e: "/errors",
+	v: "/environments",
 	o: "/projects",
 	h: "/health",
 	s: "/settings/agents",
@@ -184,6 +185,7 @@ const NAV: Array<{ label: string; to: string; count?: keyof ShellResponse["count
 	{ label: "Pull requests", to: "/prs", count: "prs" },
 	{ label: "Issues", to: "/issues", count: "issues" },
 	{ label: "Errors", to: "/errors", count: "errors" },
+	{ label: "Environments", to: "/environments", count: "environments" },
 	{ label: "Projects", to: "/projects", count: "projects" },
 	{ label: "Health", to: "/health" },
 ];
@@ -704,6 +706,7 @@ function CommandMenu() {
 		["Pull requests", "/prs", "g p"],
 		["Issues", "/issues", "g i"],
 		["Errors", "/errors", "g e"],
+		["Environments", "/environments", "g v"],
 		["Projects", "/projects", "g o"],
 		["Health", "/health", "g h"],
 		["Settings", "/settings/agents", "g s"],

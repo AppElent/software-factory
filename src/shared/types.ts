@@ -282,6 +282,8 @@ export interface SourceHealth {
 }
 
 export type QueueKind =
+	| "env_down"
+	| "env_down_later"
 	| "error"
 	| "question"
 	| "plan"
@@ -313,6 +315,7 @@ export interface QueueItem {
 	toolkit?: ToolkitState;
 	tool?: { name: string; fix: string | null };
 	newProject?: { id: number; step: NewProjectStep };
+	environment?: EnvironmentView;
 }
 
 export type StartBlock = "limit" | "review" | "stopped" | null;
@@ -355,6 +358,82 @@ export interface QueueResponse {
 	firstLook: boolean;
 	/** Projects read so far, for the first-look banner. */
 	nextCheckAt: string | null;
+}
+
+/* ---------- environments ---------- */
+
+/** One target a project deploys to. Lives in your config file, not the database. */
+export interface EnvironmentConfig {
+	name: string;
+	url: string | null;
+	healthUrl: string | null;
+	deployCommand: string | null;
+	sentryEnvironment: string | null;
+	issueLabel: string | null;
+	production: boolean;
+}
+
+export interface EnvHealth {
+	state: "up" | "slow" | "down" | "not_checked";
+	status: number | null;
+	ms: number | null;
+	checkedAt: string | null;
+	downSince: string | null;
+	error: string | null;
+}
+
+export interface DeployRun {
+	id: number;
+	project: string;
+	env: string;
+	command: string;
+	state: "running" | "passed" | "failed" | "stopped";
+	startedAt: string;
+	finishedAt: string | null;
+	exitCode: number | null;
+	sha: string | null;
+	message: string | null;
+	log: string;
+}
+
+export interface EnvironmentView extends EnvironmentConfig {
+	project: string;
+	projectName: string;
+	health: EnvHealth;
+	/** The newest deploy started from here, running or not. */
+	deploy: DeployRun | null;
+	deployedSha: string | null;
+	deployedAt: string | null;
+	/** Commits on main that aren't out there yet. */
+	behind: number | null;
+	errors: number;
+	issues: number;
+	/** The project's folder, to show where a deploy runs. */
+	folder: string | null;
+	workOrderId: number | null;
+}
+
+export interface EnvironmentsResponse {
+	projects: Array<{ slug: string; name: string; environments: EnvironmentView[] }>;
+	/** Column order for the fleet: production last. */
+	names: string[];
+	down: number;
+	behind: number;
+	checkedAt: string | null;
+}
+
+export interface ProjectEnvironmentsResponse {
+	environments: EnvironmentView[];
+	deploys: DeployRun[];
+	configPath: string;
+	folder: string | null;
+}
+
+export interface EnvSuggestion {
+	name: string;
+	deployCommand: string | null;
+	production: boolean;
+	from: string;
 }
 
 export type IssueGroup = "needs_read" | "looks_legit" | "looks_off";
@@ -419,7 +498,15 @@ export interface IssuesResponse {
 
 export interface ShellResponse {
 	hasProjects: boolean;
-	counts: { queue: number; floor: number; prs: number; issues: number; errors: number; projects: number };
+	counts: {
+		queue: number;
+		floor: number;
+		prs: number;
+		issues: number;
+		errors: number;
+		environments: number;
+		projects: number;
+	};
 	agents: { working: number; limit: number };
 	line: { stopped: boolean; stoppedAt: string | null };
 	sources: SourceHealth[];

@@ -61,6 +61,8 @@ function StageStrip({ data }: { data: QueueResponse }) {
 /* ---------- rows ---------- */
 
 const GLYPHS: Partial<Record<QueueItem["kind"], GlyphKind>> = {
+	env_down: "fail",
+	env_down_later: "fail",
 	error: "err",
 	question: "ask",
 	plan: "ask",

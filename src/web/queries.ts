@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import type {
+	EnvironmentsResponse,
 	ErrorDetail,
 	ErrorItem,
 	FloorResponse,
@@ -11,6 +12,7 @@ import type {
 	PrDetail,
 	Project,
 	ProjectDetail,
+	ProjectEnvironmentsResponse,
 	PullRequest,
 	QueueResponse,
 	ReadingResponse,
@@ -61,6 +63,20 @@ export interface ErrorsResponse {
 	withoutSentry: number;
 	quiet: number;
 }
+export const useEnvironments = () =>
+	useQuery({
+		queryKey: ["environments"],
+		queryFn: () => api.get<EnvironmentsResponse>("/api/environments"),
+		// A quiet deploy command sends nothing, and the clock still moves.
+		refetchInterval: 15_000,
+	});
+export const useProjectEnvironments = (slug: string) =>
+	useQuery({
+		queryKey: ["project-environments", slug],
+		queryFn: () =>
+			api.get<ProjectEnvironmentsResponse>(`/api/projects/${encodeURIComponent(slug)}/environments`),
+		refetchInterval: 15_000,
+	});
 export const useIssues = (project?: string) =>
 	useQuery({
 		queryKey: ["issues", project ?? ""],

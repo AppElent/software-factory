@@ -11,6 +11,7 @@ import type { Config } from "../../src/server/config.ts";
 import { openDb } from "../../src/server/db.ts";
 import { installDemo } from "../../src/server/demo.ts";
 import { Engine } from "../../src/server/engine.ts";
+import { Environments } from "../../src/server/environments.ts";
 import { Notifier } from "../../src/server/notify.ts";
 import { Poller } from "../../src/server/poller.ts";
 import { Store } from "../../src/server/store.ts";
@@ -75,11 +76,19 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		onRegression: () => {},
 		onRead: () => {},
 	});
+	const environments = new Environments({
+		store,
+		cli: demo.cli,
+		publish: bus.publish,
+		deployRunner: demo.deployRunner,
+		healthFetch: demo.healthFetch,
+	});
 	const app = createApp({
 		config,
 		store,
 		cli: demo.cli,
 		engine,
+		environments,
 		executor: demo.executor,
 		poller,
 		notifier,

