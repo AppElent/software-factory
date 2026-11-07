@@ -34,7 +34,7 @@ import type {
 } from "../shared/types.ts";
 import { scrub } from "./cli.ts";
 import { filterNeverTouch, readNeverTouch } from "./config.ts";
-import { ConfigFile } from "./config-file.ts";
+import { type ConfigData, ConfigFile } from "./config-file.ts";
 import type { IssueRead } from "./connectors/github.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
@@ -169,11 +169,43 @@ export class Store {
 		notifications?: Omit<NotificationSettings, "lastTest">;
 		cloneFolder?: string;
 	}): void {
-		this.file.update((data) => ({ ...data, settings: { ...data.settings, ...change } }));
+		this.file.update((data) => ({
+			...data,
+			settings: { ...data.settings, ...(change as ConfigData["settings"]) },
+		}));
 	}
 
 	saveApprovals(a: ApprovalSettings): void {
 		this.saveSettings({ approvals: a });
+	}
+
+	/**
+	 * Settings from before the config file only live in the database, where they'd be lost with it, and where
+	 * they'd come back if the file went. They move once. How the last notification test went stays: it's about this Mac.
+	 */
+	moveSettingsToFile(): void {
+		if (this.file.error()) return;
+		const agents = kvGet<Partial<AgentSettings>>(this.db, "settings:agents");
+		const approvals = kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals");
+		const cloneFolder = kvGet<string>(this.db, "settings:cloneFolder");
+		const { lastTest = null, ...notifications } =
+			kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications") ?? {};
+		const hasNotifications = Object.keys(notifications).length > 0;
+		if (!agents && !approvals && !cloneFolder && !hasNotifications) return;
+		this.file.update((data) => {
+			// What's in the file wins, as it did when both were read.
+			const saved = data.settings;
+			const moved = {
+				...(agents ? { agents: { ...agents, ...saved.agents } } : {}),
+				...(approvals ? { approvals: { ...approvals, ...saved.approvals } } : {}),
+				...(hasNotifications ? { notifications: { ...notifications, ...saved.notifications } } : {}),
+				...(cloneFolder ? { cloneFolder: saved.cloneFolder ?? cloneFolder } : {}),
+			};
+			return { ...data, settings: { ...saved, ...(moved as ConfigData["settings"]) } };
+		});
+		for (const key of ["settings:agents", "settings:approvals", "settings:cloneFolder"])
+			this.db.prepare("DELETE FROM kv WHERE key = ?").run(key);
+		if (hasNotifications) kvSet(this.db, "settings:notifications", { lastTest });
 	}
 
 	/** A regression always stops merging alone. When the file can't be written, that's held here until it can. */
@@ -216,7 +248,11 @@ export class Store {
 	}
 
 	saveModes(modes: Mode[], defaultMode: string): void {
-		this.file.update((data) => ({ ...data, modes: modes.map((m) => ({ ...m })), defaultMode }));
+		this.file.update((data) => {
+			// A field from a newer version stays on its mode.
+			const before = new Map(data.modes?.map((m) => [m.id, m]));
+			return { ...data, modes: modes.map((m) => ({ ...before.get(m.id), ...m })), defaultMode };
+		});
 	}
 
 	line(): { stopped: boolean; stoppedAt: string | null } {

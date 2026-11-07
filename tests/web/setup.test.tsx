@@ -513,3 +513,12 @@ describe("a new Mac", () => {
 		expect(h.router.state.location.pathname).toBe("/");
 	});
 });
+
+describe("a config file that can't be used", () => {
+	it("says so on every page, and what it means", async () => {
+		await renderApp("/", "config_broken");
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Your config file can't be used.");
+		expect(alert).toHaveTextContent("nothing merges on its own until it's fixed");
+	});
+});

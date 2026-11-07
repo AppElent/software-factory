@@ -342,14 +342,25 @@ export function scheduleWords(s: AutomationSchedule): string {
 export const ownsNoPr = (kind: string) => kind === "rebase_pr" || kind === "pr_changes";
 
 /**
- * A mode's merge is chosen for one run, so a gate that isn't set up doesn't block it, as it does Merge without me.
- * Tests still have to have run: a green lint is no reason to merge.
+ * A mode's merge is chosen for one run, so a missing Preview doesn't block it, as it does Merge without me.
+ * The other three have to have run: a repo that only tests hasn't been type checked or linted.
  */
-export const modeGatesPassed = (g: Gates) => gatesPassed(g) && g.Tests === "passed";
+export const MODE_NEEDS = ["Typecheck", "Tests", "Lint"] as const;
+export const modeGatesPassed = (g: Gates) =>
+	MODE_NEEDS.every((n) => g[n] === "passed") && (g.Preview === "passed" || g.Preview === "not_set_up");
 
 /** The files an agent could use to loosen the rules around itself. They always wait for you. */
 const OWNER_ONLY_EVERYWHERE = [/^\.github\/workflows\//];
-const OWNER_ONLY_HERE = [/^src\/server\/security\.ts$/, /^src\/shared\/rules\.ts$/, /^docs\/adr\//];
+/** What runs on this Mac when a new version gets ready, before you press Update, belongs here too. */
+const OWNER_ONLY_HERE = [
+	/^src\/server\/security\.ts$/,
+	/^src\/shared\/rules\.ts$/,
+	/^docs\/adr\//,
+	/^package\.json$/,
+	/^pnpm-(lock|workspace)\.yaml$/,
+	/^\.npmrc$/,
+	/^scripts\//,
+];
 
 export function ownerOnlyFiles(paths: string[], isThisApp: boolean): string[] {
 	const rules = isThisApp ? [...OWNER_ONLY_EVERYWHERE, ...OWNER_ONLY_HERE] : OWNER_ONLY_EVERYWHERE;
@@ -505,7 +516,7 @@ export function parseReply(reply: string): ParsedReply {
 const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 /** The same, leaving what normal emoji are made of. One joiner between emoji, or one selector after one. */
 const LOOKS_HIDDEN =
-	/(?!(?<=\p{Extended_Pictographic}\uFE0F?)\u200D(?=\p{Extended_Pictographic}))(?!(?<=[\p{Extended_Pictographic}0-9#*])\uFE0F)[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+	/(?!(?<=[\p{Extended_Pictographic}\p{Emoji_Modifier}]\uFE0F?)\u200D(?=\p{Extended_Pictographic}))(?!(?<=[\p{Extended_Pictographic}0-9#*])\uFE0F)[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 
 /** Leaves lines and tabs. A lone carriage return can end a heredoc once it's pasted, and escapes can end a paste. */
 export function stripControls(text: string): string {

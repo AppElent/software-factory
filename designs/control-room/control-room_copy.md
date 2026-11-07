@@ -3009,3 +3009,12 @@ Sentry, EAS
 Skipped
 Infisical. Reminder under Later.
 ```
+
+## Config file that can't be used
+
+Shown on every page while the config file can't be read.
+
+| Element | Copy |
+| --- | --- |
+| Banner title | `Your config file can't be used.` |
+| Banner body | `{why} Modes, environments and settings are back to their defaults, and nothing merges on its own until it's fixed.` |

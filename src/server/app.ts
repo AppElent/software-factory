@@ -637,6 +637,9 @@ export function createApp(d: AppDeps): Hono {
 			throw new ActionError(`${mode.name} on ${env.name} needs confirming.`, 409);
 		if (mode?.merge === "factory" && issue?.locked)
 			throw new ActionError(`Read #${issue.number} before starting ${mode.name}.`, 409);
+		// A PR the factory didn't open has someone else's name on it, so its merge stays theirs or yours.
+		if (mode?.merge === "factory" && source.prNumber)
+			throw new ActionError(`${mode.name} can't merge a PR the factory didn't open.`, 409);
 		const id = engine.create({
 			project: input.project,
 			type: input.type,
@@ -817,7 +820,7 @@ export function createApp(d: AppDeps): Hono {
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
 		if (inVersion && !config.demo) {
 			// A second click waits for the first clone, so a failure can't remove a clone that's still going.
-			if (selfClone) await selfClone;
+			while (selfClone) await selfClone;
 			if (existsSync(path)) {
 				if (!(await isCheckoutOf(path, self.repo)))
 					throw new ActionError(`${path} holds something else.`, 409);
@@ -1347,8 +1350,10 @@ export function createApp(d: AppDeps): Hono {
 			z.object({ cloneFolder: z.string().min(1), neverTouch: z.array(z.string().min(1)) }),
 		);
 		// Paths from here go straight to git and the file system, which don't expand a typed ~.
-		store.saveSettings({ cloneFolder: next.cloneFolder.replace(/^~(?=$|\/)/, homedir()) });
+		// First, and in a file of its own. A typo in the config file must not stop you adding a safety rule.
 		writeNeverTouch(store.configDir, next.neverTouch);
+		const cloneFolder = next.cloneFolder.replace(/^~(?=$|\/)/, homedir());
+		if (cloneFolder !== store.settings().projects.cloneFolder) store.saveSettings({ cloneFolder });
 		audit(store.db, "change never touch rules", `${next.neverTouch.length} rules`, "you", null, store.now());
 		bus.publish(["settings", "projects", "queue", "floor", "prs", "errors", "shell"]);
 		return c.json(store.settings().projects);

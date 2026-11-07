@@ -6,6 +6,8 @@ Improve yourself can change the app that's running it, so a bad change must not 
 
 The service runs `releases/current`, a symlink to a folder named after a commit. A new commit gets its own clone, install and build, then starts on a spare port with sample data. Only then is it offered. Pressing `Update` moves the symlink and exits, and launchd starts whatever the symlink points at.
 
+Getting a version ready runs its code before you press `Update`, because the build and the trial start both do. Install scripts are skipped, neither step gets tokens or pointers to the real folders, and the trial gets a throwaway home folder. That limits what a bad commit can reach, but it isn't a sandbox. So a commit gets here only with green checks, and a merging mode can't merge changes to `package.json`, the lockfile, `.npmrc` or `scripts/` on this repo.
+
 A detached guard watches the switch from outside the service. It runs in its own process group, because launchd kills the service's group when the service exits. It expects `/api/version` to report the new commit within 90 seconds. If it doesn't, the guard moves the symlink back, marks the version failed, and restarts the service.
 
 Updating stays a button. It only happens on its own once rollback has proven itself on real updates, and that's a later decision.

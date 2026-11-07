@@ -329,6 +329,50 @@ describe("picking work up from T3", () => {
 		expect(kvGet(store.db, PICK_UP)).toBe(false);
 	});
 
+	it("doesn't make a second work order for a run still waiting to hear its thread", async () => {
+		const store = setup();
+		const starting = store.insertWorkOrder({
+			project: "fairway",
+			type: "Chore",
+			title: "Starting",
+			description: "",
+			source: { kind: "person" },
+			agent: "t3",
+		});
+		thread("t1", `factory/wo-${starting}-starting`, "running");
+		threads = [{ threadId: "t1", title: `WO-${starting} Starting`, settled: false }];
+		kvSet(store.db, PICK_UP, true);
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
+		expect(store.workOrders()).toHaveLength(1);
+		expect(kvGet(store.db, PICK_UP)).toBe(true);
+		store.patchWorkOrder(starting, { thread_id: "t1" });
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
+		expect(store.workOrders()).toHaveLength(1);
+		expect(kvGet(store.db, PICK_UP)).toBe(false);
+	});
+
+	it("doesn't adopt when the run got its thread while T3 was being asked", async () => {
+		const store = setup();
+		const starting = store.insertWorkOrder({
+			project: "fairway",
+			type: "Chore",
+			title: "Starting",
+			description: "",
+			source: { kind: "person" },
+			agent: "t3",
+		});
+		store.patchWorkOrder(starting, { state: "closed" });
+		thread("t1", `factory/wo-${starting}-starting`, "running");
+		threads = [{ threadId: "t1", title: `WO-${starting} Old`, settled: false }];
+		const status = exec.status.bind(exec);
+		vi.spyOn(exec, "status").mockImplementationOnce(async (id) => {
+			store.patchWorkOrder(starting, { state: "building", thread_id: "t1" });
+			return status(id);
+		});
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
+		expect(store.workOrders()).toHaveLength(1);
+	});
+
 	it("keeps a thread whose number was taken while T3 wasn't answering, and only once", async () => {
 		const store = setup();
 		const taken = store.insertWorkOrder({
@@ -339,6 +383,7 @@ describe("picking work up from T3", () => {
 			source: { kind: "person" },
 			agent: "t3",
 		});
+		store.patchWorkOrder(taken, { thread_id: "another", state: "building" });
 		thread("t1", `factory/wo-${taken}-old`, "running");
 		threads = [{ threadId: "t1", title: `WO-${taken} Old work`, settled: false }];
 		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);

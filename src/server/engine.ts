@@ -8,6 +8,7 @@ import {
 	gatesClear,
 	gatesPassed,
 	gateValues,
+	MODE_NEEDS,
 	mayMergeAlone,
 	mergeBlockers,
 	NO_CHECKS_MS,
@@ -657,39 +658,8 @@ export class Engine {
 			return;
 		}
 		const project = this.store.project(wo.project);
-		const approvals = this.store.settings().approvals;
-		const byMode = wo.mode?.merge === "factory";
-		// An issue that left the list can't be vouched for any more, so it counts the same as one that changed.
-		const issue =
-			wo.source.kind === "issue" && wo.source.issueNumber
-				? this.store.issue(wo.project, wo.source.issueNumber)
-				: undefined;
-		const unreadIssue = wo.source.kind === "issue" && (!issue || issue.locked);
-		if (project && byMode) this.sayWhyModeWaits(wo, pr, project, unreadIssue);
-		if (
-			!project ||
-			project.paused ||
-			pr.group === "stale" ||
-			// Another work order can be busy on this PR, such as a rebase.
-			pr.heldBy ||
-			this.staleRead(project) ||
-			this.store.line().stopped ||
-			// A config file that can't be read can't say what you wanted.
-			this.store.file.error() ||
-			!mayMergeAlone({
-				on: approvals.mergeWithoutMe[wo.type] || byMode,
-				byMode,
-				projectMerging: project.merging,
-				gates: pr.gates,
-				mergeable: pr.mergeable,
-				mergeState: pr.mergeState,
-				isDraft: pr.isDraft,
-				hold: wo.hold,
-				sourceKind: wo.source.kind,
-				unreadIssue,
-			})
-		)
-			return;
+		if (project && wo.mode?.merge === "factory") this.sayWhyModeWaits(wo, pr, project);
+		if (!project || !this.mergeAllowed(wo, pr)) return;
 		// GitHub said no to this commit. Asking again every pass won't change that; a new commit might.
 		const refusedKey = `merge_refused:${wo.id}`;
 		if (kvGet<string>(this.store.db, refusedKey) === pr.headSha) return;
@@ -697,6 +667,9 @@ export class Engine {
 		const paths = await tryReadPrPaths(this.cli, project.repo, pr.number);
 		// Not knowing what it changes is a reason to wait. The next pass reads it again.
 		if (paths === null) return;
+		// That took a moment, and you can have pressed Stop or Stop the line since. Everything counts again.
+		const current = this.store.workOrder(wo.id);
+		if (!current || current.state !== wo.state || !this.mergeAllowed(current, pr)) return;
 		if (paths.length >= MOST_FILES_GITHUB_LISTS) {
 			kvSet(this.store.db, refusedKey, pr.headSha);
 			this.store.addActivity(wo.id, "This changes too many files to check, so it waits for you");
@@ -730,20 +703,57 @@ export class Engine {
 		this.pollSoon();
 	}
 
+	/** An issue that left the list can't be vouched for any more, so it counts the same as one that changed. */
+	private issueHolds(wo: WorkOrder) {
+		if (wo.source.kind !== "issue") return false;
+		const issue = wo.source.issueNumber ? this.store.issue(wo.project, wo.source.issueNumber) : undefined;
+		return !issue || issue.locked;
+	}
+
+	/** Every reason the factory may not merge this, read fresh, so it can be asked again after waiting on GitHub. */
+	private mergeAllowed(wo: WorkOrder, pr: PullRequest) {
+		const project = this.store.project(wo.project);
+		const byMode = wo.mode?.merge === "factory";
+		if (
+			!project ||
+			project.paused ||
+			pr.group === "stale" ||
+			// Another work order can be busy on this PR, such as a rebase.
+			pr.heldBy ||
+			this.staleRead(project) ||
+			this.store.line().stopped ||
+			// A config file that can't be read can't say what you wanted.
+			this.store.file.error()
+		)
+			return false;
+		return mayMergeAlone({
+			on: this.store.settings().approvals.mergeWithoutMe[wo.type] || byMode,
+			byMode,
+			projectMerging: project.merging,
+			gates: pr.gates,
+			mergeable: pr.mergeable,
+			mergeState: pr.mergeState,
+			isDraft: pr.isDraft,
+			hold: wo.hold,
+			sourceKind: wo.source.kind,
+			unreadIssue: this.issueHolds(wo),
+		});
+	}
+
 	/** A run you chose to send can stop at Review for reasons of its own. Says so once, so it doesn't look stuck. */
-	private sayWhyModeWaits(wo: WorkOrder, pr: PullRequest, project: Project, unreadIssue: boolean) {
-		const reason =
-			project.merging === "ask"
+	private sayWhyModeWaits(wo: WorkOrder, pr: PullRequest, project: Project) {
+		const missing = MODE_NEEDS.filter((n) => pr.gates[n] !== "passed");
+		const reason = this.store.file.error()
+			? "The config file can't be read, so fix it first."
+			: project.merging === "ask"
 				? `${project.name} is set to ask you before merging.`
-				: unreadIssue
+				: this.issueHolds(wo)
 					? this.store.issue(wo.project, wo.source.issueNumber ?? 0)
 						? `#${wo.source.issueNumber} changed since you read it, so read it again or merge this yourself.`
 						: `#${wo.source.issueNumber} isn't in the open issues any more, so merge this yourself.`
-					: !gatesClear(pr.gates)
+					: !gatesClear(pr.gates) || missing.length === 0
 						? null
-						: pr.gates.Tests !== "passed"
-							? "Tests aren't set up on this project, so a merge is yours to make."
-							: null;
+						: `${missing.join(" and ")} ${missing.length === 1 && missing[0] !== "Tests" ? "isn't" : "aren't"} set up on this project, so a merge is yours to make.`;
 		if (!reason) return;
 		const key = `mode_waits:${wo.id}`;
 		if (kvGet<string>(this.store.db, key) === reason) return;
@@ -962,7 +972,9 @@ export class Engine {
 		if (wo.state === "done" || wo.state === "closed") return;
 		const project = this.store.project(wo.project);
 		// A rebase or a requested change works on someone else's PR. Closing the work order leaves that PR alone.
-		const closesRemote = !opts.keepRemoteBranch && !ownsNoPr(wo.source.kind);
+		// Picked-up work forgot what it started as, but only a branch of the factory's own can be its to delete.
+		const notOurs = wo.source.kind === "restored" && !wo.branch?.startsWith("factory/wo-");
+		const closesRemote = !opts.keepRemoteBranch && !ownsNoPr(wo.source.kind) && !notOurs;
 		if (project && closesRemote && wo.prNumber) {
 			const res = await closePr(this.cli, project.repo, wo.prNumber);
 			if (res.code !== 0 && !/already (been )?(closed|merged)/i.test(res.stderr))

@@ -12,6 +12,8 @@ export interface CliOptions {
 	cwd?: string;
 	stdin?: string;
 	timeoutMs?: number;
+	/** Replaces the environment a command gets. */
+	env?: NodeJS.ProcessEnv;
 }
 
 /** Every outside tool goes through here, so tests can replace all of them with recorded output. */
@@ -36,7 +38,11 @@ export const cliEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv 
 export const realCli: Cli = (cmd, args, opts = {}) =>
 	new Promise((resolve) => {
 		if (opts.stdin !== undefined) {
-			const child = spawn(cmd, args, { cwd: opts.cwd, env: cliEnv(), stdio: ["pipe", "pipe", "pipe"] });
+			const child = spawn(cmd, args, {
+				cwd: opts.cwd,
+				env: opts.env ?? cliEnv(),
+				stdio: ["pipe", "pipe", "pipe"],
+			});
 			let stdout = "";
 			let stderr = "";
 			const timer = setTimeout(() => child.kill("SIGTERM"), opts.timeoutMs ?? 120_000);
@@ -62,7 +68,12 @@ export const realCli: Cli = (cmd, args, opts = {}) =>
 		execFile(
 			cmd,
 			args,
-			{ cwd: opts.cwd, env: cliEnv(), timeout: opts.timeoutMs ?? 120_000, maxBuffer: 64 * 1024 * 1024 },
+			{
+				cwd: opts.cwd,
+				env: opts.env ?? cliEnv(),
+				timeout: opts.timeoutMs ?? 120_000,
+				maxBuffer: 64 * 1024 * 1024,
+			},
 			(err, stdout, stderr) => {
 				if (err && (err as NodeJS.ErrnoException).code === "ENOENT") {
 					resolve({ code: 127, stdout: "", stderr: `${cmd} isn't installed`, missing: true });

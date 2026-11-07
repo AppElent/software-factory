@@ -540,6 +540,8 @@ export interface ShellResponse {
 	hasProjects: boolean;
 	/** Projects came back from the config file, so this Mac still needs setting up. */
 	newDevice: boolean;
+	/** Why the config file can't be used. While it's set, nothing merges alone and nothing saves to it. */
+	configError: string | null;
 	counts: {
 		queue: number;
 		floor: number;
@@ -765,6 +767,8 @@ export interface NewProjectRun {
 /* ---------- versions ---------- */
 
 export interface VersionInfo {
+	/** When this copy first saw the commit. Checks that never showed up get a few minutes from here. */
+	seenAt?: string;
 	sha: string;
 	label: string;
 	message: string;

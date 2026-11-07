@@ -6,7 +6,7 @@ import { createApp } from "./app.ts";
 import { Automations } from "./automations.ts";
 import { Bus } from "./bus.ts";
 import { realCli, scrub } from "./cli.ts";
-import { loadConfig, selfRepo } from "./config.ts";
+import { filterNeverTouch, loadConfig, selfRepo } from "./config.ts";
 import { kvGet, openDb } from "./db.ts";
 import { installDemo } from "./demo.ts";
 import { Engine, type EngineEvent } from "./engine.ts";
@@ -24,6 +24,7 @@ const db = openDb(join(config.dataDir, "factory.db"));
 const store = new Store(db, config.dataDir, undefined, config.configDir);
 // Reading the rules at boot means a broken file stops the service before it reads anything.
 store.neverTouch();
+if (!config.demo) store.moveSettingsToFile();
 const restored = config.demo ? 0 : restoreProjects(store);
 
 const bus = new Bus();
@@ -105,6 +106,8 @@ const releases = new Releases({
 	guard: realGuard(root),
 	exit: () => process.exit(0),
 	busy: () => environments.deploying(),
+	// Read each time, so a rule you add now counts, and a broken rules file stops this rather than passing.
+	mayTouch: () => !repo || filterNeverTouch(store.neverTouch(), [{ repo, path: root }]).kept.length > 0,
 });
 // Sample data run from a version folder is a smoke test, which has to report its real version.
 const versions: Versions = demo && !releases.running() ? demo.versions : releases;
@@ -165,14 +168,15 @@ const heartbeat = setInterval(() => {
 	if (config.demo) return;
 	// A typo in the config file or the Never touch file is yours to fix, and must not take the service down.
 	try {
+		store.moveSettingsToFile();
 		store.settleRegressions();
 		restoreProjects(store);
 		mirrorProjects(store);
-		beats += 1;
-		if (beats % 12 === 0) pickUp();
 	} catch (e) {
 		console.error(scrub(String(e)));
 	}
+	beats += 1;
+	if (beats % 12 === 0) pickUp();
 }, 5000);
 heartbeat.unref();
 

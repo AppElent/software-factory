@@ -15,7 +15,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
-import { type GuardRequest, privateHits, privateTerms, Releases } from "../../src/server/releases.ts";
+import {
+	candidateEnv,
+	type GuardRequest,
+	privateHits,
+	privateTerms,
+	Releases,
+} from "../../src/server/releases.ts";
 import type { VersionInfo } from "../../src/shared/types.ts";
 
 const A = "a".repeat(40);
@@ -36,8 +42,8 @@ let base: string;
 let dir: string;
 let head: string;
 let checkRuns: Array<{ status: string; conclusion: string | null }>;
-let totalRuns: number | null;
 let onChecks: (() => void) | null;
+let touchable: boolean;
 let status: { state: string; total_count: number };
 let committed: string;
 let failing: string | null;
@@ -60,9 +66,9 @@ const cli: Cli = async (cmd, args) => {
 				commit: { message: "Add a filter (#48)\n\nLonger text", committer: { date: committed } },
 			}),
 		);
-	if (line.endsWith("/check-runs?per_page=100")) {
+	if (line.includes("/check-runs?per_page=100")) {
 		onChecks?.();
-		return ok(JSON.stringify({ check_runs: checkRuns, total_count: totalRuns ?? checkRuns.length }));
+		return ok(checkRuns.map((r) => JSON.stringify(r)).join("\n"));
 	}
 	if (line.endsWith("/status")) return ok(JSON.stringify(status));
 	if (line.startsWith("git remote")) return ok("https://github.com/me/software-factory.git\n");
@@ -86,6 +92,7 @@ const make = (sha: string | null) => {
 			exits += 1;
 		},
 		busy: () => busy,
+		mayTouch: () => touchable,
 	});
 };
 const seed = (rows: VersionInfo[]) => writeFileSync(join(dir, "versions.json"), JSON.stringify(rows));
@@ -98,8 +105,8 @@ beforeEach(() => {
 	mkdirSync(join(base, "checkout"));
 	head = B;
 	checkRuns = [{ status: "completed", conclusion: "success" }];
-	totalRuns = null;
 	onChecks = null;
+	touchable = true;
 	status = { state: "pending", total_count: 0 };
 	committed = "2026-01-01T00:00:00Z";
 	failing = null;
@@ -140,10 +147,21 @@ describe("getting a version ready", () => {
 		expect(saved()[0]).toMatchObject({ sha: B, state: "ready", message: "Add a filter (#48)" });
 		expect(existsSync(join(dir, B))).toBe(true);
 		expect(existsSync(join(dir, `.tmp-${B}`))).toBe(false);
-		expect(calls).toContain(`pnpm install --frozen-lockfile`);
+		expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts");
 		expect(calls).toContain("pnpm build");
 		expect(guards).toEqual([]);
 		expect(exits).toBe(0);
+	});
+
+	it("gives code that isn't running yet no tokens and no pointers to the real folders", () => {
+		vi.stubEnv("GH_TOKEN", "x");
+		vi.stubEnv("SENTRY_AUTH_TOKEN", "x");
+		vi.stubEnv("SF_DATA_DIR", "/real");
+		vi.stubEnv("MY_API_KEY", "x");
+		const env = candidateEnv();
+		vi.unstubAllEnvs();
+		expect(Object.keys(env).filter((k) => /GH_TOKEN|SENTRY_AUTH|SF_DATA|API_KEY/.test(k))).toEqual([]);
+		expect(env.PATH).toBeTruthy();
 	});
 
 	it("smoke tests the finished folder", async () => {
@@ -194,11 +212,62 @@ describe("getting a version ready", () => {
 		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
 	});
 
-	it("goes ahead on a repo with no checks", async () => {
+	it("goes ahead on a repo with no checks, a few minutes after first seeing the commit", async () => {
 		checkRuns = [];
 		seed([row(A, "running")]);
-		await make(A).check();
+		const r = make(A);
+		await r.check();
+		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
+		const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 6 * 60_000);
+		await r.check();
+		later.mockRestore();
 		expect(saved()[0]).toMatchObject({ sha: B, state: "ready" });
+	});
+
+	it("doesn't go by the commit's date, which says nothing about when it was pushed", async () => {
+		checkRuns = [];
+		committed = "2026-01-01T00:00:00Z";
+		seed([row(A, "running")]);
+		await make(A).check();
+		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
+	});
+
+	it("reads every page of checks", async () => {
+		seed([row(A, "running")]);
+		await make(A).check();
+		expect(calls.find((c) => c.includes("/check-runs"))).toContain("--paginate");
+	});
+
+	it("keeps the version that's ready when a newer one fails", async () => {
+		seed([row(B, "ready"), row(A, "running")]);
+		mkdirSync(join(dir, B));
+		head = C;
+		failing = "pnpm build";
+		await make(A).check();
+		expect(saved().map((v) => [v.sha, v.state])).toEqual([
+			[C, "failed"],
+			[B, "ready"],
+			[A, "running"],
+		]);
+		expect(existsSync(join(dir, B))).toBe(true);
+	});
+
+	it("reads nothing from a repo a Never touch rule matches", async () => {
+		touchable = false;
+		seed([row(A, "running")]);
+		const r = make(A);
+		await r.check();
+		expect(calls).toEqual([]);
+		expect(r.view().checkError).toMatch(/Never touch/);
+	});
+
+	it("doesn't build when a rule arrived while the checks were read", async () => {
+		seed([row(A, "running")]);
+		onChecks = () => {
+			touchable = false;
+		};
+		await make(A).check();
+		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
 	});
 
 	it("records a failed build, removes its folder, and doesn't try the same commit again", async () => {
@@ -453,12 +522,25 @@ describe("what's on disk wins", () => {
 		expect(saved().find((v) => v.sha === A)?.state).toBe("replaced");
 	});
 
-	it("doesn't count a commit with more checks than one page shows", async () => {
-		seed([row(B, "ready"), row(A, "running")]);
+	it("waits for checks that haven't shown up on a version that just got ready", async () => {
+		seed([{ ...row(B, "ready"), seenAt: new Date().toISOString() }, row(A, "running")]);
 		mkdirSync(join(dir, B));
 		symlinkSync(A, join(dir, "current"));
-		totalRuns = 101;
+		checkRuns = [];
 		await expect(make(A).activate(B)).rejects.toThrow(/aren't green/);
+		expect(readlinkSync(join(dir, "current"))).toBe(A);
+	});
+
+	it("won't go forward to a repo a Never touch rule matches, but can still go back", async () => {
+		seed([row(B, "ready"), row(C, "replaced"), row(A, "running")]);
+		mkdirSync(join(dir, B));
+		mkdirSync(join(dir, C));
+		symlinkSync(A, join(dir, "current"));
+		touchable = false;
+		await expect(make(A).activate(B)).rejects.toThrow(/Never touch/);
+		vi.useFakeTimers();
+		await make(A).activate(C);
+		expect(readlinkSync(join(dir, "current"))).toBe(C);
 	});
 
 	it("stops if the version went away while its checks were read", async () => {

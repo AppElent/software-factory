@@ -34,6 +34,83 @@ describe("the config file on another version or Mac", () => {
 		expect(loadConfig({ SF_DATA_DIR: dir, SF_CONFIG_DIR: other }).configDir).toBe(other);
 	});
 
+	it.each([
+		[{ cloneFolder: 123 }],
+		[{ approvals: { mergeWithoutMe: { Chore: "no" } } }],
+		[{ agents: { agentsAtOnce: "lots" } }],
+		[{ approvals: { thresholds: 5 } }],
+	])("reads a wrong type in settings as a broken file: %j", (settings) => {
+		const dir = mkdtempSync(join(tmpdir(), "sf-cfg-"));
+		const store = new Store(openDb(join(dir, "t.db")), dir, undefined, dir);
+		writeFileSync(store.file.path, JSON.stringify({ version: 1, settings }));
+		expect(store.file.error()).toMatch(/expected shape/);
+		expect(() => store.settings()).not.toThrow();
+		expect(Object.values(store.settings().approvals.mergeWithoutMe)).not.toContain(true);
+	});
+
+	it("keeps fields from a newer version when a list is saved", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sf-cfg-"));
+		const store = new Store(openDb(join(dir, "t.db")), dir, undefined, dir);
+		const { modes, defaultMode } = store.modes([]);
+		store.saveModes(modes, defaultMode);
+		const data = JSON.parse(readFileSync(store.file.path, "utf8"));
+		data.modes[0].fromNewer = 1;
+		writeFileSync(store.file.path, JSON.stringify(data));
+		store.saveModes(store.modes([]).modes, defaultMode);
+		expect(JSON.parse(readFileSync(store.file.path, "utf8")).modes[0].fromNewer).toBe(1);
+	});
+
+	describe("settings from before the config file", () => {
+		const carried = () => {
+			const dir = mkdtempSync(join(tmpdir(), "sf-cfg-"));
+			const store = new Store(openDb(join(dir, "t.db")), dir, undefined, dir);
+			kvSet(store.db, "settings:agents", { agentsAtOnce: 7 });
+			kvSet(store.db, "settings:approvals", {
+				mergeWithoutMe: { "Bug fix": false, Feature: false, "Toolkit sync": false, Chore: true },
+			});
+			kvSet(store.db, "settings:notifications", { onlyWhenAway: true, lastTest: "ok" });
+			kvSet(store.db, "settings:cloneFolder", `${homedir()}/code`);
+			return store;
+		};
+
+		it("move to the file, so they survive losing the database", () => {
+			const store = carried();
+			store.moveSettingsToFile();
+			const after = new Store(
+				openDb(join(mkdtempSync(join(tmpdir(), "sf-cfg-")), "t.db")),
+				"x",
+				undefined,
+				store.configDir,
+			);
+			expect(after.settings().agents.agentsAtOnce).toBe(7);
+			expect(after.settings().notifications.onlyWhenAway).toBe(true);
+			expect(after.settings().projects.cloneFolder).toBe(`${homedir()}/code`);
+			expect(store.settings().notifications.lastTest).toBe("ok");
+		});
+
+		it("don't overwrite what's in the file", () => {
+			const store = carried();
+			store.file.update((d) => ({ ...d, settings: { ...d.settings, agents: { agentsAtOnce: 2 } } }));
+			store.moveSettingsToFile();
+			expect(store.settings().agents.agentsAtOnce).toBe(2);
+		});
+
+		it("don't come back when the file is deleted", () => {
+			const store = carried();
+			store.moveSettingsToFile();
+			rmSync(store.file.path);
+			expect(store.settings().approvals.mergeWithoutMe.Chore).toBe(false);
+		});
+
+		it("wait while the file can't be read", () => {
+			const store = carried();
+			writeFileSync(store.file.path, "{ nope");
+			store.moveSettingsToFile();
+			expect(readFileSync(store.file.path, "utf8")).toBe("{ nope");
+			expect(store.settings().agents.agentsAtOnce).toBe(7);
+		});
+	});
+
 	describe("while the file can't be read", () => {
 		const broken = () => {
 			const dir = mkdtempSync(join(tmpdir(), "sf-cfg-"));

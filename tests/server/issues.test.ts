@@ -69,7 +69,7 @@ describe("the quick check on an issue", () => {
 			expect(signals(`fi${c}ne`).hidden).toBe(1);
 	});
 	it("leaves emoji alone", () => {
-		for (const text of ["👩‍💻 on it", "❤️ thanks", "1️⃣ first", "👨‍👩‍👧‍👦", "👍🏽"])
+		for (const text of ["👩‍💻 on it", "❤️ thanks", "1️⃣ first", "👨‍👩‍👧‍👦", "👍🏽", "👨🏽‍💻"])
 			expect(signals(text).hidden).toBe(0);
 		// More than emoji use is something else.
 		expect(signals("a\u200Db").hidden).toBe(1);

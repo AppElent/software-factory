@@ -61,10 +61,41 @@ export const ProjectEntrySchema = z.object({
 	sentrySkipped: z.boolean().optional(),
 });
 
+const byType = <T extends z.ZodType>(value: T) => z.record(z.string(), value).optional();
+
+/** Only what the app reads. A wrong type here reads as a broken file, instead of as yes or as a crash. */
+const SettingsSchema = z
+	.object({
+		agents: z
+			.object({
+				agentsAtOnce: z.number().optional(),
+				pauseOnReview: z.boolean().optional(),
+				retries: z.number().optional(),
+				agent: z.string().optional(),
+			})
+			.loose()
+			.optional(),
+		approvals: z
+			.object({
+				planReview: byType(z.enum(["always", "skip"])),
+				mergeWithoutMe: byType(z.boolean()),
+				turnedOffByRegression: byType(z.boolean()),
+				thresholds: z.object({ runs: z.number(), firstTryPct: z.number() }).loose().optional(),
+			})
+			.loose()
+			.optional(),
+		notifications: z
+			.object({ events: byType(z.boolean()), onlyWhenAway: z.boolean().optional() })
+			.loose()
+			.optional(),
+		cloneFolder: z.string().optional(),
+	})
+	.loose();
+
 const Schema = z
 	.object({
 		version: z.literal(1).default(1),
-		settings: z.record(z.string(), z.unknown()).default({}),
+		settings: SettingsSchema.default({}),
 		modes: z.array(ModeSchema.loose()).optional(),
 		defaultMode: z.string().optional(),
 		environments: z.record(z.string(), z.array(EnvironmentSchema.loose())).default({}),

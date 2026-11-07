@@ -5,8 +5,8 @@ import type { Cli } from "./cli.ts";
 import { filterNeverTouch } from "./config.ts";
 import { ConfigFileError } from "./config-file.ts";
 import { kvGet, kvSet } from "./db.ts";
-import { type Executor, ExecutorError } from "./executor/types.ts";
-import type { Store } from "./store.ts";
+import type { Executor } from "./executor/types.ts";
+import { OPEN_FILTER, type Store } from "./store.ts";
 
 /**
  * Everything you'd miss lives outside the database, so you can stop using this app or delete its data.
@@ -129,6 +129,15 @@ const parseThreads = (text: string) => {
 
 const OpenPrs = z.array(z.object({ number: z.number() }));
 
+/** `starting` is a run with this number still waiting to hear which thread T3 gave it, which may be this one. */
+const ownerOf = (store: Store, threadId: string, number: number) => {
+	if (store.db.prepare("SELECT 1 FROM work_orders WHERE thread_id = ?").get(threadId)) return "held";
+	const row = store.db
+		.prepare(`SELECT 1 FROM work_orders WHERE id = ? AND thread_id IS NULL AND ${OPEN_FILTER}`)
+		.get(number);
+	return row ? "starting" : "free";
+};
+
 /**
  * Picks up work that's still going, from T3's threads. Finished work is history, and stays gone. Only projects
  * already in the factory are read, so a Never touch repo's threads are never looked at.
@@ -151,11 +160,11 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 			const id = Number(match[1]);
 			highest = Math.max(highest, id);
 			if (thread.settled) continue;
-			if (store.db.prepare("SELECT 1 FROM work_orders WHERE thread_id = ?").get(thread.threadId)) continue;
-			const state = await executor.status(thread.threadId).catch((e) => {
-				if (e instanceof ExecutorError) return null;
-				throw e;
-			});
+			if (ownerOf(store, thread.threadId, id) !== "free") {
+				if (ownerOf(store, thread.threadId, id) === "starting") complete = false;
+				continue;
+			}
+			const state = await executor.status(thread.threadId).catch(() => null);
 			if (!state) {
 				complete = false;
 				continue;
@@ -187,6 +196,11 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 			if (!alive && prNumber === null) {
 				// Finished with no PR is history, but only if GitHub really said so. `gh` may not be signed in yet.
 				if (!prKnown) complete = false;
+				continue;
+			}
+			// Those calls took a moment, and a run can have got its thread in the meantime.
+			if (ownerOf(store, thread.threadId, id) !== "free") {
+				if (ownerOf(store, thread.threadId, id) === "starting") complete = false;
 				continue;
 			}
 			const at = store.iso();

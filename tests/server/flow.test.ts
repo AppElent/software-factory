@@ -24,10 +24,12 @@ let calls: Calls;
 let cliResult: Record<string, { code: number; stdout?: string; stderr?: string }>;
 let gitCalls: string[];
 let gitFails: Record<string, string>;
+let whileReadingFiles: (() => void) | null = null;
 
 const cli: Cli = async (cmd, args) => {
 	const line = `${cmd} ${args.join(" ")}`;
 	calls.push(line);
+	if (line.includes("/files")) whileReadingFiles?.();
 	for (const [k, v] of Object.entries(cliResult)) {
 		if (line.includes(k))
 			return {
@@ -114,6 +116,7 @@ beforeEach(() => {
 	});
 	gitCalls = [];
 	gitFails = {};
+	whileReadingFiles = null;
 	addProject();
 });
 
@@ -1730,6 +1733,82 @@ describe("modes", () => {
 		await settle();
 		expect(wo(id).mergedAt).toBeNull();
 		expect(calls.join("\n")).not.toContain("pr merge");
+	});
+
+	it("says which gates aren't set up, and waits", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("not_set_up"), Tests: "passed" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.join("\n")).not.toContain("pr merge");
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("Typecheck and Lint aren't set up");
+	});
+
+	it("says the config file is why it waits", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		writeFileSync(store.file.path, "{ nope");
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("config file can't be read");
+	});
+
+	it.each([
+		["Stop", (id: number) => engine.stop(id)],
+		["Stop the line", () => engine.setLine(true)],
+		["pausing the project", () => store.db.prepare("UPDATE projects SET paused = 1").run()],
+	])("doesn't merge when you press %s while it reads which files changed", async (_, press) => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		whileReadingFiles = () => {
+			whileReadingFiles = null;
+			press(id);
+		};
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(calls.join("\n")).toContain("/files");
+		expect(calls.join("\n")).not.toContain("pr merge");
+		expect(wo(id).mergedAt).toBeNull();
+	});
+
+	it("closing picked-up work leaves a branch that isn't the factory's", async () => {
+		const id = start({ source: { kind: "restored" } });
+		await settle();
+		store.patchWorkOrder(id, { branch: "feature/theirs", pr_number: 12 });
+		await engine.close(id);
+		expect(calls.join("\n")).not.toContain("pr close");
+		expect(gitCalls.some((c) => c.startsWith("push origin --delete"))).toBe(false);
+		expect(wo(id).state).toBe("closed");
+	});
+
+	it("closing picked-up work still cleans up the factory's own branch", async () => {
+		const id = start({ source: { kind: "restored" } });
+		await settle();
+		store.patchWorkOrder(id, { branch: "factory/wo-7-mine", pr_number: 12 });
+		await engine.close(id);
+		expect(calls.join("\n")).toContain("pr close");
+		expect(gitCalls.some((c) => c.startsWith("push origin --delete"))).toBe(true);
 	});
 
 	it("waits, and says so once, when a PR has more files than GitHub lists", async () => {

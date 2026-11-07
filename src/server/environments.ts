@@ -209,10 +209,23 @@ export class Environments {
 		const names = environments.map((e) => e.name.toLowerCase());
 		if (new Set(names).size !== names.length)
 			throw new ActionError("Two environments have the same name.", 400);
-		this.d.store.file.update((c) => ({
-			...c,
-			environments: { ...c.environments, [slug]: environments.map((e) => ({ ...e })) },
-		}));
+		// Stop lives on its row, so removing the row would leave a deploy nobody can reach.
+		for (const key of this.running.keys()) {
+			const name = key.startsWith(`${slug}:`) ? key.slice(slug.length + 1) : null;
+			if (name && !environments.some((e) => e.name === name))
+				throw new ActionError(`${name} is deploying. Stop it first.`, 409);
+		}
+		this.d.store.file.update((c) => {
+			// A field from a newer version stays on its environment.
+			const before = new Map(c.environments[slug]?.map((e) => [e.name, e]));
+			return {
+				...c,
+				environments: {
+					...c.environments,
+					[slug]: environments.map((e) => ({ ...before.get(e.name), ...e })),
+				},
+			};
+		});
 		const keep = new Set(environments.map((e) => e.name));
 		const rows = this.d.store.db.prepare("SELECT env FROM env_health WHERE project = ?").all(slug) as Array<{
 			env: string;

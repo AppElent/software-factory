@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.6.0
+version: 2.7.0
 status: current
 ---
 
@@ -88,9 +88,12 @@ A mode is a way to start work: a prompt added before the work order's own instru
 - Modes live in the config file, with defaults built from the skills found on this Mac. The defaults work with no skills installed.
 - A mode that merges on its own can't be the default. If an edit makes it so, the factory uses the first mode that doesn't.
 - A work order keeps a copy of its mode, so editing a mode never changes work already running.
-- A mode that merges does it through Review, so Stop the line and a failing gate hold it. It needs Typecheck, Tests and Lint passed, with Preview passed or not set up, and GitHub calling the PR `CLEAN`. Tests not set up means it waits and says why.
+- A mode that merges does it through Review, so Stop the line and a failing gate hold it. It needs Typecheck, Tests and Lint passed, with Preview passed or not set up, and GitHub calling the PR `CLEAN`. A gate of those three not set up means it waits and says which.
 - Its agent is told not to merge. The factory merges, and the audit log names the mode.
-- **Always yours, in every mode and setting:** changes to `.github/workflows/`, and on this app's own repo also `src/server/security.ts`, `src/shared/rules.ts` and `docs/adr/`. When the factory can't read which files changed, it waits and reads again.
+- **Always yours, in every mode and setting:** changes to `.github/workflows/`, and on this app's own repo also `src/server/security.ts`, `src/shared/rules.ts`, `docs/adr/`, `package.json`, the lockfile, `.npmrc` and `scripts/`. When the factory can't read which files changed, it waits and reads again. A PR with more files than GitHub lists waits for you.
+- Everything that stops a merge is read again after reading the file list, so Stop, Stop the line and a pause count right up to the merge.
+- A config file that can't be read says so on every page. Until it's fixed, nothing merges on its own, and settings are the defaults. Never touch rules can still be saved.
+- Settings from before the config file move into it once, and leave the database.
 - Starting a merging mode on a production error asks once more, and the server refuses it without that confirmation.
 - Copy as command gives the same work as a `t3 thread start` command that runs without this app. Text from outside stays delimited as data, and can't end the command's quoted prompt.
 
@@ -191,7 +194,7 @@ A person writes a change, and it becomes an ordinary work order on the factory's
 
 Each version runs from its own folder, and `current` points at one. See ADR 0005.
 
-- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A commit with red or unfinished checks waits, and so does one under 5 minutes old with no checks yet. Otherwise it's cloned, installed and built in a new folder, then started on a spare port with sample data. It must report its own commit and serve the page. A commit that fails stays failed on the timer. `Check for a new version` tries it again, because a failure can be the network's.
+- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A repo a Never touch rule matches is left alone. A commit with red or unfinished checks waits, and so does one with no checks that the factory first saw under 5 minutes ago. Otherwise it's cloned, installed without install scripts and built in a new folder, then started on a spare port with sample data, no tokens and a throwaway home folder. A version that's ready stays offered until a newer one is ready too. It must report its own commit and serve the page. A commit that fails stays failed on the timer. `Check for a new version` tries it again, because a failure can be the network's.
 - **Updating.** Only by pressing `Update`, which reads the commit's checks again first. A running deploy blocks it, because the restart would cut the deploy off.
 - **Going back.** A guard outside the service expects the new commit to answer within 90 seconds. If not, it switches back, marks the version failed, and restarts. `Roll back` switches to an older folder the same way. The running version and the two newest before it are kept.
 - **Database.** Migrations stay additive, so an older version runs on a newer database. There are no backups.

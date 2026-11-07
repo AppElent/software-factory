@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { z } from "zod";
@@ -1076,6 +1076,11 @@ export function installDemo(store: Store) {
 			full();
 			toolFaults = { "terminal-notifier": "missing" };
 			kvSet(store.db, "settings:notifications", { ...store.settings().notifications, lastTest: "failed" });
+		},
+		/** The banner for a config file with a typo in it. */
+		config_broken: () => {
+			full();
+			writeFileSync(store.file.path, "{ nope");
 		},
 		/** SettingsApprovals: one type merging alone, one turned off by a regression, one project that always asks. */
 		approvals_regressed: () => {

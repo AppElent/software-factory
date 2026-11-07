@@ -50,6 +50,12 @@ const sparePort = () =>
 		});
 	});
 
+/** A version that isn't running yet gets no tokens and no pointers to the real folders. */
+export const candidateEnv = (): NodeJS.ProcessEnv =>
+	Object.fromEntries(
+		Object.entries(cliEnv()).filter(([k]) => !/^SF_|token|secret|password|credential|api_?key/i.test(k)),
+	);
+
 /** Starts the version on a spare port with sample data, so its first run touches nothing real. */
 export async function realSmoke(dir: string, sha: string) {
 	const port = await sparePort();
@@ -57,7 +63,9 @@ export async function realSmoke(dir: string, sha: string) {
 	const child = spawn(process.execPath, ["src/server/main.ts"], {
 		cwd: dir,
 		env: {
-			...cliEnv(),
+			...candidateEnv(),
+			// Whatever it does with the home folder lands in the throwaway one.
+			HOME: data,
 			SF_DEMO: "1",
 			SF_PORT: String(port),
 			SF_DATA_DIR: data,
@@ -112,11 +120,15 @@ export class Releases {
 		exit: () => void;
 		/** Why now is a bad time to restart. */
 		busy?: () => string | null;
+		/** False when a Never touch rule matches this repo. Throws when the rules can't be read. */
+		mayTouch: () => boolean;
 	};
 	private checking = false;
 	private checkedAt: string | null = null;
 	private checkError: string | null = null;
 	private timer: NodeJS.Timeout | null = null;
+	/** When this copy first saw a commit. A commit's own date says nothing about when it was pushed. */
+	private seen = new Map<string, number>();
 	/** The newest check. For tests. */
 	done: Promise<void> = Promise.resolve();
 
@@ -227,11 +239,12 @@ export class Releases {
 		this.checking = true;
 		this.checkError = null;
 		try {
+			if (!this.d.mayTouch()) throw new Error("A Never touch rule matches this repo, so it isn't read.");
 			const res = await cli("gh", ["api", `repos/${repo}/commits/HEAD`]);
 			if (res.code !== 0) throw new Error(res.stderr.trim() || "GitHub didn't answer.");
 			const head = JSON.parse(res.stdout) as {
 				sha: string;
-				commit: { message: string; committer?: { date?: string } };
+				commit: { message: string };
 			};
 			this.checkedAt = new Date().toISOString();
 			if (!/^[0-9a-f]{40}$/.test(head.sha)) throw new Error("GitHub returned something unexpected.");
@@ -239,8 +252,11 @@ export class Releases {
 			const known = this.rows().find((r) => r.sha === head.sha);
 			if (known?.state === "failed" && retry) this.save(this.rows().filter((r) => r.sha !== head.sha));
 			else if (known) return;
-			if ((await this.checksOf(head.sha, head.commit.committer?.date)) !== "passed") return;
-			await this.prepare(head.sha, head.commit.message.split("\n")[0] ?? "");
+			const seenAt = this.seen.get(head.sha) ?? Date.now();
+			this.seen.set(head.sha, seenAt);
+			if ((await this.checksOf(head.sha, seenAt)) !== "passed") return;
+			if (!this.d.mayTouch()) throw new Error("A Never touch rule matches this repo, so it isn't read.");
+			await this.prepare(head.sha, head.commit.message.split("\n")[0] ?? "", seenAt);
 		} catch (e) {
 			this.checkError = scrub(e instanceof Error ? e.message : String(e)).slice(0, 300);
 		} finally {
@@ -253,47 +269,57 @@ export class Releases {
 	 * Red or unfinished checks mean not yet. A repo with no checks has nothing to wait for, but a new commit may just
 	 * not have them yet, so it gets a few minutes first.
 	 */
-	private async checksOf(sha: string, committedAt?: string): Promise<"passed" | "waiting" | "red"> {
+	private async checksOf(sha: string, seenAt: number): Promise<"passed" | "waiting" | "red"> {
 		const { cli, repo } = this.d;
-		const read = async (path: string) => {
-			const res = await cli("gh", ["api", `repos/${repo}/commits/${sha}/${path}`]);
+		const read = async (path: string, ...more: string[]) => {
+			const res = await cli("gh", ["api", ...more, `repos/${repo}/commits/${sha}/${path}`]);
 			if (res.code !== 0) throw new Error(res.stderr.trim() || "GitHub didn't answer.");
-			return JSON.parse(res.stdout);
+			return res.stdout;
 		};
-		const { check_runs: runs, total_count: totalRuns } = (await read("check-runs?per_page=100")) as {
-			check_runs: Array<{ status: string; conclusion: string | null }>;
-			total_count?: number;
-		};
-		const status = (await read("status")) as { state: string; total_count: number };
+		// Every page, because a red one could be anywhere.
+		const lines = await read(
+			"check-runs?per_page=100",
+			"--paginate",
+			"--jq",
+			".check_runs[] | {status, conclusion}",
+		);
+		const runs = lines
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as { status: string; conclusion: string | null });
+		const status = JSON.parse(await read("status")) as { state: string; total_count: number };
 		const bad = (r: { conclusion: string | null }) =>
 			!["success", "neutral", "skipped"].includes(r.conclusion ?? "");
 		if (runs.some((r) => r.status === "completed" && bad(r))) return "red";
 		if (status.total_count > 0 && ["failure", "error"].includes(status.state)) return "red";
-		// A check past the first 100 could be the red one.
-		if (runs.some((r) => r.status !== "completed") || (totalRuns ?? 0) > runs.length) return "waiting";
+		if (runs.some((r) => r.status !== "completed")) return "waiting";
 		if (status.total_count > 0 && status.state !== "success") return "waiting";
 		if (runs.length > 0 || status.total_count > 0) return "passed";
-		const age = committedAt ? Date.now() - Date.parse(committedAt) : Number.POSITIVE_INFINITY;
-		return age >= NO_CHECKS_WAIT_MS ? "passed" : "waiting";
+		return Date.now() - seenAt >= NO_CHECKS_WAIT_MS ? "passed" : "waiting";
 	}
 
-	private async prepare(sha: string, message: string) {
+	private async prepare(sha: string, message: string, seenAt: number) {
 		const { cli, dir, root, smoke, publish } = this.d;
 		const label = sha.slice(0, 7);
 		const now = new Date().toISOString();
-		// A newer commit makes one you never switched to pointless.
-		const stale = this.rows().filter((r) => r.state === "ready" && r.sha !== this.running());
-		for (const r of stale) rmSync(join(dir, r.sha), { recursive: true, force: true });
-		const others = this.rows().filter((r) => r.state !== "ready");
 		this.save([
-			{ sha, label, message, state: "preparing", error: null, at: now, canRollBack: false },
-			...others,
+			{
+				sha,
+				label,
+				message,
+				state: "preparing",
+				error: null,
+				at: now,
+				seenAt: new Date(seenAt).toISOString(),
+				canRollBack: false,
+			},
+			...this.rows(),
 		]);
 		publish(["versions"]);
 		const tmp = join(dir, `.tmp-${sha}`);
 		rmSync(tmp, { recursive: true, force: true });
-		const step = async (what: string, cmd: string, args: string[], cwd?: string) => {
-			const res = await cli(cmd, args, { cwd, timeoutMs: STEP_TIMEOUT_MS });
+		const step = async (what: string, cmd: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv) => {
+			const res = await cli(cmd, args, { cwd, env, timeoutMs: STEP_TIMEOUT_MS });
 			if (res.code !== 0) throw new Error(`${what} failed. ${scrub(res.stderr).trim().slice(-200)}`.trim());
 			return res.stdout.trim();
 		};
@@ -301,13 +327,24 @@ export class Releases {
 			const origin = await step("Finding the repo", "git", ["remote", "get-url", "origin"], root);
 			await step("Clone", "git", ["clone", "--quiet", origin, tmp]);
 			await step("Checkout", "git", ["checkout", "--quiet", "--detach", sha], tmp);
-			await step("Install", "pnpm", ["install", "--frozen-lockfile"], tmp);
-			await step("Build", "pnpm", ["build"], tmp);
+			await step(
+				"Install",
+				"pnpm",
+				["install", "--frozen-lockfile", "--ignore-scripts"],
+				tmp,
+				candidateEnv(),
+			);
+			await step("Build", "pnpm", ["build"], tmp, candidateEnv());
 			const folder = join(dir, sha);
 			rmSync(folder, { recursive: true, force: true });
 			renameSync(tmp, folder);
 			await smoke(folder, sha);
 			this.patch(sha, { state: "ready", at: new Date().toISOString() });
+			// Only now. If this one had failed, the one before it would still be good to go to.
+			const running = this.running();
+			const older = this.rows().filter((r) => r.state === "ready" && r.sha !== sha && r.sha !== running);
+			for (const r of older) rmSync(join(dir, r.sha), { recursive: true, force: true });
+			this.save(this.rows().filter((r) => !older.some((o) => o.sha === r.sha)));
 			this.prune();
 		} catch (e) {
 			rmSync(tmp, { recursive: true, force: true });
@@ -347,10 +384,10 @@ export class Releases {
 		if (why) throw new ActionError(why, 409);
 		// Going forward, its checks can have gone red since it was built. Going back is how you escape a bad one.
 		if (row.state === "ready") {
-			const checks = await this.checksOf(sha).catch(() => null);
+			if (!this.d.mayTouch()) throw new ActionError("A Never touch rule matches this repo.", 403);
+			const checks = await this.checksOf(sha, Date.parse(row.seenAt ?? row.at)).catch(() => null);
 			if (checks === null) throw new ActionError("Couldn't read its checks on GitHub. Try again.", 409);
-			if (checks !== "passed")
-				throw new ActionError(`The checks on ${row.label} aren't green any more.`, 409);
+			if (checks !== "passed") throw new ActionError(`The checks on ${row.label} aren't green.`, 409);
 			// That took a moment. A newer commit can have replaced it, or a deploy can have started.
 			if (!this.rows().some((r) => r.sha === sha && r.state === "ready") || !existsSync(join(dir, sha)))
 				throw new ActionError("That version isn't ready to run.", 409);

@@ -54,10 +54,19 @@ describe("mode rules", () => {
 		s.saveModes(changed, "standard");
 		expect(s.modes([]).defaultMode).toBe("quick-fix");
 	});
-	it("needs Tests for a mode's merge", () => {
+	it("needs Typecheck, Tests and Lint for a mode's merge, and lets only Preview be missing", () => {
 		expect(modeGatesPassed(noGates("passed"))).toBe(true);
 		expect(modeGatesPassed({ ...noGates("passed"), Preview: "not_set_up" })).toBe(true);
 		expect(modeGatesPassed({ ...noGates("not_set_up"), Lint: "passed" })).toBe(false);
+		expect(modeGatesPassed({ ...noGates("not_set_up"), Tests: "passed" })).toBe(false);
+		expect(modeGatesPassed({ ...noGates("passed"), Typecheck: "not_set_up" })).toBe(false);
+		expect(modeGatesPassed({ ...noGates("passed"), Lint: "not_set_up" })).toBe(false);
+		expect(modeGatesPassed({ ...noGates("passed"), Preview: "failed" })).toBe(false);
+	});
+	it("keeps what runs on this Mac before Update for the owner", () => {
+		const paths = ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts/service.mjs"];
+		expect(ownerOnlyFiles(paths, true)).toEqual(paths);
+		expect(ownerOnlyFiles(paths, false)).toEqual([]);
 	});
 	it("keeps security files for the owner here, and workflows everywhere", () => {
 		const paths = ["src/a.ts", "src/server/security.ts", ".github/workflows/x.yml", "docs/adr/0001-x.md"];

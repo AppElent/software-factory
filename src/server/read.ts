@@ -49,6 +49,7 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 	return {
 		hasProjects: projects.length > 0,
 		newDevice: kvGet(store.db, "new_device") === true,
+		configError: store.file.error(),
 		counts: {
 			queue: queue.length,
 			floor,

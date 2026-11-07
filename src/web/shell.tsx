@@ -317,6 +317,16 @@ export function ShellOutlet() {
 						/>
 					</div>
 				)}
+				{shell.data?.configError && (
+					<div className="px-6 pt-4">
+						<Banner
+							role="alert"
+							glyph="err"
+							title="Your config file can't be used."
+							body={`${shell.data.configError} Modes, environments and settings are back to their defaults, and nothing merges on its own until it's fixed.`}
+						/>
+					</div>
+				)}
 				<Outlet />
 			</div>
 			<div role="status" className="sr-only">

