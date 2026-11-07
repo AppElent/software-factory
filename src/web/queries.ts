@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import type {
+	AutomationsResponse,
 	EnvironmentsResponse,
 	ErrorDetail,
 	ErrorItem,
@@ -63,6 +64,11 @@ export interface ErrorsResponse {
 	withoutSentry: number;
 	quiet: number;
 }
+export const useAutomations = () =>
+	useQuery({
+		queryKey: ["automations"],
+		queryFn: () => api.get<AutomationsResponse>("/api/automations"),
+	});
 export const useEnvironments = () =>
 	useQuery({
 		queryKey: ["environments"],

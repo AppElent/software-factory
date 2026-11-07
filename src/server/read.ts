@@ -55,6 +55,7 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 			issues: store.issues().length,
 			errors: store.errors().filter((e) => e.triage?.action !== "dismiss").length,
 			environments: store.envViews().filter((e) => e.health.state === "down").length,
+			automations: kvGet<{ items: unknown[] }>(store.db, "automations")?.items.length ?? 0,
 			projects: projects.length,
 		},
 		agents: { working: limits.build, limit: limits.agents },

@@ -1,5 +1,6 @@
 /** Pure rules from docs/contracts/factory.md. No I/O, so each is a table test. */
 import type {
+	AutomationSchedule,
 	CheckRun,
 	GateName,
 	GateState,
@@ -315,6 +316,29 @@ export function qualifies(rec: Record_, t: { runs: number; firstTryPct: number }
 }
 
 /** Work orders on a PR the factory didn't open. Its branch and its merge belong to whoever opened it. */
+const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+const WEEK = [1, 2, 3, 4, 5];
+
+export function scheduleWords(s: AutomationSchedule): string {
+	switch (s.type) {
+		case "interval": {
+			const minutes = Math.round(s.everyMs / 60_000);
+			if (minutes % 1440 === 0) return minutes === 1440 ? "Every day" : `Every ${minutes / 1440}d`;
+			return minutes % 60 === 0 ? `Every ${minutes / 60}h` : `Every ${minutes}m`;
+		}
+		case "fixed_time": {
+			const days = [...(s.weekdays ?? [])].sort();
+			if (days.length === 0 || days.length === 7) return `Every day ${s.timeOfDay}`;
+			if (days.join() === WEEK.join()) return `Weekdays ${s.timeOfDay}`;
+			return `${days.map((d) => DAYS[d]).join(", ")} ${s.timeOfDay}`;
+		}
+		case "once":
+			return `Once, ${s.runAt.replace("T", " ").slice(0, 16)}`;
+		case "webhook":
+			return "Webhook";
+	}
+}
+
 export const ownsNoPr = (kind: string) => kind === "rebase_pr" || kind === "pr_changes";
 
 /**

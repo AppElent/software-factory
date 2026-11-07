@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.3.0
+version: 2.5.0
 status: current
 ---
 
@@ -94,7 +94,36 @@ A mode is a way to start work: a prompt added before the work order's own instru
 - Starting a merging mode on a production error asks once more, and the server refuses it without that confirmation.
 - Copy as command gives the same work as a `t3 thread start` command that runs without this app. Text from outside stays delimited as data, and can't end the command's quoted prompt.
 
-### Environments
+### Leaving
+
+This app can be stopped or deleted, and you lose little. Durable things live where they keep working without it.
+
+| Thing | Where it lives |
+| --- | --- |
+| Settings, modes, environments, project list | The config file, plain JSON |
+| Never touch rules | `never-touch.json`, next to the config file |
+| Running agents and their threads | T3 |
+| Branches, PRs, issues, deployments | GitHub |
+| Errors | Sentry |
+| Automations | T3 |
+
+The database holds what can be read again, plus history. Deleting the data folder loses finished work orders, deploy history, the audit log, metrics, dismissals and snoozes, and which issues you've read.
+
+- **Restore.** On a start with a database that has never held a project, projects come back from the config file. Never touch rules still apply. A database with rows, even removed ones, isn't touched.
+- **Pick up.** Work orders come back from T3 when their thread title starts `WO-<number>`, the thread isn't settled, and it's still running or has an open PR. Finished work stays history. Picked-up work keeps its number and its thread, and never merges on its own, whatever mode it started in.
+- **Numbers.** New work orders start above the highest number found in T3, so a new branch can't collide with an old one.
+- **Copy as command.** Starting a work order and deploying both show the terminal command that does the same thing.
+
+## Automations
+
+Automations are T3's scheduled tasks. They live in T3 and keep running without this app. T3 has no command for them, so an agent thread reads and creates them with T3's own tools.
+
+- **Read.** `Read again` starts one thread that lists tasks for the factory's projects only. It costs a model turn, so it runs when you press it and never on a timer. The last answer is kept to show, and only as a cache.
+- **Create.** `Create in T3` starts a thread that calls T3 once. The prompt goes to it as delimited data, so the thread saves it and doesn't carry it out. A mode's prompt goes in front.
+- **Schedules.** Every, at a time, or once. Webhook needs T3 Connect and can't be made here.
+- **Failure.** A thread that finishes without confirming shows as not created, with a link to read it. T3 may still have the task, so check before trying again.
+
+## Environments
 
 An environment belongs to a project and lives in the config file: name, URL, health URL, deploy command, Sentry environment, issue label and whether it's production. The Sentry environment defaults to the lowercase name, and the issue label to `env:<name>`.
 

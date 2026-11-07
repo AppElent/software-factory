@@ -4,6 +4,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import { mapGates, noGates, prGroup, snoozeUntil } from "../shared/rules.ts";
 import type {
+	AutomationSchedule,
 	CheckRun,
 	DeployRun,
 	EnvironmentConfig,
@@ -26,7 +27,7 @@ import { kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
 import type { DeployRunner, HealthFetch } from "./environments.ts";
 import { FakeExecutor } from "./executor/fake.ts";
-import type { ThreadState } from "./executor/types.ts";
+import type { AskRequest, ThreadState } from "./executor/types.ts";
 import { SCAFFOLD_STEPS, type ScaffoldRunner } from "./newproject.ts";
 import type { Store } from "./store.ts";
 
@@ -40,6 +41,21 @@ const OWNER = "example-org";
 class DemoExecutor extends FakeExecutor {
 	override askReply =
 		'```json\n{"verdict":"unsure","why":"It describes a real screen, but the steps don\'t say which version."}\n```';
+
+	/** Answers as an agent with T3's tools would, without one. */
+	override async ask(req: AskRequest) {
+		if (req.title.startsWith("Create automation"))
+			return {
+				reply: '```json\n{"scheduledTaskId":"scheduled-task:demo-new"}\n```',
+				link: "https://t3.example/threads/asked",
+			};
+		if (req.title === "Read automations")
+			return {
+				reply: `\`\`\`json\n${JSON.stringify({ projects: [{ slug: "fairway", tasks: [{ scheduledTaskId: "scheduled-task:demo-read", title: "Read from T3 just now", enabled: true, schedule: { type: "interval", everyMs: 3_600_000 }, nextRunAt: null, lastRunStatus: "never" }] }] })}\n\`\`\``,
+				link: null,
+			};
+		return super.ask(req);
+	}
 
 	override async status(threadId: string): Promise<ThreadState> {
 		const t = this.threads.get(threadId);
@@ -914,6 +930,51 @@ export function installDemo(store: Store) {
 			baseProjects();
 			healthy();
 		},
+		automations: () => {
+			baseProjects();
+			healthy();
+			const task = (
+				id: string,
+				title: string,
+				project: string,
+				projectName: string,
+				schedule: AutomationSchedule,
+				enabled = true,
+			) => ({
+				id,
+				title,
+				project,
+				projectName,
+				schedule,
+				enabled,
+				nextRunAt: null,
+				lastRunStatus: "completed",
+				link: enabled ? "https://t3.example/threads/automation" : null,
+			});
+			kvSet(store.db, "automations", {
+				readAt: new Date(store.now().getTime() - 2 * HOUR).toISOString(),
+				items: [
+					task("a1", "Upgrade dependencies", "foundry", "Foundry", {
+						type: "fixed_time",
+						timeOfDay: "08:00",
+						weekdays: [1],
+					}),
+					task("a2", "Triage new issues", "fairway", "Fairway", { type: "interval", everyMs: 6 * HOUR }),
+					task(
+						"a3",
+						"Check the release notes",
+						"gather",
+						"Gather",
+						{ type: "once", runAt: "2026-11-20T09:00" },
+						false,
+					),
+				],
+			});
+		},
+		no_automations: () => {
+			baseProjects();
+			healthy();
+		},
 		first_run: () => healthy(),
 		/** FRTools: the required tools are ready, one optional tool signed out and one missing. */
 		first_run_tools: () => {
@@ -1566,6 +1627,7 @@ export function installDemo(store: Store) {
 					"errors",
 					"environments",
 					"project-environments",
+					"automations",
 					"projects",
 					"shell",
 					"work-orders",

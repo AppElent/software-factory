@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach } from "vitest";
 import { createApp } from "../../src/server/app.ts";
+import { Automations } from "../../src/server/automations.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Config } from "../../src/server/config.ts";
 import { openDb } from "../../src/server/db.ts";
@@ -88,6 +89,7 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		store,
 		cli: demo.cli,
 		engine,
+		automations: new Automations({ store, cli: demo.cli, executor: demo.executor, publish: bus.publish }),
 		environments,
 		executor: demo.executor,
 		poller,

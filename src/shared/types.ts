@@ -37,6 +37,7 @@ export interface WorkOrderSource {
 		| "error"
 		| "issue"
 		| "environment"
+		| "restored"
 		| "red_main"
 		| "stale_pr"
 		| "rebase_pr"
@@ -360,6 +361,45 @@ export interface QueueResponse {
 	nextCheckAt: string | null;
 }
 
+/* ---------- automations ---------- */
+
+/** T3's own trigger shapes. A webhook needs T3 Connect, so it can be read here but not made. */
+export type AutomationSchedule =
+	| { type: "interval"; everyMs: number }
+	| { type: "fixed_time"; timeOfDay: string; weekdays?: number[] }
+	| { type: "once"; runAt: string }
+	| { type: "webhook" };
+
+export interface Automation {
+	id: string;
+	title: string;
+	project: string;
+	projectName: string;
+	schedule: AutomationSchedule;
+	enabled: boolean;
+	nextRunAt: string | null;
+	lastRunStatus: string | null;
+	/** The thread that created it, when this app did. T3 has no link to a schedule itself. */
+	link: string | null;
+}
+
+export interface AutomationJob {
+	id: number;
+	name: string;
+	projectName: string;
+	/** Why it didn't work. Null while it's still going. */
+	error: string | null;
+	link: string | null;
+}
+
+export interface AutomationsResponse {
+	items: Automation[];
+	readAt: string | null;
+	reading: boolean;
+	readError: string | null;
+	jobs: AutomationJob[];
+}
+
 /* ---------- environments ---------- */
 
 /** One target a project deploys to. Lives in your config file, not the database. */
@@ -505,6 +545,7 @@ export interface ShellResponse {
 		issues: number;
 		errors: number;
 		environments: number;
+		automations: number;
 		projects: number;
 	};
 	agents: { working: number; limit: number };

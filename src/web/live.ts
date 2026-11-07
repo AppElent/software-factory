@@ -8,6 +8,7 @@ const ALSO: Record<string, string[]> = {
 	errors: ["error", "project"],
 	issues: ["shell", "project-environments", "environments"],
 	environments: ["project-environments"],
+	automations: ["shell"],
 	"work-orders": ["project", "pr", "health"],
 	line: ["shell", "floor", "queue"],
 };

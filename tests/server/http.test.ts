@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/server/app.ts";
+import { Automations } from "../../src/server/automations.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Cli } from "../../src/server/cli.ts";
 import type { Config } from "../../src/server/config.ts";
@@ -115,6 +116,7 @@ beforeEach(() => {
 		store,
 		cli,
 		engine,
+		automations: new Automations({ store, cli, executor: exec, publish: bus.publish }),
 		environments,
 		executor: exec,
 		poller,

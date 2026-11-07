@@ -72,9 +72,9 @@ export function t3Executor(cli: Cli): Executor {
 				// Handled below.
 			}
 			if (!threadId) throw new ExecutorError("t3 returned an unexpected response.");
-			const reply = (await this.status(threadId)).lastReply;
-			if (!reply) throw new ExecutorError("The agent finished without a reply.");
-			return reply;
+			const { lastReply, link } = await this.status(threadId);
+			if (!lastReply) throw new ExecutorError("The agent finished without a reply.");
+			return { reply: lastReply, link };
 		},
 		async status(threadId) {
 			const res = await cli("t3", ["thread", "show", threadId, "--messages", "12", "--json"], {

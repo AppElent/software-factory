@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { z } from "zod";
+import { AutomationsScreen } from "./screens/automations.tsx";
 import { EnvironmentsScreen, ProjectEnvironmentsScreen } from "./screens/environments.tsx";
 import { ErrorDetailScreen } from "./screens/error-detail.tsx";
 import { ErrorsScreen } from "./screens/errors.tsx";
@@ -71,6 +72,11 @@ const errorDetail = createRoute({
 	path: "/errors/$id",
 	component: ErrorDetailScreen,
 });
+const automations = createRoute({
+	getParentRoute: () => shell,
+	path: "/automations",
+	component: AutomationsScreen,
+});
 const environments = createRoute({
 	getParentRoute: () => shell,
 	path: "/environments",
@@ -134,6 +140,7 @@ export const routeTree = rootRoute.addChildren([
 		issues,
 		errors,
 		errorDetail,
+		automations,
 		environments,
 		projectEnvironments,
 		workOrder,

@@ -28,6 +28,7 @@ import type {
 	WorkOrderSource,
 } from "../shared/types.ts";
 import { WORK_TYPES } from "../shared/types.ts";
+import { type Automations, NewAutomation } from "./automations.ts";
 import type { Bus } from "./bus.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
@@ -70,6 +71,7 @@ export interface AppDeps {
 	store: Store;
 	cli: Cli;
 	engine: Engine;
+	automations: Automations;
 	environments: Environments;
 	executor: Executor;
 	poller: Poller;
@@ -110,7 +112,7 @@ const launchdRestart = () => {
 };
 
 export function createApp(d: AppDeps): Hono {
-	const { config, store, cli, engine, environments, executor, poller, notifier, bus } = d;
+	const { config, store, cli, engine, automations, environments, executor, poller, notifier, bus } = d;
 	const webRoot = d.webRoot ?? process.env.SF_WEB_ROOT ?? WEB_ROOT;
 	const app = new Hono();
 	const devOrigin = process.env.SF_DEV_ORIGIN;
@@ -753,6 +755,23 @@ export function createApp(d: AppDeps): Hono {
 		return { kind, fingerprint: s.fingerprint, prNumber: s.prNumber };
 	}
 
+	/* ---------- automations ---------- */
+
+	app.get("/api/automations", (c) => c.json(automations.view()));
+
+	app.post("/api/automations/read", (c) => {
+		automations.read();
+		return c.json({ ok: true });
+	});
+
+	app.post("/api/automations", async (c) => {
+		const input = await body(c.req, NewAutomation);
+		const mode = input.mode ? modesResponse().modes.find((m) => m.id === input.mode) : null;
+		if (input.mode && !mode) throw new ActionError("That mode no longer exists.", 400);
+		automations.create(input, mode?.prompt);
+		return c.json({ ok: true });
+	});
+
 	/* ---------- environments ---------- */
 
 	app.get("/api/environments", (c) => {
@@ -903,7 +922,7 @@ export function createApp(d: AppDeps): Hono {
 				title: `Read issue #${issue.number}`,
 				prompt: readerPrompt(issue),
 			})
-			.then((reply) => {
+			.then(({ reply }) => {
 				store.saveIssueAdvice(input.project, input.number, parseAdvice(reply, store.iso()), issue.bodyHash);
 			})
 			.catch((e) => {

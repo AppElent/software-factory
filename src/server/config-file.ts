@@ -49,6 +49,11 @@ export const EnvironmentSchema = z.object({
 
 export const ProjectEntrySchema = z.object({
 	repo: z.string(),
+	slug: z
+		.string()
+		.regex(/^[\w.-]+$/)
+		.optional(),
+	name: z.string().optional(),
 	localPath: z.string().nullable(),
 	paused: z.boolean().optional(),
 	merging: z.enum(["follow", "ask"]).optional(),

@@ -33,6 +33,10 @@ To look around with sample data, run `pnpm demo` after `pnpm build`. It serves o
 | `pnpm test`      | Vitest                                                                                 |
 | `pnpm test:e2e`  | Browser checks against the demo. Needs `pnpm build` and Playwright's headless Chromium |
 
+## Stop using it
+
+`pnpm service:uninstall`, then delete the data folder. Threads stay in T3, PRs and issues on GitHub, and your settings, modes, environments and project list in the config file. Start it again later and it restores projects from that file and picks up running work from T3. The contract's Leaving section has the details.
+
 ## Private config
 
 Nothing private lives in this repo. `~/Library/Application Support/Software Factory/` holds:

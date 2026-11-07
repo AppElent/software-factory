@@ -137,6 +137,7 @@ const GO: Record<string, string> = {
 	e: "/errors",
 	v: "/environments",
 	o: "/projects",
+	u: "/automations",
 	h: "/health",
 	s: "/settings/agents",
 };
@@ -187,6 +188,7 @@ const NAV: Array<{ label: string; to: string; count?: keyof ShellResponse["count
 	{ label: "Errors", to: "/errors", count: "errors" },
 	{ label: "Environments", to: "/environments", count: "environments" },
 	{ label: "Projects", to: "/projects", count: "projects" },
+	{ label: "Automations", to: "/automations", count: "automations" },
 	{ label: "Health", to: "/health" },
 ];
 
@@ -708,6 +710,7 @@ function CommandMenu() {
 		["Errors", "/errors", "g e"],
 		["Environments", "/environments", "g v"],
 		["Projects", "/projects", "g o"],
+		["Automations", "/automations", "g u"],
 		["Health", "/health", "g h"],
 		["Settings", "/settings/agents", "g s"],
 	];

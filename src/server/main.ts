@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
+import { Automations } from "./automations.ts";
 import { Bus } from "./bus.ts";
-import { realCli } from "./cli.ts";
+import { realCli, scrub } from "./cli.ts";
 import { loadConfig, selfRepo } from "./config.ts";
 import { openDb } from "./db.ts";
 import { installDemo } from "./demo.ts";
@@ -11,6 +12,7 @@ import { Environments, realDeployRunner, realHealthFetch } from "./environments.
 import { t3Executor } from "./executor/t3.ts";
 import { Notifier } from "./notify.ts";
 import { Poller } from "./poller.ts";
+import { mirrorProjects, rebuildWorkOrders, restoreProjects } from "./portable.ts";
 import { readItemsForNotify } from "./read.ts";
 import { Store } from "./store.ts";
 
@@ -19,6 +21,7 @@ const db = openDb(join(config.dataDir, "factory.db"));
 const store = new Store(db, config.dataDir, undefined, config.configDir);
 // Reading the rules at boot means a broken file stops the service before it reads anything.
 store.neverTouch();
+const restored = config.demo ? 0 : restoreProjects(store);
 
 const bus = new Bus();
 const demo = config.demo ? installDemo(store) : null;
@@ -89,11 +92,14 @@ const environments = new Environments({
 	healthFetch: demo?.healthFetch ?? realHealthFetch,
 });
 
+const automations = new Automations({ store, cli, executor, publish: bus.publish });
+
 const app = createApp({
 	config,
 	store,
 	cli,
 	engine,
+	automations,
 	environments,
 	executor,
 	poller,
@@ -108,13 +114,26 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
 	console.log(`Software Factory on http://${config.host}:${info.port}${config.demo ? " (demo)" : ""}`);
 });
 
+if (restored > 0) {
+	console.log(`Projects restored from ${store.file.path}: ${restored}`);
+	// In the background, because T3 can be slow and the page should open now.
+	void rebuildWorkOrders(store, cli, executor)
+		.then((n) => {
+			console.log(`Work orders picked up from T3: ${n}`);
+			bus.publish(["work-orders", "queue", "floor", "shell"]);
+		})
+		.catch((e) => console.error(scrub(String(e))));
+}
 if (!config.demo) {
 	poller.start();
 	environments.start();
 }
 
 // The engine needs a heartbeat even when GitHub is quiet: agent turns finish on their own time.
-const heartbeat = setInterval(() => void engine.tick().catch((e) => console.error(String(e))), 5000);
+const heartbeat = setInterval(() => {
+	void engine.tick().catch((e) => console.error(String(e)));
+	if (!config.demo) mirrorProjects(store);
+}, 5000);
 heartbeat.unref();
 
 const stop = () => {
