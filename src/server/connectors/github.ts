@@ -79,6 +79,7 @@ const RepoNode = z.object({
 				deletions: z.number(),
 				changedFiles: z.number(),
 				headRefName: z.string(),
+				isCrossRepository: z.boolean(),
 				baseRefName: z.string(),
 				createdAt: z.string(),
 				updatedAt: z.string(),
@@ -167,7 +168,7 @@ const FIELDS = `
 	nameWithOwner url isPrivate pushedAt
 	defaultBranchRef { name target { ... on Commit { oid messageHeadline committedDate statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
 	pullRequests(states: OPEN, first: 40, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
-		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName baseRefName createdAt updatedAt
+		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName isCrossRepository baseRefName createdAt updatedAt
 		commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
 	} }
 	issues(states: OPEN, first: 100, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
@@ -337,6 +338,7 @@ function toRepoRead(node: z.infer<typeof RepoNode>, now: number): RepoRead {
 				deletions: pr.deletions,
 				changedFiles: pr.changedFiles,
 				headRef: pr.headRefName,
+				fromFork: pr.isCrossRepository,
 				headSha: pr.commits.nodes[0]?.commit.oid ?? "",
 				baseRef: pr.baseRefName,
 				createdAt: pr.createdAt,
@@ -491,6 +493,10 @@ export async function closePr(cli: Cli, repo: string, number: number) {
 
 export const PR_UNREADABLE = "unreadable";
 
+/**
+ * `--head` matches on the branch's name alone, and anyone can give a fork's branch the same name. So a fork's PR
+ * is never the one the agent opened.
+ */
 export async function prByBranch(
 	cli: Cli,
 	repo: string,
@@ -506,12 +512,15 @@ export async function prByBranch(
 		"--state",
 		"all",
 		"--json",
-		"number,state",
+		"number,state,isCrossRepository",
 	]);
 	if (res.code !== 0) return PR_UNREADABLE;
 	try {
-		const parsed = z.array(z.object({ number: z.number() })).safeParse(JSON.parse(res.stdout));
-		return parsed.success ? (parsed.data[0]?.number ?? null) : PR_UNREADABLE;
+		const parsed = z
+			.array(z.object({ number: z.number(), isCrossRepository: z.boolean().optional() }))
+			.safeParse(JSON.parse(res.stdout));
+		if (!parsed.success) return PR_UNREADABLE;
+		return parsed.data.find((pr) => !pr.isCrossRepository)?.number ?? null;
 	} catch {
 		return PR_UNREADABLE;
 	}

@@ -718,6 +718,8 @@ export class Engine {
 			!project ||
 			project.paused ||
 			pr.group === "stale" ||
+			// Not false also covers a row saved before this was read. The next read fills it in.
+			pr.fromFork !== false ||
 			// Another work order can be busy on this PR, such as a rebase.
 			pr.heldBy ||
 			this.staleRead(project) ||

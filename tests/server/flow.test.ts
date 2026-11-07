@@ -59,6 +59,7 @@ const putPr = (number: number, over: Partial<PullRequest> = {}, project = "fairw
 		deletions: 1,
 		changedFiles: 1,
 		headRef: "b",
+		fromFork: false,
 		headSha: "sha1",
 		baseRef: "main",
 		createdAt: new Date(clock).toISOString(),
@@ -1733,6 +1734,67 @@ describe("modes", () => {
 		await settle();
 		expect(wo(id).mergedAt).toBeNull();
 		expect(calls.join("\n")).not.toContain("pr merge");
+	});
+
+	describe("a fork's PR on a branch with the same name", () => {
+		const FORK = { number: 99, isCrossRepository: true };
+
+		it("isn't taken for the agent's, and isn't merged", async () => {
+			const id = start({ type: "Chore", mode: send });
+			await settle();
+			cliResult["pr list"] = {
+				code: 0,
+				stdout: JSON.stringify([FORK, { number: 7, isCrossRepository: false }]),
+			};
+			putPr(7);
+			putPr(99, { headSha: "attacker", fromFork: true });
+			exec.finish(threadOf(id), "Opened the PR.");
+			await settle();
+			await settle();
+			await settle();
+			expect(wo(id).prNumber).toBe(7);
+			expect(calls.join("\n")).not.toContain("pr merge 99");
+		});
+
+		it("counts as no PR when the agent opened none", async () => {
+			const id = start({ type: "Chore", mode: send });
+			await settle();
+			cliResult["pr list"] = { code: 0, stdout: JSON.stringify([FORK]) };
+			exec.finish(threadOf(id), "Done.");
+			await settle();
+			expect(wo(id).prNumber).toBeNull();
+			expect(
+				wo(id)
+					.activity.map((a) => a.text)
+					.join(" "),
+			).toContain("finished without opening a PR");
+		});
+
+		it("doesn't show up as the work order's on the PR list", async () => {
+			const id = start({ type: "Chore" });
+			await settle();
+			store.patchWorkOrder(id, { branch: "factory/wo-1-x" });
+			putPr(99, { headRef: "factory/wo-1-x", fromFork: true });
+			putPr(7, { headRef: "factory/wo-1-x" });
+			const of = (n: number) => store.prs().find((p) => p.number === n)?.workOrderId;
+			expect(of(99)).toBeNull();
+			expect(of(7)).toBe(id);
+		});
+
+		it.each([[true], [undefined]])(
+			"isn't merged even as the work order's PR: fromFork %s",
+			async (fromFork) => {
+				const id = start({ type: "Chore", mode: send });
+				await settle();
+				cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+				putPr(7, { fromFork } as never);
+				exec.finish(threadOf(id), "Opened the PR.");
+				await settle();
+				await settle();
+				await settle();
+				expect(calls.join("\n")).not.toContain("pr merge");
+			},
+		);
 	});
 
 	it("says which gates aren't set up, and waits", async () => {

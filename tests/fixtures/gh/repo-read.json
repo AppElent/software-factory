@@ -49,6 +49,7 @@
 						"deletions": 8,
 						"changedFiles": 9,
 						"headRefName": "feat/export",
+						"isCrossRepository": false,
 						"baseRefName": "main",
 						"createdAt": "2026-10-18T09:00:00Z",
 						"updatedAt": "2026-10-18T09:00:00Z",

@@ -352,7 +352,9 @@ export class Store {
 				>;
 				// The agent opens its PR mid-turn, before the factory knows the number. Its branch says whose it is.
 				const linked = links.filter(
-					(l) => l.project === r.project && (l.pr_number === pr.number || l.branch === pr.headRef),
+					(l) =>
+						l.project === r.project &&
+						(l.pr_number === pr.number || (l.branch === pr.headRef && !pr.fromFork)),
 				);
 				const holds = (l: (typeof links)[number]) =>
 					agentHoldsMerge({ state: l.state, failedSha: l.failed_sha }, pr.headSha);

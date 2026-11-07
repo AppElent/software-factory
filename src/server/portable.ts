@@ -127,7 +127,7 @@ const parseThreads = (text: string) => {
 	}
 };
 
-const OpenPrs = z.array(z.object({ number: z.number() }));
+const OpenPrs = z.array(z.object({ number: z.number(), isCrossRepository: z.boolean().optional() }));
 
 /** `starting` is a run with this number still waiting to hear which thread T3 gave it, which may be this one. */
 const ownerOf = (store: Store, threadId: string, number: number) => {
@@ -183,11 +183,13 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 					"--state",
 					"open",
 					"--json",
-					"number",
+					"number,isCrossRepository",
 				]);
 				if (prs.code === 0) {
 					try {
-						prNumber = OpenPrs.parse(JSON.parse(prs.stdout))[0]?.number ?? null;
+						// A fork's branch can have the same name, and that PR isn't this thread's.
+						prNumber =
+							OpenPrs.parse(JSON.parse(prs.stdout)).find((pr) => !pr.isCrossRepository)?.number ?? null;
 					} catch {
 						prKnown = false;
 					}

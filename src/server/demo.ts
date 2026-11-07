@@ -316,6 +316,7 @@ export function installDemo(store: Store) {
 			deletions: 3,
 			changedFiles: 2,
 			headRef: `factory/wo-${number}`,
+			fromFork: false,
 			headSha: `abc${number}`,
 			baseRef: "main",
 			createdAt: new Date(now - (opts.ageDays ?? 0) * DAY - HOUR).toISOString(),

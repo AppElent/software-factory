@@ -164,11 +164,13 @@ function NewAutomation() {
 			<Field label="Mode">
 				{(p) => (
 					<select {...p} value={chosenMode} onChange={(e) => setMode(e.target.value)}>
-						{(modes.data?.modes ?? []).map((m) => (
-							<option key={m.id} value={m.id}>
-								{m.name}
-							</option>
-						))}
+						{(modes.data?.modes ?? [])
+							.filter((m) => m.merge !== "factory")
+							.map((m) => (
+								<option key={m.id} value={m.id}>
+									{m.name}
+								</option>
+							))}
 					</select>
 				)}
 			</Field>

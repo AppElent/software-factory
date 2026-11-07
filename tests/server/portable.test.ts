@@ -13,6 +13,7 @@ import { Store } from "../../src/server/store.ts";
 let configDir: string;
 let threads: unknown[];
 let openPrs: Record<string, number>;
+let forkPrs: Record<string, number>;
 let calls: string[];
 let exec: FakeExecutor;
 
@@ -22,7 +23,12 @@ const cli: Cli = async (cmd, args) => {
 	if (cmd === "t3") return ok(JSON.stringify(threads));
 	if (cmd === "gh") {
 		const head = args[args.indexOf("--head") + 1] as string;
-		return ok(JSON.stringify(openPrs[head] ? [{ number: openPrs[head] }] : []));
+		return ok(
+			JSON.stringify([
+				...(forkPrs[head] ? [{ number: forkPrs[head], isCrossRepository: true }] : []),
+				...(openPrs[head] ? [{ number: openPrs[head], isCrossRepository: false }] : []),
+			]),
+		);
 	}
 	return ok("");
 };
@@ -61,6 +67,7 @@ beforeEach(() => {
 	configDir = mkdtempSync(join(tmpdir(), "sf-config-"));
 	threads = [];
 	openPrs = {};
+	forkPrs = {};
 	calls = [];
 	exec = new FakeExecutor();
 });
@@ -327,6 +334,17 @@ describe("picking work up from T3", () => {
 		status.mockRestore();
 		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
 		expect(kvGet(store.db, PICK_UP)).toBe(false);
+	});
+
+	it("doesn't take a fork's PR for the thread's", async () => {
+		const store = setup();
+		thread("t1", "factory/wo-40-x", "completed");
+		threads = [{ threadId: "t1", title: "WO-40 X", settled: false }];
+		forkPrs["factory/wo-40-x"] = 99;
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
+		openPrs["factory/wo-40-x"] = 41;
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
+		expect(store.workOrder(40)?.prNumber).toBe(41);
 	});
 
 	it("doesn't make a second work order for a run still waiting to hear its thread", async () => {

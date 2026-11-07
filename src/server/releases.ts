@@ -51,6 +51,9 @@ const sparePort = () =>
 	});
 
 /** A version that isn't running yet gets no tokens and no pointers to the real folders. */
+/** An upgrade can have removed the folder this process started from. Until the next restart, `node` still finds one. */
+const nodeBinary = () => (existsSync(process.execPath) ? process.execPath : "node");
+
 export const candidateEnv = (): NodeJS.ProcessEnv =>
 	Object.fromEntries(
 		Object.entries(cliEnv()).filter(([k]) => !/^SF_|token|secret|password|credential|api_?key/i.test(k)),
@@ -60,7 +63,7 @@ export const candidateEnv = (): NodeJS.ProcessEnv =>
 export async function realSmoke(dir: string, sha: string) {
 	const port = await sparePort();
 	const data = mkdtempSync(join(tmpdir(), "sf-smoke-"));
-	const child = spawn(process.execPath, ["src/server/main.ts"], {
+	const child = spawn(nodeBinary(), ["src/server/main.ts"], {
 		cwd: dir,
 		env: {
 			...candidateEnv(),
@@ -100,7 +103,7 @@ export async function realSmoke(dir: string, sha: string) {
 export const realGuard =
 	(root: string) =>
 	(req: GuardRequest): void => {
-		spawn(process.execPath, [join(root, "scripts/update-guard.mjs"), JSON.stringify(req)], {
+		spawn(nodeBinary(), [join(root, "scripts/update-guard.mjs"), JSON.stringify(req)], {
 			detached: true,
 			stdio: "ignore",
 		}).unref();

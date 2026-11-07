@@ -206,6 +206,8 @@ export interface PullRequest {
 	deletions: number;
 	changedFiles: number;
 	headRef: string;
+	/** Someone's fork, so the branch name says nothing about whose it is. */
+	fromFork: boolean;
 	headSha: string;
 	baseRef: string;
 	createdAt: string;

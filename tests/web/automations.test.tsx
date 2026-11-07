@@ -7,6 +7,13 @@ const sent = (m: string | undefined): Record<string, unknown> =>
 	JSON.parse((m ?? "").replace(/^\S+ \S+ /, ""));
 
 describe("Automations", () => {
+	it("doesn't offer a mode that merges, because an automation never does", async () => {
+		await renderApp("/automations", "automations");
+		const modes = await within(await screen.findByLabelText("Mode")).findAllByRole("option");
+		expect(modes.map((o) => o.textContent)).not.toContain("Full send");
+		expect(modes.map((o) => o.textContent)).toContain("Standard");
+	});
+
 	it("lists what T3 has, and says it runs without this app", async () => {
 		await renderApp("/automations", "automations");
 		expect(await screen.findByText("Upgrade dependencies")).toBeInTheDocument();

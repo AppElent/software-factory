@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.7.0
+version: 2.7.1
 status: current
 ---
 
@@ -91,6 +91,7 @@ A mode is a way to start work: a prompt added before the work order's own instru
 - A mode that merges does it through Review, so Stop the line and a failing gate hold it. It needs Typecheck, Tests and Lint passed, with Preview passed or not set up, and GitHub calling the PR `CLEAN`. A gate of those three not set up means it waits and says which.
 - Its agent is told not to merge. The factory merges, and the audit log names the mode.
 - **Always yours, in every mode and setting:** changes to `.github/workflows/`, and on this app's own repo also `src/server/security.ts`, `src/shared/rules.ts`, `docs/adr/`, `package.json`, the lockfile, `.npmrc` and `scripts/`. When the factory can't read which files changed, it waits and reads again. A PR with more files than GitHub lists waits for you.
+- A PR from a fork is never a work order's, even when its branch has the same name, and the factory never merges one.
 - Everything that stops a merge is read again after reading the file list, so Stop, Stop the line and a pause count right up to the merge.
 - A config file that can't be read says so on every page. Until it's fixed, nothing merges on its own, and settings are the defaults. Never touch rules can still be saved.
 - Settings from before the config file move into it once, and leave the database.
@@ -166,7 +167,7 @@ Open issues read from GitHub, in three groups. They stay out of the queue, becau
 
 ## Stopping
 
-- **Stop the line:** agents finish their step and hold, worktrees stay, nothing new starts, and PRs and errors keep updating. Merges and deploys already running continue. Restart needs no confirmation and resumes agents the line held.
+- **Stop the line:** agents finish their step and hold, worktrees stay, no new work starts, and PRs and errors keep updating. Asking about an issue and creating an automation are your own actions, so they still run. Merges and deploys already running continue. Restart needs no confirmation and resumes agents the line held.
 - **Stop one work order:** same hold, for one. T3 has no CLI interrupt, so the copy says the agent stops at its next step. An immediate stop happens in T3.
 - **Restart this work order** (Resume) lifts that hold. Restarting the line doesn't.
 

@@ -6,6 +6,10 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const LABEL = process.env.SF_SERVICE_LABEL ?? "com.appelent.software-factory";
+
+/** Homebrew removes a version's folder when it upgrades. Its `opt` path follows along. */
+const stableNode = () =>
+	process.execPath.replace(/\/Cellar\/(node(?:@[^/]+)?)\/[^/]+\/bin\/node$/, "/opt/$1/bin/node");
 const plist = join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
 const root = resolve(new URL("..", import.meta.url).pathname);
 const domain = `gui/${process.getuid()}`;
@@ -64,7 +68,7 @@ if (command === "install") {
 <plist version="1.0"><dict>
 	<key>Label</key><string>${LABEL}</string>
 	<key>ProgramArguments</key><array>
-		<string>${xml(process.execPath)}</string>
+		<string>${xml(stableNode())}</string>
 		<string>${xml(join(current, "src/server/main.ts"))}</string>
 	</array>
 	<key>WorkingDirectory</key><string>${xml(current)}</string>
