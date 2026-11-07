@@ -1,3 +1,4 @@
+import { stripControls } from "./rules.ts";
 import type { Mode } from "./types.ts";
 
 /** Skills that modes know how to use. Each is offered only when it's found on this Mac. */
@@ -96,15 +97,16 @@ export function t3Command(input: {
 	provider?: string | null;
 	model?: string | null;
 }): string {
+	const prompt = stripControls(input.prompt);
 	const flags = [
-		`--title ${shellQuote(input.title)}`,
+		`--title ${shellQuote(stripControls(input.title).replace(/\n/g, " "))}`,
 		`--worktree ${shellQuote(input.base)}`,
 		`--branch ${shellQuote(input.branch)}`,
 		...(input.provider ? [`--provider ${shellQuote(input.provider)}`] : []),
 		...(input.model ? [`--model ${shellQuote(input.model)}`] : []),
 	];
-	const end = delimiterFor(input.prompt);
-	return `t3 thread start ${shellQuote(input.path)} - ${flags.join(" ")} <<'${end}'\n${input.prompt}\n${end}\n`;
+	const end = delimiterFor(prompt);
+	return `t3 thread start ${shellQuote(input.path)} - ${flags.join(" ")} <<'${end}'\n${prompt}\n${end}\n`;
 }
 
 /** Where a mode's rules can go wrong, in words. Empty means it can be saved. */

@@ -1631,6 +1631,67 @@ describe("modes", () => {
 		expect(said).toHaveLength(1);
 	});
 
+	it("merges with Preview not set up even when Merge without me is on too", async () => {
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, Chore: true } });
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("passed"), Preview: "not_set_up" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+	});
+
+	it("waits, and says why, when the issue changed after you read it", async () => {
+		const issue = {
+			number: 9,
+			title: "A title",
+			body: "Words",
+			bodyHash: "h1",
+			url: "https://github.com/me/fairway/issues/9",
+			author: "someone",
+			authorAssociation: "NONE",
+			labels: [],
+			comments: 0,
+			createdAt: new Date(clock).toISOString(),
+			updatedAt: new Date(clock).toISOString(),
+		};
+		store.saveIssues("fairway", [issue] as never);
+		store.markIssueRead("fairway", 9, "h1");
+		const id = start({ type: "Chore", mode: send, source: { kind: "issue", issueNumber: 9 } });
+		await settle();
+		store.saveIssues("fairway", [{ ...issue, bodyHash: "h2", body: "Other words" }] as never);
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("#9 changed since you read it");
+	});
+
+	it("never merges picked-up work on its own, even with Merge without me on", async () => {
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, "Bug fix": true } });
+		const id = start({ source: { kind: "restored" } });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+	});
+
 	it("merges with Preview not set up, which Merge without me wouldn't", async () => {
 		const id = start({ type: "Chore", mode: send });
 		await settle();
@@ -1644,13 +1705,7 @@ describe("modes", () => {
 	});
 
 	it("leaves workflow changes to you, in every mode", async () => {
-		cliResult["pr view"] = {
-			code: 0,
-			stdout: JSON.stringify({
-				state: "OPEN",
-				files: [{ path: ".github/workflows/ci.yml", additions: 1, deletions: 1 }],
-			}),
-		};
+		cliResult["/files"] = { code: 0, stdout: ".github/workflows/ci.yml\n" };
 		const id = await toReview(send);
 		await settle();
 		expect(wo(id).mergedAt).toBeNull();
@@ -1658,11 +1713,11 @@ describe("modes", () => {
 	});
 
 	it("doesn't merge when it can't read which files changed", async () => {
-		cliResult["pr view"] = { code: 0, stdout: '{"state":"OPEN"}' };
+		cliResult["/files"] = { code: 1, stdout: "" };
 		const id = await toReview(send);
 		await settle();
 		expect(wo(id).mergedAt).toBeNull();
-		cliResult["pr view"] = { code: 0, stdout: '{"state":"OPEN","files":[]}' };
+		cliResult["/files"] = { code: 0, stdout: "" };
 		await settle();
 		expect(wo(id).mergedAt).not.toBeNull();
 	});

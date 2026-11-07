@@ -6,7 +6,7 @@ import type { Cli } from "../../src/server/cli.ts";
 import { writeNeverTouch } from "../../src/server/config.ts";
 import { kvGet, openDb } from "../../src/server/db.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
-import { mirrorProjects, rebuildWorkOrders, restoreProjects } from "../../src/server/portable.ts";
+import { mirrorProjects, PICK_UP, rebuildWorkOrders, restoreProjects } from "../../src/server/portable.ts";
 import { Store } from "../../src/server/store.ts";
 
 let configDir: string;
@@ -114,6 +114,33 @@ describe("deleting the data folder", () => {
 		expect(after.project("client-work")).toBeNull();
 		await rebuildWorkOrders(after, cli, exec);
 		expect(calls.filter((c) => c.includes("client-work"))).toEqual([]);
+	});
+
+	it("mirroring a database that never held a project doesn't wipe the file", () => {
+		const before = freshStore();
+		addProject(before, "fairway");
+		mirrorProjects(before);
+		const after = freshStore();
+		mirrorProjects(after);
+		expect(after.file.read().projects.map((p) => p.repo)).toEqual(["me/fairway"]);
+		expect(restoreProjects(after)).toBe(1);
+	});
+
+	it("keeps trying to pick up work until T3 has answered for every project", async () => {
+		const before = freshStore();
+		addProject(before, "fairway");
+		mirrorProjects(before);
+		const after = freshStore();
+		restoreProjects(after);
+		expect(kvGet(after.db, PICK_UP)).toBe(true);
+		await rebuildWorkOrders(
+			after,
+			async () => ({ code: 1, stdout: "", stderr: "", timedOut: false, missing: true }),
+			exec,
+		);
+		expect(kvGet(after.db, PICK_UP)).toBe(true);
+		await rebuildWorkOrders(after, cli, exec);
+		expect(kvGet(after.db, PICK_UP)).toBe(false);
 	});
 
 	it("marks this Mac as new only when projects came back", () => {

@@ -170,7 +170,7 @@ const FIELDS = `
 		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName baseRefName createdAt updatedAt
 		commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
 	} }
-	issues(states: OPEN, first: 30, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
+	issues(states: OPEN, first: 100, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
 		number title url body authorAssociation createdAt updatedAt
 		author { login ... on User { createdAt } }
 		labels(first: 10) { nodes { name } }
@@ -436,6 +436,25 @@ export async function tryReadPrFiles(cli: Cli, repo: string, number: number) {
 	} catch {
 		return null;
 	}
+}
+
+const MOST_FILES_GITHUB_LISTS = 3000;
+
+/**
+ * Every path a PR touches, including the old name of a moved file, or null when GitHub didn't say or stopped
+ * listing. This one guards merges, and `gh pr view` lists 100 files at most.
+ */
+export async function tryReadPrPaths(cli: Cli, repo: string, number: number): Promise<string[] | null> {
+	const res = await cli("gh", [
+		"api",
+		"--paginate",
+		`repos/${repo}/pulls/${number}/files`,
+		"--jq",
+		".[] | .filename, (.previous_filename // empty)",
+	]);
+	if (res.code !== 0) return null;
+	const paths = res.stdout.split("\n").filter(Boolean);
+	return paths.length >= MOST_FILES_GITHUB_LISTS ? null : paths;
 }
 
 export async function readPrFiles(cli: Cli, repo: string, number: number) {

@@ -30,6 +30,9 @@ const RESTORED_MODE: Mode = {
 	builtin: false,
 };
 
+/** Set until T3 has answered for every project, because on a new Mac it often can't yet. */
+export const PICK_UP = "pick_up_pending";
+
 const entries = (store: Store) =>
 	store.projects().map((p) => ({
 		repo: p.repo,
@@ -44,6 +47,9 @@ const entries = (store: Store) =>
 
 /** Writes the project list to the config file when it changed. Safe to call often. */
 export function mirrorProjects(store: Store) {
+	// A database that has never held a project has nothing to say, and an empty list would wipe the file.
+	const held = store.db.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number };
+	if (held.n === 0) return;
 	const next = entries(store);
 	if (JSON.stringify(next) === JSON.stringify(store.file.read().projects)) return;
 	try {
@@ -85,7 +91,10 @@ export function restoreProjects(store: Store): number {
 			store.iso(),
 		);
 	}
-	if (kept.length > 0) kvSet(store.db, "new_device", true);
+	if (kept.length > 0) {
+		kvSet(store.db, "new_device", true);
+		kvSet(store.db, PICK_UP, true);
+	}
 	return kept.length;
 }
 
@@ -115,10 +124,14 @@ const OpenPrs = z.array(z.object({ number: z.number() }));
 export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Executor): Promise<number> {
 	let adopted = 0;
 	let highest = 0;
+	let complete = true;
 	for (const project of store.projects()) {
 		if (!project.localPath) continue;
 		const res = await cli("t3", ["thread", "list", "--project", project.localPath, "--json"]);
-		if (res.code !== 0) continue;
+		if (res.code !== 0) {
+			complete = false;
+			continue;
+		}
 		for (const thread of parseThreads(res.stdout)) {
 			const match = WO_TITLE.exec(thread.title);
 			if (!match) continue;
@@ -194,5 +207,6 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 		store.db.prepare("DELETE FROM sqlite_sequence WHERE name = 'work_orders'").run();
 		store.db.prepare("INSERT INTO sqlite_sequence (name, seq) VALUES ('work_orders', ?)").run(highest);
 	}
+	if (complete) kvSet(store.db, PICK_UP, false);
 	return adopted;
 }

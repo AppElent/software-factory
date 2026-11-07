@@ -42,7 +42,7 @@ import {
 	PR_UNREADABLE,
 	prByBranch,
 	prState,
-	tryReadPrFiles,
+	tryReadPrPaths,
 } from "./connectors/github.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Executor, ThreadState } from "./executor/types.ts";
@@ -657,8 +657,12 @@ export class Engine {
 		}
 		const project = this.store.project(wo.project);
 		const approvals = this.store.settings().approvals;
-		const byMode = wo.mode?.merge === "factory" && !approvals.mergeWithoutMe[wo.type];
-		if (project && byMode) this.sayWhyModeWaits(wo, pr, project);
+		const byMode = wo.mode?.merge === "factory";
+		const unreadIssue =
+			wo.source.kind === "issue" &&
+			!!wo.source.issueNumber &&
+			this.store.issue(wo.project, wo.source.issueNumber)?.locked === true;
+		if (project && byMode) this.sayWhyModeWaits(wo, pr, project, unreadIssue);
 		if (
 			!project ||
 			project.paused ||
@@ -677,6 +681,7 @@ export class Engine {
 				isDraft: pr.isDraft,
 				hold: wo.hold,
 				sourceKind: wo.source.kind,
+				unreadIssue,
 			})
 		)
 			return;
@@ -684,13 +689,10 @@ export class Engine {
 		const refusedKey = `merge_refused:${wo.id}`;
 		if (kvGet<string>(this.store.db, refusedKey) === pr.headSha) return;
 		// Both settings decide who merges, and neither gets to skip this. The list is read for this commit.
-		const files = await tryReadPrFiles(this.cli, project.repo, pr.number);
+		const paths = await tryReadPrPaths(this.cli, project.repo, pr.number);
 		// Not knowing what it changes is a reason to wait. The next pass reads it again.
-		if (files === null) return;
-		const held = ownerOnlyFiles(
-			files.map((f) => f.path),
-			project.repo.toLowerCase() === this.selfRepo?.toLowerCase(),
-		);
+		if (paths === null) return;
+		const held = ownerOnlyFiles(paths, project.repo.toLowerCase() === this.selfRepo?.toLowerCase());
 		if (held.length > 0) {
 			kvSet(this.store.db, refusedKey, pr.headSha);
 			this.store.addActivity(wo.id, "This changes files that always wait for you", held.join("\n"));
@@ -718,15 +720,17 @@ export class Engine {
 	}
 
 	/** A run you chose to send can stop at Review for reasons of its own. Says so once, so it doesn't look stuck. */
-	private sayWhyModeWaits(wo: WorkOrder, pr: PullRequest, project: Project) {
+	private sayWhyModeWaits(wo: WorkOrder, pr: PullRequest, project: Project, unreadIssue: boolean) {
 		const reason =
 			project.merging === "ask"
 				? `${project.name} is set to ask you before merging.`
-				: !gatesClear(pr.gates)
-					? null
-					: pr.gates.Tests !== "passed"
-						? "Tests aren't set up on this project, so a merge is yours to make."
-						: null;
+				: unreadIssue
+					? `#${wo.source.issueNumber} changed since you read it, so read it again or merge this yourself.`
+					: !gatesClear(pr.gates)
+						? null
+						: pr.gates.Tests !== "passed"
+							? "Tests aren't set up on this project, so a merge is yours to make."
+							: null;
 		if (!reason) return;
 		const key = `mode_waits:${wo.id}`;
 		if (kvGet<string>(this.store.db, key) === reason) return;

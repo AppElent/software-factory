@@ -80,6 +80,19 @@ describe("copy as command", () => {
 		expect(cmd).toContain("<<'PROMPT_3'");
 		expect(cmd.endsWith("\nPROMPT_3\n")).toBe(true);
 	});
+	it("a carriage return can't end the prompt early", () => {
+		const cmd = t3Command({ ...input, prompt: "before\nPROMPT\rtouch PWNED\nafter" });
+		expect(cmd).not.toContain("\r");
+		expect(cmd).toContain("<<'PROMPT_2'");
+		expect(cmd.trimEnd().endsWith("PROMPT_2")).toBe(true);
+	});
+
+	it("keeps paste escapes and line breaks out of the title and the prompt", () => {
+		const cmd = t3Command({ ...input, title: "a\u001b[201~\nb", prompt: "x\u001b[201~y" });
+		expect(cmd).not.toContain("\u001b");
+		expect(cmd).toContain("--title 'a[201~ b'");
+	});
+
 	it("names flags only when the mode has them", () => {
 		expect(t3Command(input)).not.toContain("--model");
 		expect(t3Command({ ...input, provider: "codex", model: "m" })).toContain(

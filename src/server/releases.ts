@@ -26,6 +26,7 @@ const KEEP_FOLDERS = 3;
 const KEEP_ROWS = 12;
 const CHECK_EVERY_MS = 10 * 60_000;
 const STEP_TIMEOUT_MS = 10 * 60_000;
+const NO_CHECKS_WAIT_MS = 5 * 60_000;
 
 export type Versions = Pick<Releases, "view" | "check" | "activate">;
 
@@ -136,7 +137,11 @@ export class Releases {
 
 	private save(rows: VersionInfo[]) {
 		const tmp = `${this.manifest}.tmp`;
-		writeFileSync(tmp, JSON.stringify(rows.slice(0, KEEP_ROWS), null, 1));
+		// History can go. What runs, and what you can still go to, can't.
+		const live = (r: VersionInfo) =>
+			r.state !== "failed" && (r.state !== "replaced" || existsSync(join(this.d.dir, r.sha)));
+		const kept = rows.filter((r, i) => i < KEEP_ROWS || live(r));
+		writeFileSync(tmp, JSON.stringify(kept, null, 1));
 		renameSync(tmp, this.manifest);
 	}
 
@@ -196,13 +201,14 @@ export class Releases {
 	}
 
 	/** Looks for a newer commit on the default branch, and gets it ready. Nothing switches until you say. */
-	check(): Promise<void> {
+	check(retry = false): Promise<void> {
 		if (this.checking) return this.done;
-		this.done = this.look();
+		this.done = this.look(retry);
 		return this.done;
 	}
 
-	private async look() {
+	/** On a timer a failed commit stays failed. Asking is a new try, because a failure can be the network's. */
+	private async look(retry: boolean) {
 		const { cli, repo, publish } = this.d;
 		if (!repo || !this.running()) return;
 		this.checking = true;
@@ -210,12 +216,17 @@ export class Releases {
 		try {
 			const res = await cli("gh", ["api", `repos/${repo}/commits/HEAD`]);
 			if (res.code !== 0) throw new Error(res.stderr.trim() || "GitHub didn't answer.");
-			const head = JSON.parse(res.stdout) as { sha: string; commit: { message: string } };
+			const head = JSON.parse(res.stdout) as {
+				sha: string;
+				commit: { message: string; committer?: { date?: string } };
+			};
 			this.checkedAt = new Date().toISOString();
 			if (!/^[0-9a-f]{40}$/.test(head.sha)) throw new Error("GitHub returned something unexpected.");
-			// A version that failed stays failed. The next commit gets a new try.
-			if (head.sha === this.running() || this.rows().some((r) => r.sha === head.sha)) return;
-			if (!(await this.checksPassed(head.sha))) return;
+			if (head.sha === this.running()) return;
+			const known = this.rows().find((r) => r.sha === head.sha);
+			if (known?.state === "failed" && retry) this.save(this.rows().filter((r) => r.sha !== head.sha));
+			else if (known) return;
+			if ((await this.checksOf(head.sha, head.commit.committer?.date)) !== "passed") return;
 			await this.prepare(head.sha, head.commit.message.split("\n")[0] ?? "");
 		} catch (e) {
 			this.checkError = scrub(e instanceof Error ? e.message : String(e)).slice(0, 300);
@@ -225,16 +236,30 @@ export class Releases {
 		}
 	}
 
-	/** Red or unfinished checks mean not yet. A repo with no checks has nothing to wait for. */
-	private async checksPassed(sha: string) {
-		const res = await this.d.cli("gh", ["api", `repos/${this.d.repo}/commits/${sha}/check-runs`]);
-		if (res.code !== 0) throw new Error(res.stderr.trim() || "GitHub didn't answer.");
-		const { check_runs: runs } = JSON.parse(res.stdout) as {
+	/**
+	 * Red or unfinished checks mean not yet. A repo with no checks has nothing to wait for, but a new commit may just
+	 * not have them yet, so it gets a few minutes first.
+	 */
+	private async checksOf(sha: string, committedAt?: string): Promise<"passed" | "waiting" | "red"> {
+		const { cli, repo } = this.d;
+		const read = async (path: string) => {
+			const res = await cli("gh", ["api", `repos/${repo}/commits/${sha}/${path}`]);
+			if (res.code !== 0) throw new Error(res.stderr.trim() || "GitHub didn't answer.");
+			return JSON.parse(res.stdout);
+		};
+		const { check_runs: runs } = (await read("check-runs?per_page=100")) as {
 			check_runs: Array<{ status: string; conclusion: string | null }>;
 		};
-		return runs.every(
-			(r) => r.status === "completed" && ["success", "neutral", "skipped"].includes(r.conclusion ?? ""),
-		);
+		const status = (await read("status")) as { state: string; total_count: number };
+		const bad = (r: { conclusion: string | null }) =>
+			!["success", "neutral", "skipped"].includes(r.conclusion ?? "");
+		if (runs.some((r) => r.status === "completed" && bad(r))) return "red";
+		if (status.total_count > 0 && ["failure", "error"].includes(status.state)) return "red";
+		if (runs.some((r) => r.status !== "completed")) return "waiting";
+		if (status.total_count > 0 && status.state !== "success") return "waiting";
+		if (runs.length > 0 || status.total_count > 0) return "passed";
+		const age = committedAt ? Date.now() - Date.parse(committedAt) : Number.POSITIVE_INFINITY;
+		return age >= NO_CHECKS_WAIT_MS ? "passed" : "waiting";
 	}
 
 	private async prepare(sha: string, message: string) {
@@ -305,6 +330,17 @@ export class Releases {
 			throw new ActionError("That version isn't ready to run.", 409);
 		const why = busy?.();
 		if (why) throw new ActionError(why, 409);
+		// Going forward, its checks can have gone red since it was built. Going back is how you escape a bad one.
+		if (row.state === "ready") {
+			const checks = await this.checksOf(sha).catch(() => null);
+			if (checks === null) throw new ActionError("Couldn't read its checks on GitHub. Try again.", 409);
+			if (checks !== "passed")
+				throw new ActionError(`The checks on ${row.label} aren't green any more.`, 409);
+		}
+		const link = join(dir, `.current-${sha}`);
+		rmSync(link, { force: true });
+		symlinkSync(sha, link);
+		renameSync(link, join(dir, "current"));
 		const at = new Date().toISOString();
 		this.save(
 			this.rows().map((r) =>
@@ -315,10 +351,6 @@ export class Releases {
 						: r,
 			),
 		);
-		const link = join(dir, `.current-${sha}`);
-		rmSync(link, { force: true });
-		symlinkSync(sha, link);
-		renameSync(link, join(dir, "current"));
 		const uid = process.getuid?.() ?? 0;
 		guard({
 			port,
@@ -335,34 +367,44 @@ export class Releases {
 	}
 }
 
+export interface PrivateTerm {
+	term: string;
+	/** A rule like `acme_*` also means `acme_portal`, so it matches inside a word. */
+	anywhere: boolean;
+}
+
 /** What Improve yourself must not send to a public repo without you seeing it first. */
 export function privateTerms(input: {
 	privateProjects: Array<{ name: string; repo: string }>;
 	neverTouch: string[];
 	home: string;
 	email: string | null;
-}): string[] {
-	const out = new Set<string>();
+}): PrivateTerm[] {
+	const out = new Map<string, boolean>();
 	for (const p of input.privateProjects) {
-		out.add(p.name);
-		out.add(p.repo.split("/")[1] ?? p.repo);
+		out.set(p.name, false);
+		out.set(p.repo.split("/")[1] ?? p.repo, false);
 	}
 	for (const rule of input.neverTouch) {
 		const parts = rule.split(/[*/?]+/).filter(Boolean);
 		const longest = parts.sort((a, b) => b.length - a.length)[0];
-		if (longest) out.add(longest.replace(/^[-_.]+|[-_.]+$/g, ""));
+		if (longest) out.set(longest.replace(/^[-_.]+|[-_.]+$/g, ""), true);
 	}
-	out.add(input.home);
+	out.set(input.home, false);
 	const user = input.home.split("/").filter(Boolean).at(-1);
-	if (user) out.add(user);
-	if (input.email) out.add(input.email);
-	return [...out].filter((t) => t.length >= 3);
+	if (user) out.set(user, false);
+	if (input.email) out.set(input.email, false);
+	return [...out].filter(([term]) => term.length >= 3).map(([term, anywhere]) => ({ term, anywhere }));
 }
 
-export function privateHits(text: string, terms: string[]): string[] {
-	const hits = terms.filter((term) => {
-		const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		return new RegExp(`(^|[^\\w])${escaped}($|[^\\w])`, "i").test(text);
-	});
-	return [...new Set(hits)];
+export function privateHits(text: string, terms: PrivateTerm[]): string[] {
+	const lower = text.toLowerCase();
+	return terms
+		.filter(({ term, anywhere }) => {
+			if (anywhere) return lower.includes(term.toLowerCase());
+			const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			// An underscore joins words in a name, so it counts as an edge here.
+			return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, "i").test(text);
+		})
+		.map(({ term }) => term);
 }

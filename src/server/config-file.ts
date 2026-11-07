@@ -61,14 +61,17 @@ export const ProjectEntrySchema = z.object({
 	sentrySkipped: z.boolean().optional(),
 });
 
-const Schema = z.object({
-	version: z.literal(1).default(1),
-	settings: z.record(z.string(), z.unknown()).default({}),
-	modes: z.array(ModeSchema).optional(),
-	defaultMode: z.string().optional(),
-	environments: z.record(z.string(), z.array(EnvironmentSchema)).default({}),
-	projects: z.array(ProjectEntrySchema).default([]),
-});
+const Schema = z
+	.object({
+		version: z.literal(1).default(1),
+		settings: z.record(z.string(), z.unknown()).default({}),
+		modes: z.array(ModeSchema).optional(),
+		defaultMode: z.string().optional(),
+		environments: z.record(z.string(), z.array(EnvironmentSchema)).default({}),
+		projects: z.array(ProjectEntrySchema).default([]),
+		// A key this version doesn't know may belong to a newer one, or to you.
+	})
+	.loose();
 
 export type ConfigData = z.infer<typeof Schema>;
 const empty = (): ConfigData => Schema.parse({});

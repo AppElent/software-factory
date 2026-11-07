@@ -367,9 +367,13 @@ export function mayMergeAlone(input: {
 	isDraft: boolean;
 	hold: boolean;
 	sourceKind: string;
+	/** An issue that's waiting to be read, or changed since it was. */
+	unreadIssue?: boolean;
 }): boolean {
 	if (!input.on || input.projectMerging === "ask") return false;
 	if (input.hold || ownsNoPr(input.sourceKind)) return false;
+	// Work picked up from T3 may have started in any mode, so assuming one that merges would be a guess.
+	if (input.sourceKind === "restored" || input.unreadIssue) return false;
 	if (!(input.byMode ? modeGatesPassed(input.gates) : allFourPassed(input.gates))) return false;
 	if (input.mergeState !== "CLEAN") return false;
 	return mergeBlockers(input).length === 0;
@@ -497,9 +501,20 @@ export function parseReply(reply: string): ParsedReply {
 	return out;
 }
 
+/** Characters that show as nothing, so a person reading the text can't see what they carry. */
+const INVISIBLE = /[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu;
+
+/** Leaves lines and tabs. A lone carriage return can end a heredoc once it's pasted, and escapes can end a paste. */
+export function stripControls(text: string): string {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this removes.
+	return text.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, "");
+}
+
 /** Wraps outside text so an agent reads it as data. A closing tag inside it can't end the block. */
 export function delimit(source: string, text: string): string {
-	const safe = text.replace(/<\/?untrusted-data/gi, (m) => m.replace("<", "&lt;"));
+	const safe = stripControls(text)
+		.replace(INVISIBLE, "")
+		.replace(/<\/?untrusted-data/gi, (m) => m.replace("<", "&lt;"));
 	return `<untrusted-data source="${source}">\n${safe}\n</untrusted-data>`;
 }
 
@@ -519,7 +534,7 @@ const RUN_PATTERNS = [
 	/\b(?:curl|wget)\b[^\n|]{0,120}\|\s*(?:ba|z)?sh\b/gi,
 	/\b(?:please |first |must )?(?:run|execute)\b[^.\n]{0,40}\b(?:script|\.sh|\.ps1|installer)\b[^\n]{0,60}/gi,
 ];
-const HIDDEN_PATTERNS = [/<!--[\s\S]*?-->/g, /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g];
+const HIDDEN_PATTERNS = [/<!--[\s\S]*?-->/g, INVISIBLE];
 const LINK = /https?:\/\/[^\s)>\]"']+/gi;
 
 export interface SuspectRange {

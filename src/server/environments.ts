@@ -37,6 +37,8 @@ export type DeployRunner = (command: string, cwd: string, onOutput: (text: strin
 /** Fetches a health URL. Resolves to the status, or null when nothing answered. */
 export type HealthFetch = (url: string) => Promise<{ status: number | null; error: string | null }>;
 
+const EXIT_GRACE_MS = 2000;
+
 export const realDeployRunner: DeployRunner = (command, cwd, onOutput) => {
 	// Its own process group, so Stop reaches whatever the command started.
 	const child = spawn("/bin/sh", ["-c", command], {
@@ -54,7 +56,11 @@ export const realDeployRunner: DeployRunner = (command, cwd, onOutput) => {
 			// Already gone.
 		}
 	};
-	const timer = setTimeout(() => signal("SIGTERM"), DEPLOY_TIMEOUT_MS);
+	const kill = () => {
+		signal("SIGTERM");
+		setTimeout(() => signal("SIGKILL"), 5000).unref();
+	};
+	const timer = setTimeout(kill, DEPLOY_TIMEOUT_MS);
 	return {
 		done: new Promise((resolve) => {
 			child.on("error", (e) => {
@@ -66,11 +72,13 @@ export const realDeployRunner: DeployRunner = (command, cwd, onOutput) => {
 				clearTimeout(timer);
 				resolve(code ?? 1);
 			});
+			// Something the command left running in the background keeps the pipes open, so `close` may never come.
+			child.on("exit", (code) => {
+				clearTimeout(timer);
+				setTimeout(() => resolve(code ?? 1), EXIT_GRACE_MS).unref();
+			});
 		}),
-		kill: () => {
-			signal("SIGTERM");
-			setTimeout(() => signal("SIGKILL"), 5000).unref();
-		},
+		kill,
 	};
 };
 
@@ -142,6 +150,9 @@ export function sentryEnvOf(env: EnvironmentConfig) {
 }
 
 export const shellQuoteSimple = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+
+/** File and environment names come from the repo, and this text can end up being run. */
+const quoted = (s: string) => (/^[\w./@=-]+$/.test(s) ? s : shellQuoteSimple(s));
 
 const parseJson = (text: string): unknown => {
 	try {
@@ -444,7 +455,7 @@ export class Environments {
 			]);
 			const [sha, message] = head.code === 0 ? head.stdout.trim().split("\0") : [null, null];
 			const notes = [
-				`$ ${env.deployCommand}`,
+				`$ ${scrub(env.deployCommand)}`,
 				`In ${project.localPath}${branch.code === 0 && branch.stdout.trim() ? `, on ${branch.stdout.trim()}` : ""}${sha ? ` at ${sha.slice(0, 7)}` : ""}`,
 				...(dirty.code === 0 && dirty.stdout.trim() ? ["This folder has uncommitted changes."] : []),
 				"",
@@ -454,7 +465,7 @@ export class Environments {
 					.prepare(
 						"INSERT INTO deploys (project, env, command, state, started_at, sha, message, log) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)",
 					)
-					.run(slug, name, env.deployCommand, store.iso(), sha ?? null, message ?? null, notes)
+					.run(slug, name, scrub(env.deployCommand), store.iso(), sha ?? null, message ?? null, notes)
 					.lastInsertRowid,
 			);
 			audit(store.db, "deploy", `${slug} ${name}`, "you", null, store.now());
@@ -466,11 +477,14 @@ export class Environments {
 				publish([`deploy:${id}`, "environments"]);
 			};
 			const run = deployRunner(env.deployCommand, project.localPath, (text) => {
-				log = `${log}${scrub(text)}`.slice(-LOG_MAX);
+				// The whole log, because a token can arrive in two pieces.
+				log = scrub(`${log}${text}`).slice(-LOG_MAX);
 				if (Date.now() - flushed >= FLUSH_MS) flush();
 			});
 			slot.kill = run.kill;
 			slot.done = run.done;
+			// Stop was pressed while this was still getting ready.
+			if (slot.stopping) run.kill();
 			publish(["environments", "shell"]);
 			void run.done
 				.catch(() => 1)
@@ -557,11 +571,12 @@ export class Environments {
 					if (!/deploy.*\.ya?ml$/i.test(file)) continue;
 					const text = readFileSync(join(workflows, file), "utf8");
 					if (!text.includes("workflow_dispatch")) continue;
-					for (const name of names) add(name, `gh workflow run ${file} -f environment=${name}`, file);
+					for (const name of names)
+						add(name, `gh workflow run ${quoted(file)} -f environment=${quoted(name)}`, file);
 				}
 			}
 			if (["wrangler.toml", "wrangler.json", "wrangler.jsonc"].some((f) => existsSync(join(path, f)))) {
-				for (const name of names) add(name, `npx wrangler deploy --env ${name}`, "wrangler config");
+				for (const name of names) add(name, `npx wrangler deploy --env ${quoted(name)}`, "wrangler config");
 			}
 		}
 		for (const name of names) add(name, null, "GitHub environments");

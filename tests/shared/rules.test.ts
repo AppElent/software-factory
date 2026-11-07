@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	allFourPassed,
 	applyNeverTouch,
+	delimit,
 	gatesClear,
 	gatesPassed,
 	isRegression,
@@ -18,6 +19,7 @@ import {
 	rankQueue,
 	snoozeUntil,
 	startBlock,
+	suspectRanges,
 	triageHides,
 } from "../../src/shared/rules.ts";
 import type { CheckRun, QueueItem } from "../../src/shared/types.ts";
@@ -241,6 +243,8 @@ describe("merge without me", () => {
 		expect(mayMergeAlone(base)).toBe(true);
 		expect(mayMergeAlone({ ...base, hold: true })).toBe(false);
 		expect(mayMergeAlone({ ...base, sourceKind: "rebase_pr" })).toBe(false);
+		expect(mayMergeAlone({ ...base, sourceKind: "restored" })).toBe(false);
+		expect(mayMergeAlone({ ...base, unreadIssue: true })).toBe(false);
 		expect(mayMergeAlone({ ...base, sourceKind: "pr_changes" })).toBe(false);
 		expect(mayMergeAlone({ ...base, mergeState: "UNSTABLE" })).toBe(false);
 		expect(mayMergeAlone({ ...base, mergeState: "BLOCKED" })).toBe(false);
@@ -359,5 +363,21 @@ describe("a Never touch rule pasted as a URL", () => {
 
 	it("leaves a folder rule as it is", () => {
 		expect(matchesNeverTouch(["/work/x.git"], { repo: "me/x", path: "/work/x" })).toBe(false);
+	});
+});
+
+describe("text from outside", () => {
+	it("marks characters a person can't see", () => {
+		const tag = String.fromCodePoint(0xe0069, 0xe0067);
+		for (const hidden of [tag, "\u00AD", "\u2066", "\u200B"])
+			expect(new Set(suspectRanges(`Login is broken.${hidden}`).map((r) => r.why))).toEqual(
+				new Set(["hidden"]),
+			);
+	});
+
+	it("doesn't pass them on to an agent", () => {
+		const tag = String.fromCodePoint(0xe0069, 0xe0067);
+		const out = delimit("issue", `a${tag}\u00AD\u2066b\u001b[201~c\rd`);
+		expect(out).toContain("ab[201~c\nd");
 	});
 });

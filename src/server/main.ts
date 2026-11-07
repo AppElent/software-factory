@@ -7,14 +7,14 @@ import { Automations } from "./automations.ts";
 import { Bus } from "./bus.ts";
 import { realCli, scrub } from "./cli.ts";
 import { loadConfig, selfRepo } from "./config.ts";
-import { openDb } from "./db.ts";
+import { kvGet, openDb } from "./db.ts";
 import { installDemo } from "./demo.ts";
 import { Engine, type EngineEvent } from "./engine.ts";
 import { Environments, realDeployRunner, realHealthFetch } from "./environments.ts";
 import { t3Executor } from "./executor/t3.ts";
 import { Notifier } from "./notify.ts";
 import { Poller } from "./poller.ts";
-import { mirrorProjects, rebuildWorkOrders, restoreProjects } from "./portable.ts";
+import { mirrorProjects, PICK_UP, rebuildWorkOrders, restoreProjects } from "./portable.ts";
 import { readItemsForNotify } from "./read.ts";
 import { Releases, realGuard, realSmoke, type Versions } from "./releases.ts";
 import { Store } from "./store.ts";
@@ -139,26 +139,45 @@ const server = serve({ fetch: app.fetch, hostname: config.host, port: config.por
 	console.log(`Software Factory on http://${config.host}:${info.port}${config.demo ? " (demo)" : ""}`);
 });
 
-if (restored > 0) {
-	console.log(`Projects restored from ${store.file.path}: ${restored}`);
-	// In the background, because T3 can be slow and the page should open now.
+if (restored > 0) console.log(`Projects restored from ${store.file.path}: ${restored}`);
+
+let pickingUp = false;
+/** In the background, because T3 can be slow and the page should open now. */
+const pickUp = () => {
+	if (pickingUp || kvGet(store.db, PICK_UP) !== true) return;
+	pickingUp = true;
 	void rebuildWorkOrders(store, cli, executor)
 		.then((n) => {
-			console.log(`Work orders picked up from T3: ${n}`);
+			if (n > 0) console.log(`Work orders picked up from T3: ${n}`);
 			bus.publish(["work-orders", "queue", "floor", "shell"]);
 		})
-		.catch((e) => console.error(scrub(String(e))));
-}
+		.catch((e) => console.error(scrub(String(e))))
+		.finally(() => {
+			pickingUp = false;
+		});
+};
+if (!config.demo) pickUp();
+
 if (!config.demo) {
 	releases.start();
 	poller.start();
 	environments.start();
 }
 
+let beats = 0;
 // The engine needs a heartbeat even when GitHub is quiet: agent turns finish on their own time.
 const heartbeat = setInterval(() => {
 	void engine.tick().catch((e) => console.error(String(e)));
-	if (!config.demo) mirrorProjects(store);
+	if (config.demo) return;
+	// A typo in the config file or the Never touch file is yours to fix, and must not take the service down.
+	try {
+		restoreProjects(store);
+		mirrorProjects(store);
+		beats += 1;
+		if (beats % 12 === 0) pickUp();
+	} catch (e) {
+		console.error(scrub(String(e)));
+	}
 }, 5000);
 heartbeat.unref();
 

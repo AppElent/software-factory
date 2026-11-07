@@ -36,6 +36,8 @@ let base: string;
 let dir: string;
 let head: string;
 let checkRuns: Array<{ status: string; conclusion: string | null }>;
+let status: { state: string; total_count: number };
+let committed: string;
 let failing: string | null;
 let calls: string[];
 let guards: GuardRequest[];
@@ -50,8 +52,14 @@ const cli: Cli = async (cmd, args) => {
 	if (failing && line.startsWith(failing))
 		return { code: 1, stdout: "", stderr: "tsc found 2 errors", timedOut: false, missing: false };
 	if (line.endsWith("/commits/HEAD"))
-		return ok(JSON.stringify({ sha: head, commit: { message: "Add a filter (#48)\n\nLonger text" } }));
-	if (line.endsWith("/check-runs")) return ok(JSON.stringify({ check_runs: checkRuns }));
+		return ok(
+			JSON.stringify({
+				sha: head,
+				commit: { message: "Add a filter (#48)\n\nLonger text", committer: { date: committed } },
+			}),
+		);
+	if (line.endsWith("/check-runs?per_page=100")) return ok(JSON.stringify({ check_runs: checkRuns }));
+	if (line.endsWith("/status")) return ok(JSON.stringify(status));
 	if (line.startsWith("git remote")) return ok("https://github.com/me/software-factory.git\n");
 	if (line.startsWith("git clone")) mkdirSync(args.at(-1) as string, { recursive: true });
 	return ok();
@@ -85,6 +93,8 @@ beforeEach(() => {
 	mkdirSync(join(base, "checkout"));
 	head = B;
 	checkRuns = [{ status: "completed", conclusion: "success" }];
+	status = { state: "pending", total_count: 0 };
+	committed = "2026-01-01T00:00:00Z";
 	failing = null;
 	calls = [];
 	guards = [];
@@ -158,6 +168,25 @@ describe("getting a version ready", () => {
 		expect(saved()).toHaveLength(1);
 	});
 
+	it("gives a new commit a few minutes to get its checks", async () => {
+		checkRuns = [];
+		committed = new Date(Date.now() - 60_000).toISOString();
+		seed([row(A, "running")]);
+		await make(A).check();
+		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
+	});
+
+	it.each([
+		["failing", { state: "failure", total_count: 1 }],
+		["pending", { state: "pending", total_count: 1 }],
+	])("waits on a %s commit status too", async (_, s) => {
+		checkRuns = [];
+		status = s;
+		seed([row(A, "running")]);
+		await make(A).check();
+		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
+	});
+
 	it("goes ahead on a repo with no checks", async () => {
 		checkRuns = [];
 		seed([row(A, "running")]);
@@ -176,6 +205,18 @@ describe("getting a version ready", () => {
 		calls = [];
 		await r.check();
 		expect(calls.some((c) => c.startsWith("git clone"))).toBe(false);
+	});
+
+	it("tries a failed commit again when you ask", async () => {
+		failing = "pnpm build";
+		seed([row(A, "running")]);
+		const r = make(A);
+		await r.check();
+		failing = null;
+		await r.check();
+		expect(saved()[0]?.state).toBe("failed");
+		await r.check(true);
+		expect(saved()[0]).toMatchObject({ sha: B, state: "ready", error: null });
 	});
 
 	it("a version that fails its smoke test is never offered", async () => {
@@ -257,6 +298,40 @@ describe("switching", () => {
 		expect(exits).toBe(0);
 		vi.advanceTimersByTime(400);
 		expect(exits).toBe(1);
+	});
+
+	it("reads the checks again before going forward", async () => {
+		ready();
+		checkRuns = [{ status: "completed", conclusion: "failure" }];
+		await expect(make(A).activate(B)).rejects.toThrow(/aren't green/);
+		expect(readlinkSync(join(dir, "current"))).toBe(A);
+		expect(guards).toEqual([]);
+	});
+
+	it("doesn't switch when it can't read the checks", async () => {
+		ready();
+		failing = "gh api repos/me/software-factory/commits";
+		await expect(make(A).activate(B)).rejects.toThrow(/Couldn't read/);
+		expect(readlinkSync(join(dir, "current"))).toBe(A);
+	});
+
+	it("going back doesn't depend on GitHub", async () => {
+		vi.useFakeTimers();
+		seed([row(B, "replaced"), row(A, "running")]);
+		mkdirSync(join(dir, B));
+		symlinkSync(A, join(dir, "current"));
+		failing = "gh api";
+		await make(A).activate(B);
+		expect(readlinkSync(join(dir, "current"))).toBe(B);
+		vi.advanceTimersByTime(400);
+	});
+
+	it("never drops what runs from a long history", async () => {
+		const many = Array.from({ length: 20 }, (_, i) => row(String(i).padStart(40, "0"), "failed"));
+		seed([...many, row(A, "running")]);
+		await make(A).check();
+		expect(saved().find((v) => v.sha === A)?.state).toBe("running");
+		expect(saved().length).toBeLessThan(22);
 	});
 
 	it("refuses during a deploy, and leaves everything alone", async () => {
@@ -373,6 +448,9 @@ describe("private names", () => {
 		"Fix the bug in secret-client",
 		"it broke for SECRET CLIENT",
 		"see acme",
+		"acmesomething",
+		"the acme_portal repo",
+		"in secret-client_v2",
 		"in internal-tools",
 		"the file at /Users/someone/x",
 		"mail someone@example.com",
@@ -381,7 +459,7 @@ describe("private names", () => {
 		expect(privateHits(text, terms).length).toBeGreaterThan(0);
 	});
 
-	it.each(["Filter the Issues screen", "client secrets are hidden", "acmesomething"])(
+	it.each(["Filter the Issues screen", "client secrets are hidden", "somebody else"])(
 		"finds nothing in %s",
 		(text) => {
 			expect(privateHits(text, terms)).toEqual([]);

@@ -51,6 +51,13 @@ interface IssueStateRow {
 	advice_hash: string | null;
 }
 
+/** A folder in someone else's home came from another Mac's config file, and means nothing here. */
+const cloneFolderHere = (saved: string | null | undefined) => {
+	const home = homedir();
+	const here = saved && !(saved.startsWith("/Users/") && !saved.startsWith(`${home}/`));
+	return here ? saved : join(home, "Developer");
+};
+
 export const OPEN_FILTER = "state NOT IN ('done', 'closed')";
 
 const WORK_TYPE_MAP = <T>(v: T): Record<WorkType, T> => ({
@@ -141,8 +148,7 @@ export class Store {
 				lastTest: notifications?.lastTest ?? null,
 			},
 			projects: {
-				cloneFolder:
-					saved.cloneFolder ?? kvGet<string>(this.db, "settings:cloneFolder") ?? join(homedir(), "Developer"),
+				cloneFolder: cloneFolderHere(saved.cloneFolder ?? kvGet<string>(this.db, "settings:cloneFolder")),
 				neverTouch: readNeverTouch(this.configDir),
 			},
 		};

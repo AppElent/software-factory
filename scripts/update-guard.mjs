@@ -23,11 +23,12 @@ const healthy = async () => {
 	}
 };
 
-const deadline = Date.now() + waitMs;
-while (Date.now() < deadline) {
+// Counted in tries, not by the clock, so a closed lid doesn't use up the wait.
+for (let tries = Math.ceil(waitMs / everyMs); tries > 0; tries -= 1) {
 	if (await healthy()) process.exit(0);
 	await new Promise((r) => setTimeout(r, everyMs));
 }
+if (await healthy()) process.exit(0);
 
 const link = join(dir, `.current-${from}`);
 rmSync(link, { force: true });
@@ -43,7 +44,8 @@ const rows = JSON.parse(readFileSync(manifest, "utf8")).map((r) =>
 			? { ...r, state: "running", at }
 			: r,
 );
-writeFileSync(manifest, JSON.stringify(rows, null, 1));
+writeFileSync(`${manifest}.tmp`, JSON.stringify(rows, null, 1));
+renameSync(`${manifest}.tmp`, manifest);
 
 try {
 	execFileSync(kick[0], kick.slice(1), { stdio: "ignore" });

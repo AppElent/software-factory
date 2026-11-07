@@ -191,8 +191,8 @@ A person writes a change, and it becomes an ordinary work order on the factory's
 
 Each version runs from its own folder, and `current` points at one. See ADR 0005.
 
-- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A commit with red or unfinished checks waits. Otherwise it's cloned, installed and built in a new folder, then started on a spare port with sample data. It must report its own commit and serve the page. A commit that fails stays failed, and the next one gets a new try.
-- **Updating.** Only by pressing `Update`. A running deploy blocks it, because the restart would cut the deploy off.
+- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A commit with red or unfinished checks waits, and so does one under 5 minutes old with no checks yet. Otherwise it's cloned, installed and built in a new folder, then started on a spare port with sample data. It must report its own commit and serve the page. A commit that fails stays failed on the timer. `Check for a new version` tries it again, because a failure can be the network's.
+- **Updating.** Only by pressing `Update`, which reads the commit's checks again first. A running deploy blocks it, because the restart would cut the deploy off.
 - **Going back.** A guard outside the service expects the new commit to answer within 90 seconds. If not, it switches back, marks the version failed, and restarts. `Roll back` switches to an older folder the same way. The running version and the two newest before it are kept.
 - **Database.** Migrations stay additive, so an older version runs on a newer database. There are no backups.
 - **Checkout.** A copy running from a checkout has no versions, and says how to get them.

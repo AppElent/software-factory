@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, extname, join, normalize, resolve } from "node:path";
 import { backup } from "node:sqlite";
@@ -628,7 +628,7 @@ export function createApp(d: AppDeps): Hono {
 	app.post("/api/work-orders", async (c) => {
 		const input = await body(c.req, workOrderInput);
 		const source = await sourceFor(input.source ?? { kind: "person" }, input.project);
-		const mode = modeFor(input.mode);
+		const mode = modeFor(input.mode ?? defaultModeId());
 		if (mode?.merge === "factory" && source.kind === "error" && !input.confirmed)
 			throw new ActionError(`${mode.name} on a production error needs confirming.`, 409);
 		const issue = issueOf(source, input.project);
@@ -655,8 +655,10 @@ export function createApp(d: AppDeps): Hono {
 		const project = needProject(input.project);
 		if (!project.localPath) throw new ActionError("That project has no folder on this Mac.", 409);
 		const source = await sourceFor(input.source ?? { kind: "person" }, input.project);
-		const mode = modeFor(input.mode);
+		const mode = modeFor(input.mode ?? defaultModeId());
 		const issue = issueOf(source, input.project);
+		if (mode?.merge === "factory" && issue?.locked)
+			throw new ActionError(`Read #${issue.number} before starting ${mode.name}.`, 409);
 		const title = issue ? `#${issue.number} ${issue.title}` : (input.title ?? firstLine(input.description));
 		const prompt = commandPrompt({
 			mode,
@@ -687,6 +689,8 @@ export function createApp(d: AppDeps): Hono {
 		skills: skills(),
 		configPath: store.file.path,
 	});
+
+	const defaultModeId = () => store.modes(skills()).defaultMode || undefined;
 
 	const modeFor = (id: string | undefined): Mode | null => {
 		if (!id) return null;
@@ -789,7 +793,8 @@ export function createApp(d: AppDeps): Hono {
 	const termsNow = async () => {
 		const email = await cli("git", ["config", "user.email"]);
 		return privateTerms({
-			privateProjects: store.projects().filter((p) => p.isPrivate),
+			// A project starts as public until its first read says otherwise, which isn't something to bet on.
+			privateProjects: store.projects().filter((p) => p.isPrivate || !p.readAt),
 			neverTouch: store.neverTouch(),
 			home: homedir(),
 			email: email.code === 0 ? email.stdout.trim() : null,
@@ -800,14 +805,23 @@ export function createApp(d: AppDeps): Hono {
 	const needSelfProject = async () => {
 		if (!self.repo) throw new ActionError("This copy has no GitHub repo to improve.", 409);
 		const existing = selfProject();
-		if (existing?.localPath && (config.demo || existsSync(existing.localPath))) return existing;
-		let path: string = self.root;
-		if (versions.view().mode === "release") {
-			path = join(store.settings().projects.cloneFolder, self.repo.split("/")[1] ?? "software-factory");
-			if (!existsSync(path)) {
-				const res = await cli("gh", ["repo", "clone", self.repo, path]);
-				if (res.code !== 0)
+		if (existing?.localPath && (config.demo || !existing.folderMissing)) return existing;
+		const inVersion = versions.view().mode === "release";
+		const name = self.repo.split("/")[1] ?? "software-factory";
+		const path = inVersion ? join(store.settings().projects.cloneFolder, name) : self.root;
+		// The rule check comes before the clone.
+		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo: self.repo, path }]);
+		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
+		if (inVersion && !config.demo) {
+			if (existsSync(path)) {
+				if (!(await isCheckoutOf(path, self.repo)))
+					throw new ActionError(`${path} holds something else.`, 409);
+			} else {
+				const res = await cloneRepo(cli, self.repo, path);
+				if (res.code !== 0) {
+					rmSync(path, { recursive: true, force: true });
 					throw new ActionError(`Couldn't clone ${self.repo}. ${scrub(res.stderr).slice(0, 200)}`, 502);
+				}
 			}
 		}
 		return needProject(addProject(self.repo, path));
@@ -888,7 +902,7 @@ export function createApp(d: AppDeps): Hono {
 	});
 
 	app.post("/api/versions/check", async (c) => {
-		void versions.check();
+		void versions.check(true);
 		return c.json({ ok: true });
 	});
 

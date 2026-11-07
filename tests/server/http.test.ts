@@ -102,7 +102,9 @@ beforeEach(() => {
 		publish: bus.publish,
 		deployRunner: (command, cwd, onOutput) => {
 			deployed.push({ command, cwd });
-			onOutput("building\nghp_abcdefghij1234567890 done\n");
+			// In two pieces, as a pipe can deliver it.
+			onOutput("building\nghp_abcdefghij");
+			onOutput("1234567890 done\n");
 			let finish: (code: number) => void = () => {};
 			const done = new Promise<number>((r) => {
 				finish = r;
@@ -773,6 +775,29 @@ describe("issues", () => {
 		expect(res.status).toBe(409);
 		expect((await res.json()).error).toContain("Read #5");
 		expect(store.workOrders()).toHaveLength(0);
+	});
+
+	it("won't write the command for one either", async () => {
+		const res = await post("/api/work-orders/command", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "x",
+			mode: "send",
+			source: { kind: "issue", fingerprint: "issue:fairway:5" },
+		});
+		expect(res.status).toBe(409);
+	});
+
+	it("uses your default mode when none is named", async () => {
+		await post("/api/issues/read", { project: "fairway", number: 5, hash: "hash-1" });
+		const res = await post("/api/work-orders", {
+			project: "fairway",
+			type: "Bug fix",
+			description: "x",
+			source: { kind: "issue", fingerprint: "issue:fairway:5" },
+		});
+		const { id } = (await res.json()) as { id: number };
+		expect(store.workOrder(id)?.mode?.id).toBe("std");
 	});
 
 	it("doesn't let another kind step around that", async () => {
