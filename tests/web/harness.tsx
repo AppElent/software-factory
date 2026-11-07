@@ -89,6 +89,8 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		store,
 		cli: demo.cli,
 		engine,
+		versions: demo.versions,
+		self: { repo: "me/software-factory", root: "/tmp" },
 		automations: new Automations({ store, cli: demo.cli, executor: demo.executor, publish: bus.publish }),
 		environments,
 		executor: demo.executor,

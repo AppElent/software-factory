@@ -138,6 +138,7 @@ const GO: Record<string, string> = {
 	v: "/environments",
 	o: "/projects",
 	u: "/automations",
+	y: "/improve",
 	h: "/health",
 	s: "/settings/agents",
 };
@@ -272,6 +273,13 @@ export function ShellOutlet() {
 					);
 				})}
 				<div className="sf-foot mt-auto flex flex-col gap-2 pt-4">
+					<Link
+						to="/improve"
+						aria-current={location.pathname === "/improve" ? "page" : undefined}
+						className={`nav-item flex min-h-control items-center rounded-sm px-3 ${location.pathname === "/improve" ? "bg-bg-active font-semibold" : ""}`}
+					>
+						Improve yourself
+					</Link>
 					<Link
 						to="/settings/$section"
 						params={{ section: "agents" }}
@@ -712,6 +720,7 @@ function CommandMenu() {
 		["Projects", "/projects", "g o"],
 		["Automations", "/automations", "g u"],
 		["Health", "/health", "g h"],
+		["Improve yourself", "/improve", "g y"],
 		["Settings", "/settings/agents", "g s"],
 	];
 

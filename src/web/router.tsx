@@ -6,6 +6,7 @@ import { ErrorDetailScreen } from "./screens/error-detail.tsx";
 import { ErrorsScreen } from "./screens/errors.tsx";
 import { FloorScreen } from "./screens/floor.tsx";
 import { HealthScreen } from "./screens/health.tsx";
+import { ImproveScreen } from "./screens/improve.tsx";
 import { IssuesScreen } from "./screens/issues.tsx";
 import { NewProjectScreen } from "./screens/new-project.tsx";
 import { NotificationSamplesScreen } from "./screens/notification-samples.tsx";
@@ -71,6 +72,11 @@ const errorDetail = createRoute({
 	getParentRoute: () => shell,
 	path: "/errors/$id",
 	component: ErrorDetailScreen,
+});
+const improve = createRoute({
+	getParentRoute: () => shell,
+	path: "/improve",
+	component: ImproveScreen,
 });
 const automations = createRoute({
 	getParentRoute: () => shell,
@@ -140,6 +146,7 @@ export const routeTree = rootRoute.addChildren([
 		issues,
 		errors,
 		errorDetail,
+		improve,
 		automations,
 		environments,
 		projectEnvironments,

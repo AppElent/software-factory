@@ -24,6 +24,7 @@ import type {
 	RepoListResponse,
 	Settings,
 	SyncResult,
+	VersionsResponse,
 	WorkOrder,
 	WorkOrderSource,
 } from "../shared/types.ts";
@@ -47,6 +48,7 @@ import type { Notifier } from "./notify.ts";
 import { commandPrompt, parseAdvice, readerPrompt } from "./playbooks/index.ts";
 import type { Poller } from "./poller.ts";
 import { readFloor, readHealth, readProjectRecord, readQueue, readShell, triageBaseline } from "./read.ts";
+import { privateHits, privateTerms, type Versions } from "./releases.ts";
 import { CSP, guard, SESSION_HEADER } from "./security.ts";
 import { detectSkills } from "./skills.ts";
 import type { Store } from "./store.ts";
@@ -72,6 +74,9 @@ export interface AppDeps {
 	cli: Cli;
 	engine: Engine;
 	automations: Automations;
+	versions: Versions;
+	/** The repo this copy was installed from, and its folder. */
+	self: { repo: string | null; root: string };
 	environments: Environments;
 	executor: Executor;
 	poller: Poller;
@@ -112,7 +117,20 @@ const launchdRestart = () => {
 };
 
 export function createApp(d: AppDeps): Hono {
-	const { config, store, cli, engine, automations, environments, executor, poller, notifier, bus } = d;
+	const {
+		config,
+		store,
+		cli,
+		engine,
+		automations,
+		versions,
+		self,
+		environments,
+		executor,
+		poller,
+		notifier,
+		bus,
+	} = d;
 	const webRoot = d.webRoot ?? process.env.SF_WEB_ROOT ?? WEB_ROOT;
 	const app = new Hono();
 	const devOrigin = process.env.SF_DEV_ORIGIN;
@@ -754,6 +772,126 @@ export function createApp(d: AppDeps): Hono {
 		}
 		return { kind, fingerprint: s.fingerprint, prNumber: s.prNumber };
 	}
+
+	/* ---------- improve yourself ---------- */
+
+	const selfProject = () =>
+		self.repo ? store.projects().find((p) => p.repo.toLowerCase() === self.repo?.toLowerCase()) : undefined;
+
+	const termsNow = async () => {
+		const email = await cli("git", ["config", "user.email"]);
+		return privateTerms({
+			privateProjects: store.projects().filter((p) => p.isPrivate),
+			neverTouch: store.neverTouch(),
+			home: homedir(),
+			email: email.code === 0 ? email.stdout.trim() : null,
+		});
+	};
+
+	/** Adds the factory's own repo when it isn't in yet. A version's folder gets replaced, so it needs a real clone. */
+	const needSelfProject = async () => {
+		if (!self.repo) throw new ActionError("This copy has no GitHub repo to improve.", 409);
+		const existing = selfProject();
+		if (existing?.localPath && (config.demo || existsSync(existing.localPath))) return existing;
+		let path: string = self.root;
+		if (versions.view().mode === "release") {
+			path = join(store.settings().projects.cloneFolder, self.repo.split("/")[1] ?? "software-factory");
+			if (!existsSync(path)) {
+				const res = await cli("gh", ["repo", "clone", self.repo, path]);
+				if (res.code !== 0)
+					throw new ActionError(`Couldn't clone ${self.repo}. ${scrub(res.stderr).slice(0, 200)}`, 502);
+			}
+		}
+		return needProject(addProject(self.repo, path));
+	};
+
+	const ImproveInput = z.object({
+		type: z.enum(["Improvement", "Bug"]),
+		text: z.string().trim().min(1).max(8000),
+		mode: z.string().optional(),
+		confirmed: z.boolean().optional(),
+	});
+
+	const improveBody = (input: z.infer<typeof ImproveInput>, project: string) => ({
+		project,
+		type: (input.type === "Bug" ? "Bug fix" : "Feature") as (typeof WORK_TYPES)[number],
+		title: firstLine(input.text),
+		description: input.text,
+		source: { kind: "person" as const },
+	});
+
+	app.post("/api/improve/check", async (c) => {
+		const input = await body(c.req, z.object({ text: z.string().max(8000) }));
+		return c.json({ hits: privateHits(input.text, await termsNow()), repo: self.repo });
+	});
+
+	app.post("/api/improve", async (c) => {
+		const input = await body(c.req, ImproveInput);
+		// The page shows these first. This is here for whatever else calls this.
+		if (!input.confirmed && privateHits(input.text, await termsNow()).length > 0)
+			throw new ActionError("That mentions something private, and this repo is public.", 409);
+		const project = await needSelfProject();
+		const mode = modeFor(input.mode);
+		const id = engine.create({ ...improveBody(input, project.slug), mode });
+		return c.json({ id });
+	});
+
+	app.post("/api/improve/command", async (c) => {
+		const input = await body(c.req, ImproveInput);
+		if (!input.confirmed && privateHits(input.text, await termsNow()).length > 0)
+			throw new ActionError("That mentions something private, and this repo is public.", 409);
+		const project = await needSelfProject();
+		if (!project.localPath) throw new ActionError("That project has no folder on this Mac.", 409);
+		const mode = modeFor(input.mode);
+		const b = improveBody(input, project.slug);
+		const prompt = commandPrompt({
+			mode,
+			source: b.source,
+			title: b.title,
+			description: b.description,
+		} as unknown as WorkOrder);
+		return c.json({
+			command: t3Command({
+				path: project.localPath,
+				title: b.title,
+				base: project.defaultBranch,
+				branch: `fix/${slugify(b.title, 40)}`,
+				prompt,
+				provider: mode?.provider,
+				model: mode?.model,
+			}),
+		});
+	});
+
+	app.get("/api/version", (c) => c.json({ sha: versions.view().running?.sha ?? null }));
+
+	app.get("/api/versions", (c) => {
+		const project = selfProject();
+		const response: VersionsResponse = {
+			...versions.view(),
+			building: project
+				? store
+						.workOrders()
+						.filter((w) => w.project === project.slug)
+						.map((w) => ({ id: w.id, title: w.title }))
+				: [],
+		};
+		return c.json(response);
+	});
+
+	app.post("/api/versions/check", async (c) => {
+		void versions.check();
+		return c.json({ ok: true });
+	});
+
+	const shaInput = z.object({ sha: z.string().regex(/^[0-9a-zA-Z-]{7,64}$/) });
+
+	app.post("/api/versions/activate", async (c) => {
+		const input = await body(c.req, shaInput);
+		await versions.activate(input.sha);
+		audit(store.db, "switch version", input.sha, "you", null, store.now());
+		return c.json({ ok: true });
+	});
 
 	/* ---------- automations ---------- */
 

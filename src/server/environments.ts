@@ -490,6 +490,11 @@ export class Environments {
 		}
 	}
 
+	/** A restart would cut a deploy off. */
+	deploying(): string | null {
+		return this.running.size > 0 ? "A deploy is running. Wait for it to finish, or stop it first." : null;
+	}
+
 	stopDeploy(slug: string, name: string) {
 		const run = this.running.get(`${slug}:${name}`);
 		if (!run) throw new ActionError("Nothing is deploying there.", 409);

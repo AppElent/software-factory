@@ -21,6 +21,7 @@ import type {
 	Settings,
 	ShellResponse,
 	ToolStatus,
+	VersionsResponse,
 	WorkOrder,
 } from "../shared/types.ts";
 import { ApiFailure, api } from "./api.ts";
@@ -64,6 +65,12 @@ export interface ErrorsResponse {
 	withoutSentry: number;
 	quiet: number;
 }
+export const useVersions = () =>
+	useQuery({
+		queryKey: ["versions"],
+		queryFn: () => api.get<VersionsResponse>("/api/versions"),
+		refetchInterval: 30_000,
+	});
 export const useAutomations = () =>
 	useQuery({
 		queryKey: ["automations"],

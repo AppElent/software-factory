@@ -1,4 +1,6 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { Automations } from "./automations.ts";
@@ -14,6 +16,7 @@ import { Notifier } from "./notify.ts";
 import { Poller } from "./poller.ts";
 import { mirrorProjects, rebuildWorkOrders, restoreProjects } from "./portable.ts";
 import { readItemsForNotify } from "./read.ts";
+import { Releases, realGuard, realSmoke, type Versions } from "./releases.ts";
 import { Store } from "./store.ts";
 
 const config = loadConfig();
@@ -92,6 +95,26 @@ const environments = new Environments({
 	healthFetch: demo?.healthFetch ?? realHealthFetch,
 });
 
+const root = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
+const repo = demo ? "me/software-factory" : selfRepo();
+const releases = new Releases({
+	root,
+	dir:
+		process.env.SF_RELEASES_DIR ??
+		join(homedir(), "Library", "Application Support", "Software Factory Releases"),
+	repo,
+	port: config.port,
+	serviceLabel: process.env.SF_SERVICE_LABEL ?? "com.appelent.software-factory",
+	cli,
+	publish: bus.publish,
+	smoke: realSmoke,
+	guard: realGuard(root),
+	exit: () => process.exit(0),
+	busy: () => environments.deploying(),
+});
+// Sample data run from a version folder is a smoke test, which has to report its real version.
+const versions: Versions = demo && !releases.running() ? demo.versions : releases;
+
 const automations = new Automations({ store, cli, executor, publish: bus.publish });
 
 const app = createApp({
@@ -100,6 +123,8 @@ const app = createApp({
 	cli,
 	engine,
 	automations,
+	versions,
+	self: { repo, root },
 	environments,
 	executor,
 	poller,
@@ -125,6 +150,7 @@ if (restored > 0) {
 		.catch((e) => console.error(scrub(String(e))));
 }
 if (!config.demo) {
+	releases.start();
 	poller.start();
 	environments.start();
 }
@@ -139,6 +165,7 @@ heartbeat.unref();
 const stop = () => {
 	poller?.stop();
 	environments.stop();
+	releases.stop();
 	clearInterval(heartbeat);
 	server.close(() => process.exit(0));
 	setTimeout(() => process.exit(0), 2000).unref();

@@ -759,3 +759,29 @@ export interface NewProjectRun {
 	/** Checked as free, then started. After a restart mid-step, what's there may be this run's own. */
 	claimed?: string[];
 }
+
+/* ---------- versions ---------- */
+
+export interface VersionInfo {
+	sha: string;
+	label: string;
+	message: string;
+	state: "preparing" | "ready" | "failed" | "running" | "replaced";
+	error: string | null;
+	/** When it was prepared, or for one that ran, when it was replaced. */
+	at: string;
+	canRollBack: boolean;
+}
+
+export interface VersionsResponse {
+	/** A checkout has no versions to switch between. Installing the service makes them. */
+	mode: "release" | "checkout";
+	running: { sha: string; label: string; message: string; since: string | null } | null;
+	history: VersionInfo[];
+	checkedAt: string | null;
+	checkError: string | null;
+	/** The repo that Improve yourself works on. */
+	repo: string | null;
+	/** Open work on that repo. */
+	building: Array<{ id: number; title: string }>;
+}

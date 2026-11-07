@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/server/app.ts";
@@ -14,6 +14,7 @@ import { Environments } from "../../src/server/environments.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
 import { Notifier } from "../../src/server/notify.ts";
 import { Poller } from "../../src/server/poller.ts";
+import { Releases } from "../../src/server/releases.ts";
 import { Store } from "../../src/server/store.ts";
 import type {
 	EnvironmentView,
@@ -22,6 +23,7 @@ import type {
 	ProjectEnvironmentsResponse,
 	QueueResponse,
 	ShellResponse,
+	VersionsResponse,
 } from "../../src/shared/types.ts";
 
 const PORT = 4399;
@@ -116,6 +118,19 @@ beforeEach(() => {
 		store,
 		cli,
 		engine,
+		versions: new Releases({
+			root: dir,
+			dir: join(dir, "releases"),
+			repo: "me/software-factory",
+			port: PORT,
+			serviceLabel: "x",
+			cli,
+			publish: bus.publish,
+			smoke: async () => {},
+			guard: () => {},
+			exit: () => {},
+		}),
+		self: { repo: "me/software-factory", root: dir },
 		automations: new Automations({ store, cli, executor: exec, publish: bus.publish }),
 		environments,
 		executor: exec,
@@ -872,5 +887,107 @@ describe("issues", () => {
 		const { command } = await res.json();
 		expect(command).toContain("<<'PROMPT_2'");
 		expect(command).toContain('<untrusted-data source="issue">');
+	});
+});
+
+describe("improve yourself", () => {
+	const post = (path: string, data: unknown) =>
+		app.request(path, { method: "POST", headers: SESSION, body: JSON.stringify(data) });
+	const insert = (slug: string, repo: string, isPrivate: number, path: string | null) =>
+		store.db
+			.prepare(
+				"INSERT INTO projects (slug, repo, name, url, is_private, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			)
+			.run(slug, repo, slug, `https://github.com/${repo}`, isPrivate, path, "2026-11-01T00:00:00Z");
+	const add = () => insert("software-factory", "me/software-factory", 0, dir);
+
+	it("adds the factory's own repo when it isn't in yet, and starts a work order on it", async () => {
+		const res = await post("/api/improve", { type: "Bug", text: "The Close button reports twice" });
+		expect(res.status).toBe(200);
+		const { id } = (await res.json()) as { id: number };
+		const order = store.workOrder(id);
+		expect(order?.project).toBe(store.projects().find((p) => p.repo === "me/software-factory")?.slug);
+		expect(order?.type).toBe("Bug fix");
+		expect(order?.title).toBe("The Close button reports twice");
+	});
+
+	it("an improvement is a feature", async () => {
+		const res = await post("/api/improve", { type: "Improvement", text: "Filter issues" });
+		const { id } = (await res.json()) as { id: number };
+		expect(store.workOrder(id)?.type).toBe("Feature");
+	});
+
+	it("holds text that names something private until it's confirmed", async () => {
+		add();
+		const text = `Broken at ${homedir()}/somewhere`;
+		const before = store.workOrders().length;
+		const res = await post("/api/improve", { type: "Bug", text });
+		expect(res.status).toBe(409);
+		expect(store.workOrders()).toHaveLength(before);
+		const command = await post("/api/improve/command", { type: "Bug", text });
+		expect(command.status).toBe(409);
+		const check = (await (await post("/api/improve/check", { text })).json()) as { hits: string[] };
+		expect(check.hits).toContain(homedir());
+		expect((await post("/api/improve", { type: "Bug", text, confirmed: true })).status).toBe(200);
+	});
+
+	it("names private projects and never-touch rules", async () => {
+		insert("quiet-thing", "me/quiet-thing", 1, null);
+		writeNeverTouch(dir, ["client-*"]);
+		const check = async (text: string) =>
+			((await (await post("/api/improve/check", { text })).json()) as { hits: string[] }).hits;
+		expect(await check("copy it from quiet-thing")).toContain("quiet-thing");
+		expect(await check("as in client today")).toContain("client");
+		expect(await check("Filter issues")).toEqual([]);
+	});
+
+	it("copies a command that uses the same text", async () => {
+		add();
+		const res = await post("/api/improve/command", { type: "Improvement", text: "Filter issues" });
+		const { command } = (await res.json()) as { command: string };
+		expect(command).toContain("t3 thread start");
+		expect(command).toContain("Filter issues");
+	});
+
+	it("needs something to say", async () => {
+		expect((await post("/api/improve", { type: "Bug", text: "  " })).status).toBe(400);
+	});
+});
+
+describe("versions", () => {
+	const post = (path: string, data: unknown) =>
+		app.request(path, { method: "POST", headers: SESSION, body: JSON.stringify(data) });
+	it("a checkout reports no versions to switch", async () => {
+		const res = await app.request("/api/versions", { headers: HOST });
+		const data = (await res.json()) as VersionsResponse;
+		expect(data).toMatchObject({
+			mode: "checkout",
+			running: null,
+			repo: "me/software-factory",
+			building: [],
+		});
+	});
+
+	it("reports the version without a session, so the guard can read it", async () => {
+		const res = await app.request("/api/version", { headers: HOST });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ sha: null });
+	});
+
+	it("switching needs a session", async () => {
+		const res = await app.request("/api/versions/activate", {
+			method: "POST",
+			headers: { ...HOST, "content-type": "application/json" },
+			body: JSON.stringify({ sha: "a".repeat(40) }),
+		});
+		expect(res.status).toBe(403);
+	});
+
+	it("a checkout refuses to switch", async () => {
+		expect((await post("/api/versions/activate", { sha: "a".repeat(40) })).status).toBe(409);
+	});
+
+	it("rejects something that isn't a sha", async () => {
+		expect((await post("/api/versions/activate", { sha: "../../etc" })).status).toBe(400);
 	});
 });

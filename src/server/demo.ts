@@ -16,6 +16,8 @@ import type {
 	PullRequest,
 	Stage,
 	ToolkitState,
+	VersionInfo,
+	VersionsResponse,
 	WorkOrderState,
 	WorkType,
 } from "../shared/types.ts";
@@ -29,6 +31,7 @@ import type { DeployRunner, HealthFetch } from "./environments.ts";
 import { FakeExecutor } from "./executor/fake.ts";
 import type { AskRequest, ThreadState } from "./executor/types.ts";
 import { SCAFFOLD_STEPS, type ScaffoldRunner } from "./newproject.ts";
+import type { Versions } from "./releases.ts";
 import type { Store } from "./store.ts";
 
 /** Sample data for checking screens. Public, invented names only, and no connector ever runs in this mode. */
@@ -526,6 +529,7 @@ export function installDemo(store: Store) {
 	const reset = () => {
 		toolFaults = {};
 		downUrls.clear();
+		versionRows = quietVersions();
 		rmSync(demoFolders, { recursive: true, force: true });
 		for (const t of [
 			"projects",
@@ -562,6 +566,29 @@ export function installDemo(store: Store) {
 			});
 		}
 	};
+
+	const VERSION_A = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+	const VERSION_B = "b2c3d4e5f60718293a4b5c6d7e8f901234567890";
+	const VERSION_C = "c3d4e5f60718293a4b5c6d7e8f90123456789012";
+	const version = (
+		sha: string,
+		state: VersionInfo["state"],
+		message: string,
+		daysAgo: number,
+	): VersionInfo => ({
+		sha,
+		label: sha.slice(0, 7),
+		message,
+		state,
+		error: null,
+		at: new Date(store.now().getTime() - daysAgo * DAY).toISOString(),
+		canRollBack: state === "replaced",
+	});
+	const quietVersions = () => [
+		version(VERSION_B, "running", "Add the Issues screen (#47)", 3),
+		version(VERSION_A, "replaced", "Report failed git steps (#44)", 3),
+	];
+	let versionRows: VersionInfo[] = quietVersions();
 
 	const setEnvironments = (project: string, environments: EnvironmentConfig[]) =>
 		store.file.update((c) => ({ ...c, environments: { ...c.environments, [project]: environments } }));
@@ -970,6 +997,25 @@ export function installDemo(store: Store) {
 					),
 				],
 			});
+		},
+		version_ready: () => {
+			baseProjects();
+			healthy();
+			versionRows = [
+				version(VERSION_C, "ready", "Filter the Issues screen by environment (#48)", 0),
+				...quietVersions(),
+			];
+		},
+		version_failed: () => {
+			baseProjects();
+			healthy();
+			versionRows = [
+				{
+					...version(VERSION_C, "failed", "Filter the Issues screen by environment (#48)", 0),
+					error: "Build failed. tsc found 2 errors.",
+				},
+				...quietVersions(),
+			];
 		},
 		no_automations: () => {
 			baseProjects();
@@ -1585,6 +1631,32 @@ export function installDemo(store: Store) {
 		}) as Cli,
 		executor: new DemoExecutor(),
 		scaffold: demoScaffold,
+		versions: {
+			view: (): Omit<VersionsResponse, "building"> => {
+				const running = versionRows.find((v) => v.state === "running");
+				return {
+					mode: "release" as const,
+					running: running
+						? { sha: running.sha, label: running.label, message: running.message, since: running.at }
+						: null,
+					history: versionRows,
+					checkedAt: store.iso(),
+					checkError: null,
+					repo: "me/software-factory",
+				};
+			},
+			check: async () => {},
+			activate: async (sha: string) => {
+				const at = store.iso();
+				versionRows = versionRows.map((v) =>
+					v.sha === sha
+						? { ...v, state: "running" as const, at, canRollBack: false }
+						: v.state === "running"
+							? { ...v, state: "replaced" as const, at, canRollBack: true }
+							: v,
+				);
+			},
+		} as Versions,
 		/** Nothing runs. It only prints, slowly enough to watch. */
 		deployRunner: ((command, _cwd, onOutput) => {
 			let finish: (code: number) => void = () => {};
@@ -1628,6 +1700,7 @@ export function installDemo(store: Store) {
 					"environments",
 					"project-environments",
 					"automations",
+					"versions",
 					"projects",
 					"shell",
 					"work-orders",
