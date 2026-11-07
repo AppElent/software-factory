@@ -46,7 +46,7 @@ describe("Improve yourself", () => {
 		await user.type(await screen.findByLabelText("What should change?"), `Broken at ${home}/x`);
 		await user.click(screen.getByRole("button", { name: "Start work order" }));
 		const dialog = await screen.findByRole("alertdialog");
-		expect(within(dialog).getByText(/This repo is public/)).toBeInTheDocument();
+		expect(within(dialog).getByText(/This repo may be public/)).toBeInTheDocument();
 		expect(within(dialog).getByText(new RegExp(home))).toBeInTheDocument();
 		expect(h.mutations.some((m) => m.startsWith("POST /api/improve {"))).toBe(false);
 		await user.click(within(dialog).getByRole("button", { name: "Cancel" }));

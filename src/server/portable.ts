@@ -87,10 +87,16 @@ export function restoreProjects(store: Store): number {
 		`INSERT OR IGNORE INTO projects (slug, repo, name, url, local_path, paused, merging, sentry_project, sentry_skipped, added_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	);
+	let restored = 0;
 	for (const p of kept) {
 		const name = p.name ?? p.repo.split("/")[1] ?? p.repo;
-		insert.run(
-			p.slug ?? name,
+		// A file written by hand can leave slugs out, and two repos can share a name. Both still come back.
+		const taken = (slug: string) => store.db.prepare("SELECT 1 FROM projects WHERE slug = ?").get(slug);
+		const dashed = p.repo.replace("/", "-").toLowerCase();
+		let slug = [p.slug, name.toLowerCase(), dashed].find((s) => s && !taken(s));
+		for (let n = 2; !slug; n++) if (!taken(`${dashed}-${n}`)) slug = `${dashed}-${n}`;
+		restored += insert.run(
+			slug,
 			p.repo,
 			name,
 			`https://github.com/${p.repo}`,
@@ -100,14 +106,14 @@ export function restoreProjects(store: Store): number {
 			p.sentryProject ?? null,
 			p.sentrySkipped ? 1 : 0,
 			store.iso(),
-		);
+		).changes as number;
 	}
 	if (owed) kvSet(store.db, RESTORE_OWED, false);
-	if (kept.length > 0) {
+	if (restored > 0) {
 		if (seen.n === 0) kvSet(store.db, "new_device", true);
 		kvSet(store.db, PICK_UP, true);
 	}
-	return kept.length;
+	return restored;
 }
 
 const Threads = z.array(

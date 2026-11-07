@@ -157,7 +157,9 @@ describe("error detail", () => {
 		const pane = screen.getByRole("complementary", { name: "Details" });
 		expect(within(pane).getByText("FAIRWAY-6001")).toBeInTheDocument();
 		expect(within(pane).getByRole("link", { name: "Fairway" })).toHaveAttribute("href", "/projects/fairway");
-		expect(within(pane).getByText(/Opens a PR after the gates pass\. It won't merge\./)).toBeInTheDocument();
+		expect(
+			within(pane).getByText(/Opens a PR after the gates pass\. The mode decides who merges\./),
+		).toBeInTheDocument();
 		expect(within(pane).getByRole("link", { name: "Open in Sentry" })).toHaveAttribute(
 			"href",
 			"https://sentry.example/issues/6001",

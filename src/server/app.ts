@@ -397,6 +397,9 @@ export function createApp(d: AppDeps): Hono {
 		const blocked = blockedRemove(slug, p.openWorkOrders);
 		if (blocked === "open_work") throw new ActionError("This project has open work orders.");
 		if (blocked === "last_project") throw new ActionError(`${p.name} is your only project.`);
+		// Stop lives on the environment's row, so removing the project would leave a deploy nobody can reach.
+		if (environments.isDeploying(slug))
+			throw new ActionError(`${p.name} has a deploy running. Stop it first.`, 409);
 		// Removing stops watching. The repo, folder, and services stay.
 		store.db.prepare("UPDATE projects SET removed_at = ? WHERE slug = ?").run(store.iso(), slug);
 		store.db.prepare("DELETE FROM prs WHERE project = ?").run(slug);
@@ -862,7 +865,7 @@ export function createApp(d: AppDeps): Hono {
 		const input = await body(c.req, ImproveInput);
 		// The page shows these first. This is here for whatever else calls this.
 		if (!input.confirmed && privateHits(input.text, await termsNow()).length > 0)
-			throw new ActionError("That mentions something private, and this repo is public.", 409);
+			throw new ActionError("That mentions something private, and this repo may be public.", 409);
 		const project = await needSelfProject();
 		const mode = modeFor(input.mode);
 		const id = engine.create({ ...improveBody(input, project.slug), mode });
@@ -872,7 +875,7 @@ export function createApp(d: AppDeps): Hono {
 	app.post("/api/improve/command", async (c) => {
 		const input = await body(c.req, ImproveInput);
 		if (!input.confirmed && privateHits(input.text, await termsNow()).length > 0)
-			throw new ActionError("That mentions something private, and this repo is public.", 409);
+			throw new ActionError("That mentions something private, and this repo may be public.", 409);
 		const project = await needSelfProject();
 		if (!project.localPath) throw new ActionError("That project has no folder on this Mac.", 409);
 		const mode = modeFor(input.mode);

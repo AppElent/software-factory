@@ -94,3 +94,20 @@ describe("Settings: Modes", () => {
 		expect(await screen.findByRole("alert")).toHaveTextContent("needs a model too");
 	});
 });
+
+describe("a mode's words", () => {
+	it("change with its Plan setting, because the split button shows them", async () => {
+		const user = userEvent.setup();
+		const h = await renderApp("/settings/modes", "errors_list");
+		await user.click(await screen.findByRole("button", { name: /^Standard/ }));
+		await user.click(screen.getByRole("radio", { name: "Skip the plan" }));
+		await user.click(screen.getByRole("button", { name: "Save mode" }));
+		await screen.findByText("Saved Standard.");
+		const put = h.mutations.find((m) => m.startsWith("PUT /api/modes")) ?? "";
+		const saved = JSON.parse(put.slice(put.indexOf("{"))).modes.find(
+			(m: { id: string }) => m.id === "standard",
+		);
+		expect(saved.plan).toBe("skip");
+		expect(saved.description).toBe("Skips the plan. You review and merge.");
+	});
+});

@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.7.2
+version: 2.7.3
 status: current
 ---
 
@@ -157,7 +157,7 @@ Open issues read from GitHub, in three groups. They stay out of the queue, becau
 
 ### Config file
 
-`~/.config/software-factory/config.json` holds what you'd want on a new Mac: settings, modes, environments and projects. It is plain JSON, written whole and readable only by you. It wins over older values in the database. A file that doesn't parse is never overwritten: saves refuse and say why until you fix it.
+`~/.config/software-factory/config.json` holds what you'd want on a new Mac: settings, modes, environments and projects. It is plain JSON, written whole and readable only by you. It wins over older values in the database, except for projects: the database holds the current list, and that is written to the file. So a project edited by hand only counts on a new database. A file that doesn't parse is never overwritten: saves refuse and say why until you fix it.
 
 ### New project
 

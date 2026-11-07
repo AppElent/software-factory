@@ -95,7 +95,8 @@ export const realHealthFetch: HealthFetch = async (url) => {
 	}
 };
 
-const Deployment = z.array(z.object({ sha: z.string(), created_at: z.string() }));
+const Deployment = z.array(z.object({ id: z.number(), sha: z.string(), created_at: z.string() }));
+const DeploymentStatus = z.array(z.object({ state: z.string() }));
 const Compare = z.object({ ahead_by: z.number() });
 
 interface HealthRow {
@@ -384,6 +385,29 @@ export class Environments {
 		}
 	}
 
+	/** The newest one that worked. One that failed or is still going isn't what's deployed. */
+	private async lastSuccessfulDeployment(repo: string, name: string) {
+		const { cli } = this.d;
+		const read = async <T>(path: string, schema: z.ZodType<T>) => {
+			const res = await cli("gh", ["api", path]);
+			return res.code === 0 ? schema.safeParse(parseJson(res.stdout)).data : undefined;
+		};
+		const recent = await read(
+			`repos/${repo}/deployments?environment=${encodeURIComponent(name)}&per_page=5`,
+			Deployment,
+		);
+		for (const deployment of recent ?? []) {
+			const statuses = await read(
+				`repos/${repo}/deployments/${deployment.id}/statuses?per_page=1`,
+				DeploymentStatus,
+			);
+			// GitHub didn't answer, which says nothing about this one, so keep what's known.
+			if (!statuses) return null;
+			if (statuses[0]?.state === "success") return deployment;
+		}
+		return null;
+	}
+
 	private async readDeployed(project: Project, env: EnvironmentConfig) {
 		const { store, cli } = this.d;
 		const row = this.healthRow(project.slug, env.name);
@@ -392,19 +416,9 @@ export class Environments {
 		let sha = row?.deployed_sha ?? null;
 		let at = row?.deployed_at ?? null;
 		if (stale) {
-			const res = await cli("gh", [
-				"api",
-				`repos/${project.repo}/deployments?environment=${encodeURIComponent(env.name)}&per_page=1`,
-			]);
-			if (res.code === 0) {
-				try {
-					const first = Deployment.parse(JSON.parse(res.stdout))[0];
-					sha = first?.sha ?? sha;
-					at = first?.created_at ?? at;
-				} catch {
-					// Keeps what it had.
-				}
-			}
+			const found = await this.lastSuccessfulDeployment(project.repo, env.name);
+			sha = found?.sha ?? sha;
+			at = found?.created_at ?? at;
 		}
 		const view = this.lastDeploy(project.slug, env.name);
 		const newest = view?.state === "passed" && view.sha ? view.sha : sha;
@@ -449,6 +463,10 @@ export class Environments {
 		const { project, env } = this.need(slug, name);
 		await this.check(project, env, true);
 		this.d.publish(["environments", "shell", "queue"]);
+	}
+
+	isDeploying(slug: string) {
+		return [...this.running.keys()].some((key) => key.startsWith(`${slug}:`));
 	}
 
 	/** The command comes from your config file, never from the repo or the page. */

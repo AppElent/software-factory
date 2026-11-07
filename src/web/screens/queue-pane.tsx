@@ -210,7 +210,7 @@ function ErrorPane({ item, actions }: { item: QueueItem; actions: PaneActions })
 				<p className="m-0 text-meta text-text-muted">
 					{actions.limits.startBlock
 						? waitHint(actions.limits)
-						: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge."}
+						: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges."}
 				</p>
 				<FixStart actions={actions} item={item} />
 				<Triage actions={actions} />

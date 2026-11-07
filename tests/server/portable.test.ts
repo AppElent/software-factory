@@ -336,6 +336,31 @@ describe("picking work up from T3", () => {
 		expect(kvGet(store.db, PICK_UP)).toBe(false);
 	});
 
+	it("brings back two repos with the same name from a file with no slugs, and keeps both in the file", () => {
+		const store = freshStore();
+		const path = store.file.path;
+		writeFileSync(
+			path,
+			JSON.stringify({
+				version: 1,
+				projects: [
+					{ repo: "acme/app", localPath: "/tmp/1" },
+					{ repo: "other/app", localPath: "/tmp/2" },
+				],
+			}),
+		);
+		expect(restoreProjects(store)).toBe(2);
+		expect(
+			store
+				.projects()
+				.map((p) => p.repo)
+				.sort(),
+		).toEqual(["acme/app", "other/app"]);
+		mirrorProjects(store);
+		const after = JSON.parse(readFileSync(path, "utf8")).projects.map((p: { repo: string }) => p.repo);
+		expect(after.sort()).toEqual(["acme/app", "other/app"]);
+	});
+
 	it("doesn't take a fork's PR for the thread's", async () => {
 		const store = setup();
 		thread("t1", "factory/wo-40-x", "completed");

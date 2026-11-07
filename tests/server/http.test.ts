@@ -605,6 +605,76 @@ describe("environments", () => {
 		expect(data.environments[0]?.folder).toBeNull();
 	});
 
+	it("won't remove a project while it's deploying", async () => {
+		seed();
+		store.db
+			.prepare(
+				"INSERT INTO projects (slug, repo, name, url, added_at) VALUES ('other', 'me/other', 'Other', 'https://github.com/me/other', ?)",
+			)
+			.run(store.iso());
+		holdDeploy = true;
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		const res = await post("/api/projects/fairway/remove", {});
+		expect(res.status).toBe(409);
+		expect(await res.text()).toContain("Fairway has a deploy running");
+		expect(store.project("fairway")).not.toBeNull();
+		releaseDeploy(0);
+		await environments.settled();
+		expect((await post("/api/projects/fairway/remove", {})).status).toBe(200);
+	});
+
+	describe("what's deployed, from GitHub", () => {
+		const reading = (statuses: Record<number, string | null>) =>
+			new Environments({
+				store,
+				publish: () => {},
+				deployRunner: () => {
+					throw new Error("unused");
+				},
+				healthFetch: async () => ({ status: 200, error: null }),
+				cli: async (_cmd, args) => {
+					const path = args.find((a) => a.startsWith("repos/")) ?? "";
+					if (path.includes("/deployments?"))
+						return {
+							code: 0,
+							stderr: "",
+							stdout: JSON.stringify([
+								{ id: 2, sha: "newer", created_at: "2026-11-07T10:00:00Z" },
+								{ id: 1, sha: "older", created_at: "2026-11-06T10:00:00Z" },
+							]),
+						};
+					const id = Number(/deployments\/(\d+)\/statuses/.exec(path)?.[1]);
+					if (!id) return { code: 1, stderr: "", stdout: "" };
+					const state = statuses[id];
+					return state === null
+						? { code: 1, stderr: "no", stdout: "" }
+						: { code: 0, stderr: "", stdout: JSON.stringify([{ state }]) };
+				},
+			});
+		const deployedAfter = async (statuses: Record<number, string | null>) => {
+			seed();
+			const reader = reading(statuses);
+			await reader.checkAll();
+			return reader.all()[0]?.deployedSha;
+		};
+
+		it("skips a deployment that failed", async () => {
+			expect(await deployedAfter({ 2: "failure", 1: "success" })).toBe("older");
+		});
+		it("skips one that's still going", async () => {
+			expect(await deployedAfter({ 2: "in_progress", 1: "success" })).toBe("older");
+		});
+		it("takes the newest that worked", async () => {
+			expect(await deployedAfter({ 2: "success", 1: "success" })).toBe("newer");
+		});
+		it("says nothing when none worked, or GitHub didn't answer", async () => {
+			expect(await deployedAfter({ 2: "failure", 1: "error" })).toBeNull();
+		});
+		it("doesn't guess past a status it couldn't read", async () => {
+			expect(await deployedAfter({ 2: null, 1: "success" })).toBeNull();
+		});
+	});
+
 	it("won't remove an environment while it's deploying", async () => {
 		seed();
 		holdDeploy = true;

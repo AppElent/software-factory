@@ -38,9 +38,17 @@ const whoMerges = (m: Mode) =>
 		? "The factory merges once gates pass, unless the line is stopped."
 		: "You review and merge.";
 
-/** Words written for one Who merges are false after changing it, and the split button shows them when you choose. */
+const planWords: Record<Mode["plan"], string> = {
+	follow: "Plans when Settings says to.",
+	always: "Always plans first.",
+	skip: "Skips the plan.",
+};
+
+/** Words written for other choices are false after changing them, and the split button shows them when you choose. */
 const describe = (m: Mode, before: Mode) =>
-	m.merge === before.merge && m.description.trim() ? m.description : whoMerges(m);
+	m.merge === before.merge && m.plan === before.plan && m.description.trim()
+		? m.description
+		: `${planWords[m.plan]} ${whoMerges(m)}`;
 
 function ModeForm({
 	data,

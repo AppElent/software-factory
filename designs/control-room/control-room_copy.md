@@ -83,7 +83,7 @@ if pane.r1:
   In that release
   2 merged PRs
   Bug fix
-  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
   [Start work order] → WOPlan
   [Snooze] on snooze
   [Dismiss] on dismiss
@@ -213,7 +213,7 @@ Changes from Queue (`-` removed, `+` added):
 +(shell: 3 of 3 agents working · Synced 1m ago; footer Stop the line)
 -2/3
 +3/3
--  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+-  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 -  [Start work order] → WOPlan
 +  All 3 agent slots are busy. This waits in Intake and starts when a slot opens.
 +  [Add to Intake] → FloorLimit
@@ -298,7 +298,7 @@ src/rounds/score.ts:42
 Sentry issue
 FAIRWAY-W3
 Bug fix
-Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 [Start work order] → WOPlan
 [Snooze] → ErrorSnoozed
 [Dismiss] → ErrorsList
@@ -316,7 +316,7 @@ Changes from ErrorNew (`-` removed, `+` added):
 +Regression · came back 3h ago
 +This came back after a fix | WO-198 fixed it on 28 October in PR #88. It returned in release a1b2c3d.
 +[Open PR #88] → https://github.com/AppElent/golf-app/pulls
--Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+-Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 +The new work order gets the old fix and its PR as context, so the agent starts from what already failed.
 ```
 
@@ -330,7 +330,7 @@ Changes from ErrorNew (`-` removed, `+` added):
 -New · first seen 3h ago
 +Snoozed until tomorrow at 09:00
 +Snoozed until tomorrow at 09:00 | It returns to the queue sooner if it reaches 100 events or reaches users in a new release.
--Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+-Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 +You can start a fix while it is snoozed.
 -[Snooze] → ErrorSnoozed
 -[Dismiss] → ErrorsList
@@ -2731,9 +2731,9 @@ Shown after Tools when projects came back from the config file.
 | Where | Copy |
 | --- | --- |
 | Lead | `Starts a work order on Software Factory's own repo, me/software-factory.` |
-| Notice | `This repo is public, and this text can end up in commits and PRs. It's checked for your private names before it's sent.` |
+| Notice | `This repo may be public, and this text can end up in commits and PRs. It's checked for your private names before it's sent.` |
 | Footer | `Changes to security files always wait for you, in every mode.` |
-| Private match | Title `This mentions something private`. `It mentions quiet-thing. This repo is public, so this could end up in commits and PRs.` Action `Start anyway` or `Copy anyway` |
+| Private match | Title `This mentions something private`. `It mentions quiet-thing. This repo may be public, so this could end up in commits and PRs.` Action `Start anyway` or `Copy anyway` |
 | Merging mode | Title `Full send on the factory itself?`. `The factory merges this as soon as its gates pass. Changes to security files still wait for you.` Action `Start with Full send` |
 | Ready | `c3d4e5f is ready`, `Started on a spare port, and passed its smoke test`, `Update to c3d4e5f`, `Your settings and work orders stay. If c3d4e5f doesn't start or fails its check, the factory goes back to b2c3d4e on its own.` |
 | History | `Building: <title>`, `Running now, since 3d`, `Getting ready: <commit>`, `Replaced 3d ago`, or why it failed |

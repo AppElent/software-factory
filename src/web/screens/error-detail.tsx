@@ -104,7 +104,7 @@ function ErrorPage({ e }: { e: ErrorDetail }) {
 			? "You can start a fix while it is snoozed."
 			: regression
 				? "The new work order gets the old fix and its PR as context, so the agent starts from what already failed."
-				: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.";
+				: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.";
 
 	const pane = (
 		<Pane>

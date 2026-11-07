@@ -139,6 +139,17 @@ describe("cleaning up after a work order", () => {
 	};
 	const log = (id: number) => wo(id).activity.map((a) => a.text);
 
+	it("leaves a picked-up branch that isn't the factory's when its work order finishes", async () => {
+		const id = await merged();
+		store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'main' WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		clock += OBSERVE_MS + 1;
+		await settle();
+		expect(wo(id).state).toBe("done");
+		expect(gitCalls).toEqual([]);
+	});
+
 	it("removes the worktree and local branch when a merged work order finishes", async () => {
 		const id = await merged();
 		expect(gitCalls).toEqual([]);
@@ -1815,6 +1826,30 @@ describe("modes", () => {
 		).toContain("Typecheck and Lint aren't set up");
 	});
 
+	it.each([
+		["BEHIND", "MERGEABLE", true],
+		["BLOCKED", "MERGEABLE", true],
+		["DIRTY", "CONFLICTING", true],
+		["UNKNOWN", "UNKNOWN", false],
+	])(
+		"when GitHub says %s, it says why only if GitHub really won't merge",
+		async (mergeState, mergeable, says) => {
+			const id = start({ type: "Chore", mode: send });
+			await settle();
+			cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+			putPr(7, { mergeState, mergeable } as never);
+			exec.finish(threadOf(id), "Opened the PR.");
+			await settle();
+			await settle();
+			await settle();
+			expect(calls.join("\n")).not.toContain("pr merge");
+			const words = wo(id)
+				.activity.map((a) => a.text)
+				.join(" ");
+			expect(words.includes("GitHub won't merge this yet")).toBe(says);
+		},
+	);
+
 	it("says the config file is why it waits", async () => {
 		const id = start({ type: "Chore", mode: send });
 		await settle();
@@ -1874,14 +1909,21 @@ describe("modes", () => {
 		expect(calls.join("\n")).not.toContain("--match-head-commit sha1");
 	});
 
-	it("closing picked-up work leaves a branch that isn't the factory's", async () => {
+	it("closing picked-up work leaves a branch that isn't the factory's, and its folder", async () => {
 		const id = start({ source: { kind: "restored" } });
 		await settle();
-		store.patchWorkOrder(id, { branch: "feature/theirs", pr_number: 12 });
+		store.patchWorkOrder(id, { branch: "main", worktree: "/tmp/owner-work", pr_number: 12 });
 		await engine.close(id);
 		expect(calls.join("\n")).not.toContain("pr close");
-		expect(gitCalls.some((c) => c.startsWith("push origin --delete"))).toBe(false);
+		expect(gitCalls.join("\n")).not.toContain("push origin --delete");
+		expect(gitCalls.join("\n")).not.toContain("worktree remove");
+		expect(gitCalls.join("\n")).not.toContain("branch -D");
 		expect(wo(id).state).toBe("closed");
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("Left the branch main and its folder alone");
 	});
 
 	it("closing picked-up work still cleans up the factory's own branch", async () => {

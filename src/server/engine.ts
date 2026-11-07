@@ -133,6 +133,13 @@ const realGit: GitRunner = (cwd, args) =>
 /** Something already gone is what the step wanted, so it isn't a failure. */
 const ALREADY_GONE = /is not a working tree|branch '.*' not found|remote ref does not exist/i;
 
+/**
+ * Picked-up work forgot what it started as, and T3 can report any branch for its thread, even `main`. Only a branch
+ * of the factory's own, with its folder, can be the factory's to delete.
+ */
+const branchIsntOurs = (wo: WorkOrder) =>
+	wo.source.kind === "restored" && !wo.branch?.startsWith("factory/wo-");
+
 export class Engine {
 	private readonly store: Store;
 	private readonly cli: Cli;
@@ -760,9 +767,13 @@ export class Engine {
 					? this.store.issue(wo.project, wo.source.issueNumber ?? 0)
 						? `#${wo.source.issueNumber} changed since you read it, so read it again or merge this yourself.`
 						: `#${wo.source.issueNumber} isn't in the open issues any more, so merge this yourself.`
-					: !gatesClear(pr.gates) || missing.length === 0
+					: !gatesClear(pr.gates)
 						? null
-						: `${missing.join(" and ")} ${missing.length === 1 && missing[0] !== "Tests" ? "isn't" : "aren't"} set up on this project, so a merge is yours to make.`;
+						: missing.length === 0
+							? ["CLEAN", "UNKNOWN"].includes(pr.mergeState) && pr.mergeable !== "CONFLICTING"
+								? null
+								: "GitHub won't merge this yet. It goes ahead once GitHub will, or you can merge it yourself."
+							: `${missing.join(" and ")} ${missing.length === 1 && missing[0] !== "Tests" ? "isn't" : "aren't"} set up on this project, so a merge is yours to make.`;
 		if (!reason) return;
 		const key = `mode_waits:${wo.id}`;
 		if (kvGet<string>(this.store.db, key) === reason) return;
@@ -981,8 +992,7 @@ export class Engine {
 		if (wo.state === "done" || wo.state === "closed") return;
 		const project = this.store.project(wo.project);
 		// A rebase or a requested change works on someone else's PR. Closing the work order leaves that PR alone.
-		// Picked-up work forgot what it started as, but only a branch of the factory's own can be its to delete.
-		const notOurs = wo.source.kind === "restored" && !wo.branch?.startsWith("factory/wo-");
+		const notOurs = branchIsntOurs(wo);
 		const closesRemote = !opts.keepRemoteBranch && !ownsNoPr(wo.source.kind) && !notOurs;
 		if (project && closesRemote && wo.prNumber) {
 			const res = await closePr(this.cli, project.repo, wo.prNumber);
@@ -990,7 +1000,7 @@ export class Engine {
 				throw new ActionError(res.stderr.trim() || "GitHub refused to close the PR.", 502);
 		}
 		const left: string[] = [];
-		if (project?.localPath && wo.branch) {
+		if (project?.localPath && wo.branch && !notOurs) {
 			if (wo.worktree) {
 				const res = await this.gitStep(project.localPath, ["worktree", "remove", "--force", wo.worktree]);
 				if (!res.ok) left.push(`the worktree ${wo.worktree} (${res.error})`);
@@ -1012,6 +1022,11 @@ export class Engine {
 			}
 		}
 		this.store.addActivity(id, text);
+		if (notOurs && wo.branch)
+			this.store.addActivity(
+				id,
+				`Left the branch ${wo.branch} and its folder alone, because they aren't the factory's.`,
+			);
 		if (left.length > 0)
 			this.store.addActivity(id, `Couldn't delete ${left.join(", and ")}. Delete it by hand.`);
 		this.patch(id, { state: "closed", finished_at: this.store.iso() });
@@ -1029,7 +1044,7 @@ export class Engine {
 	 */
 	private async cleanUp(wo: WorkOrder, opts: { merged: boolean }) {
 		const project = this.store.project(wo.project);
-		if (!project?.localPath) return;
+		if (!project?.localPath || branchIsntOurs(wo)) return;
 		if (wo.worktree) {
 			const res = await this.gitStep(project.localPath, ["worktree", "remove", wo.worktree]);
 			if (!res.ok) {

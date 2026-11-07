@@ -76,8 +76,8 @@ function Suggest({ repo }: { repo: string | null }) {
 				{(p) => <textarea {...p} rows={7} value={text} onChange={(e) => setText(e.target.value)} />}
 			</Field>
 			<p className="m-0 text-text-muted">
-				This repo is public, and this text can end up in commits and PRs. It's checked for your private names
-				before it's sent.
+				This repo may be public, and this text can end up in commits and PRs. It's checked for your private
+				names before it's sent.
 			</p>
 			<Field label="Mode">
 				{(p) => (
@@ -109,7 +109,7 @@ function Suggest({ repo }: { repo: string | null }) {
 				}
 				description={
 					asking?.hits.length
-						? `It mentions ${asking.hits.join(", ")}. This repo is public, so this could end up in commits and PRs.${asking.merges ? ` ${mode?.name} also merges this as soon as its gates pass.` : ""}`
+						? `It mentions ${asking.hits.join(", ")}. This repo may be public, so this could end up in commits and PRs.${asking.merges ? ` ${mode?.name} also merges this as soon as its gates pass.` : ""}`
 						: "The factory merges this as soon as its gates pass. Changes to security files still wait for you."
 				}
 				action={
