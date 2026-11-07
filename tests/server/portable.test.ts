@@ -361,6 +361,18 @@ describe("picking work up from T3", () => {
 		expect(after.sort()).toEqual(["acme/app", "other/app"]);
 	});
 
+	it("makes a usable slug from a name written by hand, so the file can still be written", () => {
+		const store = freshStore();
+		writeFileSync(
+			store.file.path,
+			JSON.stringify({ version: 1, projects: [{ repo: "me/app", name: "My App", localPath: null }] }),
+		);
+		expect(restoreProjects(store)).toBe(1);
+		expect(store.projects()[0]?.slug).toBe("my-app");
+		expect(() => mirrorProjects(store)).not.toThrow();
+		expect(JSON.parse(readFileSync(store.file.path, "utf8")).projects[0].slug).toBe("my-app");
+	});
+
 	it("doesn't take a fork's PR for the thread's", async () => {
 		const store = setup();
 		thread("t1", "factory/wo-40-x", "completed");

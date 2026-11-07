@@ -93,7 +93,7 @@ export function restoreProjects(store: Store): number {
 		// A file written by hand can leave slugs out, and two repos can share a name. Both still come back.
 		const taken = (slug: string) => store.db.prepare("SELECT 1 FROM projects WHERE slug = ?").get(slug);
 		const dashed = p.repo.replace("/", "-").toLowerCase();
-		let slug = [p.slug, name.toLowerCase(), dashed].find((s) => s && !taken(s));
+		let slug = [p.slug, name.toLowerCase().replace(/[^\w.-]+/g, "-"), dashed].find((s) => s && !taken(s));
 		for (let n = 2; !slug; n++) if (!taken(`${dashed}-${n}`)) slug = `${dashed}-${n}`;
 		restored += insert.run(
 			slug,

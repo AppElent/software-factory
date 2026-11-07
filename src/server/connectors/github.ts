@@ -501,6 +501,7 @@ export async function prByBranch(
 	cli: Cli,
 	repo: string,
 	branch: string,
+	since: string,
 ): Promise<number | null | typeof PR_UNREADABLE> {
 	const res = await cli("gh", [
 		"pr",
@@ -512,15 +513,23 @@ export async function prByBranch(
 		"--state",
 		"all",
 		"--json",
-		"number,state,isCrossRepository",
+		"number,state,isCrossRepository,createdAt",
 	]);
 	if (res.code !== 0) return PR_UNREADABLE;
 	try {
 		const parsed = z
-			.array(z.object({ number: z.number(), isCrossRepository: z.boolean().optional() }))
+			.array(
+				z.object({
+					number: z.number(),
+					isCrossRepository: z.boolean().optional(),
+					createdAt: z.string().optional(),
+				}),
+			)
 			.safeParse(JSON.parse(res.stdout));
 		if (!parsed.success) return PR_UNREADABLE;
-		return parsed.data.find((pr) => !pr.isCrossRepository)?.number ?? null;
+		// A new database can reuse a number, and so a branch name. A PR from before this run isn't this run's.
+		const fresh = (at?: string) => !at || Date.parse(at) >= Date.parse(since);
+		return parsed.data.find((pr) => !pr.isCrossRepository && fresh(pr.createdAt))?.number ?? null;
 	} catch {
 		return PR_UNREADABLE;
 	}

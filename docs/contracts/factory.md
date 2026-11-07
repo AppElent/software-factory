@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.7.3
+version: 2.7.4
 status: current
 ---
 
@@ -25,7 +25,7 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 - When a merged work order finishes Observe, the factory removes its worktree and local branch. When its PR is closed outside the factory, it removes only the worktree. A worktree with uncommitted changes stays, and the activity says so.
 - Closing a PR keeps the branch on GitHub and closes its work order.
 - A PR belongs to the work order whose branch it's on from the moment GitHub shows it, so merging refuses while that agent is still working, and while changes you asked for are waiting, failed, or never pushed. Try again or Close is the way past it.
-- Closing a work order closes its PR first. If GitHub refuses, nothing else changes.
+- Closing a work order closes its PR first. If GitHub refuses, nothing else changes. Picked-up work on a branch that isn't the factory's only closes the work order: the branch, its folder and any PR stay.
 - Merging is refused when the factory hasn't read the project from GitHub for 15 minutes. Merge without me also waits for that, and for a paused project.
 
 ## Agents

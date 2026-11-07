@@ -1808,6 +1808,43 @@ describe("modes", () => {
 		);
 	});
 
+	it("doesn't take a PR from before this run for this run's, even one that merged", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{ number: 4, state: "MERGED", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).toBe("run_failed");
+		expect(wo(id).failure).toBe("The agent finished without opening a PR.");
+		expect(gitCalls.join("\n")).not.toContain("branch -D");
+	});
+
+	it("takes a PR this run opened, even if the agent merged it already", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{
+					number: 8,
+					state: "MERGED",
+					isCrossRepository: false,
+					createdAt: new Date(clock + 1000).toISOString(),
+				},
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBe(8);
+	});
+
 	it("says which gates aren't set up, and waits", async () => {
 		const id = start({ type: "Chore", mode: send });
 		await settle();

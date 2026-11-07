@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { ownsNoPr } from "../../shared/rules.ts";
+import { branchIsntOurs, ownsNoPr } from "../../shared/rules.ts";
 import type { ActivityEntry, Plan, WorkOrder } from "../../shared/types.ts";
 import { api } from "../api.ts";
 import { ago, clock, plural, span } from "../format.ts";
@@ -343,11 +343,13 @@ function WorkOrderPage({
 				<span className="flex flex-col gap-2">
 					<strong className="font-semibold">Close WO-{id}?</strong>
 					<span className="text-meta text-text-muted">
-						{ownsNoPr(wo.source.kind)
-							? `This deletes the worktree. PR #${wo.prNumber} stays open.`
-							: wo.prNumber
-								? `This closes PR #${wo.prNumber} and deletes the worktree and the branch.`
-								: "This deletes the worktree and the branch."}
+						{branchIsntOurs(wo)
+							? "This only closes the work order. The branch, its folder and any PR stay, because they aren't the factory's."
+							: ownsNoPr(wo.source.kind)
+								? `This deletes the worktree. PR #${wo.prNumber} stays open.`
+								: wo.prNumber
+									? `This closes PR #${wo.prNumber} and deletes the worktree and the branch.`
+									: "This deletes the worktree and the branch."}
 						{wo.source.kind === "error" && " The original error stays in the queue."}
 					</span>
 				</span>

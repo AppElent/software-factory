@@ -3018,3 +3018,9 @@ Shown on every page while the config file can't be read.
 | --- | --- |
 | Banner title | `Your config file can't be used.` |
 | Banner body | `{why} Modes, environments and settings may show their defaults, because the file can't say what you set. Nothing merges on its own until it's fixed.` |
+
+## Closing picked-up work on someone else's branch
+
+| Element | Copy |
+| --- | --- |
+| Close dialog body | `This only closes the work order. The branch, its folder and any PR stay, because they aren't the factory's.` |

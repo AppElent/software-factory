@@ -633,3 +633,10 @@ export const slugify = (text: string, max = 40) =>
 		.replace(/^-+|-+$/g, "")
 		.slice(0, max)
 		.replace(/-+$/, "");
+
+/**
+ * Picked-up work forgot what it started as, and T3 can report any branch for its thread, even `main`. Only a branch
+ * of the factory's own, with its folder, can be the factory's to delete.
+ */
+export const branchIsntOurs = (wo: { source: { kind: string }; branch: string | null }) =>
+	wo.source.kind === "restored" && !wo.branch?.startsWith("factory/wo-");

@@ -4,6 +4,7 @@ import {
 	agentHoldsMerge,
 	allFourPassed,
 	anyGate,
+	branchIsntOurs,
 	failedGate,
 	gatesClear,
 	gatesPassed,
@@ -132,13 +133,6 @@ const realGit: GitRunner = (cwd, args) =>
 
 /** Something already gone is what the step wanted, so it isn't a failure. */
 const ALREADY_GONE = /is not a working tree|branch '.*' not found|remote ref does not exist/i;
-
-/**
- * Picked-up work forgot what it started as, and T3 can report any branch for its thread, even `main`. Only a branch
- * of the factory's own, with its folder, can be the factory's to delete.
- */
-const branchIsntOurs = (wo: WorkOrder) =>
-	wo.source.kind === "restored" && !wo.branch?.startsWith("factory/wo-");
 
 export class Engine {
 	private readonly store: Store;
@@ -481,7 +475,8 @@ export class Engine {
 		if (wo.stage === "Build") {
 			const project = this.store.project(wo.project);
 			const number =
-				wo.prNumber ?? (project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch) : null);
+				wo.prNumber ??
+				(project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch, wo.createdAt) : null);
 			// GitHub didn't answer, which says nothing about the agent. The next pass asks again.
 			if (number === PR_UNREADABLE) return;
 			if (!number) {
