@@ -502,7 +502,10 @@ export function parseReply(reply: string): ParsedReply {
 }
 
 /** Characters that show as nothing, so a person reading the text can't see what they carry. */
-const INVISIBLE = /[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu;
+const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+/** The same, leaving what normal emoji are made of. One joiner between emoji, or one selector after one. */
+const LOOKS_HIDDEN =
+	/(?!(?<=\p{Extended_Pictographic}\uFE0F?)\u200D(?=\p{Extended_Pictographic}))(?!(?<=[\p{Extended_Pictographic}0-9#*])\uFE0F)[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 
 /** Leaves lines and tabs. A lone carriage return can end a heredoc once it's pasted, and escapes can end a paste. */
 export function stripControls(text: string): string {
@@ -534,7 +537,6 @@ const RUN_PATTERNS = [
 	/\b(?:curl|wget)\b[^\n|]{0,120}\|\s*(?:ba|z)?sh\b/gi,
 	/\b(?:please |first |must )?(?:run|execute)\b[^.\n]{0,40}\b(?:script|\.sh|\.ps1|installer)\b[^\n]{0,60}/gi,
 ];
-const HIDDEN_PATTERNS = [/<!--[\s\S]*?-->/g, INVISIBLE];
 const LINK = /https?:\/\/[^\s)>\]"']+/gi;
 
 export interface SuspectRange {
@@ -550,7 +552,13 @@ export function suspectRanges(text: string): SuspectRange[] {
 		for (const re of patterns)
 			for (const m of text.matchAll(re)) found.push({ start: m.index, end: m.index + m[0].length, why });
 	};
-	scan(HIDDEN_PATTERNS, "hidden");
+	scan([LOOKS_HIDDEN], "hidden");
+	// Not a regex, because a body of nothing but `<!--` would take one quadratic time. Unclosed hides the rest.
+	for (let open = text.indexOf("<!--"); open >= 0; ) {
+		const close = text.indexOf("-->", open + 4);
+		found.push({ start: open, end: close < 0 ? text.length : close + 3, why: "hidden" });
+		open = close < 0 ? -1 : text.indexOf("<!--", close + 3);
+	}
 	scan(AGENT_PATTERNS, "agent");
 	scan(RUN_PATTERNS, "run");
 	const out: SuspectRange[] = [];

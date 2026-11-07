@@ -1678,6 +1678,77 @@ describe("modes", () => {
 		).toContain("#9 changed since you read it");
 	});
 
+	it("waits, and says why, when the issue left the list", async () => {
+		const issue = {
+			number: 9,
+			title: "A title",
+			body: "Words",
+			bodyHash: "h1",
+			url: "https://github.com/me/fairway/issues/9",
+			author: "OUTSIDER",
+			authorAssociation: "NONE",
+			labels: [],
+			comments: 0,
+			createdAt: new Date(clock).toISOString(),
+			updatedAt: new Date(clock).toISOString(),
+		};
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, Chore: true } });
+		store.saveIssues("fairway", [issue] as never);
+		const id = start({ type: "Chore", mode: send, source: { kind: "issue", issueNumber: 9 } });
+		await settle();
+		store.saveIssues("fairway", []);
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.join("\n")).not.toContain("pr merge");
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("#9 isn't in the open issues any more");
+	});
+
+	it.each([
+		["Merge without me", false],
+		["a mode that merges", true],
+	])("doesn't merge with %s while the config file is broken", async (_, byMode) => {
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, Chore: !byMode } });
+		const id = start({ type: "Chore", ...(byMode ? { mode: send } : {}) });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		writeFileSync(store.file.path, "{ nope");
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.join("\n")).not.toContain("pr merge");
+	});
+
+	it("waits, and says so once, when a PR has more files than GitHub lists", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		cliResult["/files"] = { code: 0, stdout: `${"a.ts\n".repeat(3000)}` };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.filter((c) => c.includes("/files"))).toHaveLength(1);
+		expect(calls.find((c) => c.includes("/files"))).toContain("per_page=100");
+		expect(wo(id).activity.filter((a) => a.text.includes("too many files"))).toHaveLength(1);
+	});
+
 	it("never merges picked-up work on its own, even with Merge without me on", async () => {
 		const approvals = store.settings().approvals;
 		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, "Bug fix": true } });

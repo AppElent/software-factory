@@ -1,11 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
 import { writeNeverTouch } from "../../src/server/config.ts";
-import { kvGet, openDb } from "../../src/server/db.ts";
+import { kvGet, kvSet, openDb } from "../../src/server/db.ts";
 import { FakeExecutor } from "../../src/server/executor/fake.ts";
+import { ExecutorError } from "../../src/server/executor/types.ts";
 import { mirrorProjects, PICK_UP, rebuildWorkOrders, restoreProjects } from "../../src/server/portable.ts";
 import { Store } from "../../src/server/store.ts";
 
@@ -181,6 +182,67 @@ describe("deleting the data folder", () => {
 	});
 });
 
+describe("a config file with a typo at first start", () => {
+	const twoProjects = () => {
+		const before = freshStore();
+		addProject(before, "fairway");
+		addProject(before, "ledger");
+		mirrorProjects(before);
+		return readFileSync(before.file.path, "utf8");
+	};
+
+	it("still brings its projects in once it's fixed, keeping one you added meanwhile", () => {
+		const good = twoProjects();
+		writeFileSync(join(configDir, "config.json"), "{ nope");
+		const store = freshStore();
+		expect(restoreProjects(store)).toBe(0);
+		addProject(store, "added");
+		mirrorProjects(store);
+		writeFileSync(store.file.path, good);
+		mirrorProjects(store);
+		expect(JSON.parse(readFileSync(store.file.path, "utf8")).projects).toHaveLength(2);
+		expect(restoreProjects(store)).toBe(2);
+		mirrorProjects(store);
+		const repos = JSON.parse(readFileSync(store.file.path, "utf8")).projects.map(
+			(p: { repo: string }) => p.repo,
+		);
+		expect(repos.sort()).toEqual(["me/added", "me/fairway", "me/ledger"]);
+		expect(kvGet(store.db, "new_device")).not.toBe(true);
+		// Done is done.
+		expect(restoreProjects(store)).toBe(0);
+	});
+});
+
+describe("fields from a newer version", () => {
+	it("stay on a project entry when the list is mirrored", () => {
+		const store = freshStore();
+		addProject(store, "fairway");
+		mirrorProjects(store);
+		const data = JSON.parse(readFileSync(store.file.path, "utf8"));
+		data.projects[0].fromNewer = 1;
+		data.modes = [
+			{
+				id: "x",
+				name: "X",
+				description: "",
+				prompt: "",
+				plan: "follow",
+				merge: "you",
+				provider: null,
+				model: null,
+				builtin: false,
+				fromNewer: 2,
+			},
+		];
+		writeFileSync(store.file.path, JSON.stringify(data));
+		store.db.prepare("UPDATE projects SET name = 'Renamed'").run();
+		mirrorProjects(store);
+		const after = JSON.parse(readFileSync(store.file.path, "utf8"));
+		expect(after.projects[0]).toMatchObject({ name: "Renamed", fromNewer: 1 });
+		expect(after.modes[0].fromNewer).toBe(2);
+	});
+});
+
 describe("picking work up from T3", () => {
 	const setup = () => {
 		const store = freshStore();
@@ -230,6 +292,65 @@ describe("picking work up from T3", () => {
 		];
 		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
 		expect(store.workOrders()).toEqual([]);
+	});
+
+	it("asks again when GitHub couldn't say whether a finished thread has a PR", async () => {
+		const store = setup();
+		thread("t1", "factory/wo-9-add-export", "completed");
+		openPrs["factory/wo-9-add-export"] = 41;
+		threads = [{ threadId: "t1", title: "WO-9 Add export", settled: false }];
+		kvSet(store.db, PICK_UP, true);
+		const noGh: Cli = async (cmd, args, o) =>
+			cmd === "gh"
+				? { code: 4, stdout: "", stderr: "not signed in", timedOut: false, missing: false }
+				: cli(cmd, args, o);
+		expect(await rebuildWorkOrders(store, noGh, exec)).toBe(0);
+		expect(kvGet(store.db, PICK_UP)).toBe(true);
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
+		expect(kvGet(store.db, PICK_UP)).toBe(false);
+	});
+
+	it("asks again when T3's answer can't be read, or a thread's state can't", async () => {
+		const store = setup();
+		thread("t1", "factory/wo-7-fix-login", "running");
+		threads = [{ threadId: "t1", title: "WO-7 Fix login", settled: false }];
+		kvSet(store.db, PICK_UP, true);
+		const garbled: Cli = async (cmd, args, o) =>
+			cmd === "t3"
+				? { code: 0, stdout: "oops", stderr: "", timedOut: false, missing: false }
+				: cli(cmd, args, o);
+		await rebuildWorkOrders(store, garbled, exec);
+		expect(kvGet(store.db, PICK_UP)).toBe(true);
+		const status = vi.spyOn(exec, "status").mockRejectedValueOnce(new ExecutorError("T3 is busy"));
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
+		expect(kvGet(store.db, PICK_UP)).toBe(true);
+		status.mockRestore();
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
+		expect(kvGet(store.db, PICK_UP)).toBe(false);
+	});
+
+	it("keeps a thread whose number was taken while T3 wasn't answering, and only once", async () => {
+		const store = setup();
+		const taken = store.insertWorkOrder({
+			project: "fairway",
+			type: "Chore",
+			title: "Started meanwhile",
+			description: "",
+			source: { kind: "person" },
+			agent: "t3",
+		});
+		thread("t1", `factory/wo-${taken}-old`, "running");
+		threads = [{ threadId: "t1", title: `WO-${taken} Old work`, settled: false }];
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
+		expect(store.workOrder(taken)?.title).toBe("Started meanwhile");
+		expect(
+			store
+				.workOrders()
+				.map((w) => w.title)
+				.sort(),
+		).toEqual(["Old work", "Started meanwhile"]);
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(0);
+		expect(store.workOrders()).toHaveLength(2);
 	});
 
 	it("starts new numbers above every number T3 knows", async () => {

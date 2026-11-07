@@ -76,13 +76,7 @@ poller = new Poller({
 	engine: () => engine,
 	publish: bus.publish,
 	onRegression: (r) => {
-		const approvals = store.settings().approvals;
-		if (approvals.mergeWithoutMe[r.type]) {
-			approvals.mergeWithoutMe[r.type] = false;
-			approvals.turnedOffByRegression[r.type] = true;
-			store.saveApprovals(approvals);
-			bus.publish(["settings", "health"]);
-		}
+		if (store.stopMergingAfterRegression(r.type)) bus.publish(["settings", "health"]);
 	},
 	onRead: () => notifier.observe(readItemsForNotify(store)),
 });
@@ -171,6 +165,7 @@ const heartbeat = setInterval(() => {
 	if (config.demo) return;
 	// A typo in the config file or the Never touch file is yours to fix, and must not take the service down.
 	try {
+		store.settleRegressions();
 		restoreProjects(store);
 		mirrorProjects(store);
 		beats += 1;

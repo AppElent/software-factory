@@ -38,6 +38,8 @@ export type DeployRunner = (command: string, cwd: string, onOutput: (text: strin
 export type HealthFetch = (url: string) => Promise<{ status: number | null; error: string | null }>;
 
 const EXIT_GRACE_MS = 2000;
+/** The most of one unfinished line a deploy log holds back. */
+const HOLD_MAX = 8192;
 
 export const realDeployRunner: DeployRunner = (command, cwd, onOutput) => {
 	// Its own process group, so Stop reaches whatever the command started.
@@ -207,7 +209,10 @@ export class Environments {
 		const names = environments.map((e) => e.name.toLowerCase());
 		if (new Set(names).size !== names.length)
 			throw new ActionError("Two environments have the same name.", 400);
-		this.d.store.file.update((c) => ({ ...c, environments: { ...c.environments, [slug]: environments } }));
+		this.d.store.file.update((c) => ({
+			...c,
+			environments: { ...c.environments, [slug]: environments.map((e) => ({ ...e })) },
+		}));
 		const keep = new Set(environments.map((e) => e.name));
 		const rows = this.d.store.db.prepare("SELECT env FROM env_health WHERE project = ?").all(slug) as Array<{
 			env: string;
@@ -476,19 +481,34 @@ export class Environments {
 				store.db.prepare("UPDATE deploys SET log = ? WHERE id = ?").run(log, id);
 				publish([`deploy:${id}`, "environments"]);
 			};
-			const run = deployRunner(env.deployCommand, project.localPath, (text) => {
-				// The whole log, because a token can arrive in two pieces.
+			let tail = "";
+			let ended = false;
+			const add = (text: string) => {
 				log = scrub(`${log}${text}`).slice(-LOG_MAX);
-				if (Date.now() - flushed >= FLUSH_MS) flush();
-			});
+			};
+			// Stop was pressed while this was getting ready, so there's nothing to start.
+			const run: ReturnType<DeployRunner> = slot.stopping
+				? { kill: () => {}, done: Promise.resolve(1) }
+				: deployRunner(env.deployCommand, project.localPath, (text) => {
+						// Something the command left running can keep writing. Its pipes stay open, so it isn't killed.
+						if (ended) return;
+						tail += text;
+						// A token can arrive in two pieces, so a line waits until it's whole.
+						const cut = Math.max(tail.lastIndexOf("\n"), tail.lastIndexOf("\r")) + 1;
+						const upTo = cut > 0 ? cut : tail.length >= HOLD_MAX ? tail.length : 0;
+						if (upTo === 0) return;
+						add(tail.slice(0, upTo));
+						tail = tail.slice(upTo);
+						if (Date.now() - flushed >= FLUSH_MS) flush();
+					});
 			slot.kill = run.kill;
 			slot.done = run.done;
-			// Stop was pressed while this was still getting ready.
-			if (slot.stopping) run.kill();
 			publish(["environments", "shell"]);
 			void run.done
 				.catch(() => 1)
 				.then((code) => {
+					ended = true;
+					add(tail);
 					const state = slot.stopping ? "stopped" : code === 0 ? "passed" : "failed";
 					store.db
 						.prepare("UPDATE deploys SET state = ?, finished_at = ?, exit_code = ?, log = ? WHERE id = ?")

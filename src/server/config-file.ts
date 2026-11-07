@@ -65,10 +65,10 @@ const Schema = z
 	.object({
 		version: z.literal(1).default(1),
 		settings: z.record(z.string(), z.unknown()).default({}),
-		modes: z.array(ModeSchema).optional(),
+		modes: z.array(ModeSchema.loose()).optional(),
 		defaultMode: z.string().optional(),
-		environments: z.record(z.string(), z.array(EnvironmentSchema)).default({}),
-		projects: z.array(ProjectEntrySchema).default([]),
+		environments: z.record(z.string(), z.array(EnvironmentSchema.loose())).default({}),
+		projects: z.array(ProjectEntrySchema.loose()).default([]),
 		// A key this version doesn't know may belong to a newer one, or to you.
 	})
 	.loose();

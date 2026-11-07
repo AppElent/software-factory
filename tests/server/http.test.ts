@@ -39,6 +39,9 @@ let deployed: Array<{ command: string; cwd: string }>;
 let health: { status: number | null; error: string | null };
 let deployExit: number;
 let holdDeploy = false;
+let beforeGitLog: (() => Promise<void>) | null = null;
+let runnerOutput: string[] = [];
+let lateOutput: (text: string) => void = () => {};
 let releaseDeploy: (code: number) => void = () => {};
 let calls: string[];
 let notifyCode = 0;
@@ -47,6 +50,7 @@ let app: ReturnType<typeof createApp>;
 
 const cli: Cli = async (cmd, args) => {
 	calls.push(`${cmd} ${args.join(" ")}`);
+	if (cmd === "git" && args.includes("log")) await beforeGitLog?.();
 	if (cmd === "git" && args[0] === "remote")
 		return { code: 0, stdout: origin, stderr: "", timedOut: false, missing: false };
 	if (cmd === "terminal-notifier")
@@ -96,6 +100,7 @@ beforeEach(() => {
 	deployed = [];
 	health = { status: 200, error: null };
 	deployExit = 0;
+	runnerOutput = ["building\nghp_abcdefghij", "1234567890 done\n"];
 	environments = new Environments({
 		store,
 		cli,
@@ -103,8 +108,8 @@ beforeEach(() => {
 		deployRunner: (command, cwd, onOutput) => {
 			deployed.push({ command, cwd });
 			// In two pieces, as a pipe can deliver it.
-			onOutput("building\nghp_abcdefghij");
-			onOutput("1234567890 done\n");
+			for (const piece of runnerOutput) onOutput(piece);
+			lateOutput = onOutput;
 			let finish: (code: number) => void = () => {};
 			const done = new Promise<number>((r) => {
 				finish = r;
@@ -520,6 +525,39 @@ describe("environments", () => {
 		expect(run?.state).toBe("passed");
 		expect(run?.log).toContain("building");
 		expect(run?.log).not.toContain("ghp_abcdefghij1234567890");
+	});
+
+	it("keeps a token whole when it arrives in pieces, and shows a line left unfinished", async () => {
+		seed();
+		runnerOutput = ["ok\nx=ghp_abcdefghijkl", "mnopqrstuvwx\n", "no newline at the end"];
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		await environments.settled();
+		const { log } = (await view("Staging")).deploy ?? {};
+		expect(log).not.toContain("mnopqr");
+		expect(log).toContain("no newline at the end");
+	});
+
+	it("stops listening when the command has finished", async () => {
+		seed();
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		await environments.settled();
+		// Long enough after the last write that the log would be saved again.
+		const later = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+		lateOutput("a background process still talking\n");
+		later.mockRestore();
+		expect((await view("Staging")).deploy?.log).not.toContain("still talking");
+	});
+
+	it("doesn't start a deploy you stopped while it got ready", async () => {
+		seed();
+		beforeGitLog = async () => {
+			beforeGitLog = null;
+			await post("/api/environments/stop", { project: "fairway", env: "Staging" });
+		};
+		await post("/api/environments/deploy", { project: "fairway", env: "Staging" });
+		await environments.settled();
+		expect(deployed).toEqual([]);
+		expect((await view("Staging")).deploy?.state).toBe("stopped");
 	});
 
 	it("takes no command from the page", async () => {

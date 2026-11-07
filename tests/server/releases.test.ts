@@ -36,6 +36,8 @@ let base: string;
 let dir: string;
 let head: string;
 let checkRuns: Array<{ status: string; conclusion: string | null }>;
+let totalRuns: number | null;
+let onChecks: (() => void) | null;
 let status: { state: string; total_count: number };
 let committed: string;
 let failing: string | null;
@@ -58,7 +60,10 @@ const cli: Cli = async (cmd, args) => {
 				commit: { message: "Add a filter (#48)\n\nLonger text", committer: { date: committed } },
 			}),
 		);
-	if (line.endsWith("/check-runs?per_page=100")) return ok(JSON.stringify({ check_runs: checkRuns }));
+	if (line.endsWith("/check-runs?per_page=100")) {
+		onChecks?.();
+		return ok(JSON.stringify({ check_runs: checkRuns, total_count: totalRuns ?? checkRuns.length }));
+	}
 	if (line.endsWith("/status")) return ok(JSON.stringify(status));
 	if (line.startsWith("git remote")) return ok("https://github.com/me/software-factory.git\n");
 	if (line.startsWith("git clone")) mkdirSync(args.at(-1) as string, { recursive: true });
@@ -93,6 +98,8 @@ beforeEach(() => {
 	mkdirSync(join(base, "checkout"));
 	head = B;
 	checkRuns = [{ status: "completed", conclusion: "success" }];
+	totalRuns = null;
+	onChecks = null;
 	status = { state: "pending", total_count: 0 };
 	committed = "2026-01-01T00:00:00Z";
 	failing = null;
@@ -436,6 +443,46 @@ describe("the guard", () => {
 	});
 });
 
+describe("what's on disk wins", () => {
+	it("corrects the list after a crash between moving current and saving", () => {
+		seed([row(B, "ready"), row(A, "running")]);
+		const r = make(B);
+		r.start();
+		r.stop();
+		expect(saved().find((v) => v.sha === B)?.state).toBe("running");
+		expect(saved().find((v) => v.sha === A)?.state).toBe("replaced");
+	});
+
+	it("doesn't count a commit with more checks than one page shows", async () => {
+		seed([row(B, "ready"), row(A, "running")]);
+		mkdirSync(join(dir, B));
+		symlinkSync(A, join(dir, "current"));
+		totalRuns = 101;
+		await expect(make(A).activate(B)).rejects.toThrow(/aren't green/);
+	});
+
+	it("stops if the version went away while its checks were read", async () => {
+		seed([row(B, "ready"), row(A, "running")]);
+		mkdirSync(join(dir, B));
+		symlinkSync(A, join(dir, "current"));
+		onChecks = () => rmSync(join(dir, B), { recursive: true });
+		await expect(make(A).activate(B)).rejects.toThrow(/isn't ready/);
+		expect(readlinkSync(join(dir, "current"))).toBe(A);
+		expect(guards).toEqual([]);
+	});
+
+	it("stops if a deploy started while its checks were read", async () => {
+		seed([row(B, "ready"), row(A, "running")]);
+		mkdirSync(join(dir, B));
+		symlinkSync(A, join(dir, "current"));
+		onChecks = () => {
+			busy = "A deploy is running.";
+		};
+		await expect(make(A).activate(B)).rejects.toThrow(/deploy is running/);
+		expect(readlinkSync(join(dir, "current"))).toBe(A);
+	});
+});
+
 describe("private names", () => {
 	const terms = privateTerms({
 		privateProjects: [{ name: "Secret Client", repo: "me/secret-client" }],
@@ -465,6 +512,24 @@ describe("private names", () => {
 			expect(privateHits(text, terms)).toEqual([]);
 		},
 	);
+
+	it.each([
+		["~/Developer/acme", "the acme portal", "for every developer"],
+		["/Users/someone/work/clients/acme", "the acme portal", "the network"],
+		["acme-*-portal", "the acme bug", "nothing here"],
+		["acme-*-portal", "the portal", "nothing here"],
+		["acme/secretrepo", "the acme bug", "nothing here"],
+	])("reads the rule %s as finding %s but not %s", (rule, hit, miss) => {
+		const t = privateTerms({
+			privateProjects: [],
+			neverTouch: [rule],
+			home: "/Users/someone",
+			cloneFolder: "/Users/someone/Developer",
+			email: null,
+		});
+		expect(privateHits(hit, t).length).toBeGreaterThan(0);
+		expect(privateHits(miss, t)).toEqual([]);
+	});
 
 	it("leaves out terms too short to mean anything", () => {
 		const short = privateTerms({

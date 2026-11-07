@@ -38,6 +38,7 @@ import { NeverTouchError } from "./config.ts";
 import {
 	closePr,
 	failedLog,
+	MOST_FILES_GITHUB_LISTS,
 	mergePr,
 	PR_UNREADABLE,
 	prByBranch,
@@ -658,10 +659,12 @@ export class Engine {
 		const project = this.store.project(wo.project);
 		const approvals = this.store.settings().approvals;
 		const byMode = wo.mode?.merge === "factory";
-		const unreadIssue =
-			wo.source.kind === "issue" &&
-			!!wo.source.issueNumber &&
-			this.store.issue(wo.project, wo.source.issueNumber)?.locked === true;
+		// An issue that left the list can't be vouched for any more, so it counts the same as one that changed.
+		const issue =
+			wo.source.kind === "issue" && wo.source.issueNumber
+				? this.store.issue(wo.project, wo.source.issueNumber)
+				: undefined;
+		const unreadIssue = wo.source.kind === "issue" && (!issue || issue.locked);
 		if (project && byMode) this.sayWhyModeWaits(wo, pr, project, unreadIssue);
 		if (
 			!project ||
@@ -671,6 +674,8 @@ export class Engine {
 			pr.heldBy ||
 			this.staleRead(project) ||
 			this.store.line().stopped ||
+			// A config file that can't be read can't say what you wanted.
+			this.store.file.error() ||
 			!mayMergeAlone({
 				on: approvals.mergeWithoutMe[wo.type] || byMode,
 				byMode,
@@ -692,6 +697,12 @@ export class Engine {
 		const paths = await tryReadPrPaths(this.cli, project.repo, pr.number);
 		// Not knowing what it changes is a reason to wait. The next pass reads it again.
 		if (paths === null) return;
+		if (paths.length >= MOST_FILES_GITHUB_LISTS) {
+			kvSet(this.store.db, refusedKey, pr.headSha);
+			this.store.addActivity(wo.id, "This changes too many files to check, so it waits for you");
+			this.publish([`work-order:${wo.id}`]);
+			return;
+		}
 		const held = ownerOnlyFiles(paths, project.repo.toLowerCase() === this.selfRepo?.toLowerCase());
 		if (held.length > 0) {
 			kvSet(this.store.db, refusedKey, pr.headSha);
@@ -725,7 +736,9 @@ export class Engine {
 			project.merging === "ask"
 				? `${project.name} is set to ask you before merging.`
 				: unreadIssue
-					? `#${wo.source.issueNumber} changed since you read it, so read it again or merge this yourself.`
+					? this.store.issue(wo.project, wo.source.issueNumber ?? 0)
+						? `#${wo.source.issueNumber} changed since you read it, so read it again or merge this yourself.`
+						: `#${wo.source.issueNumber} isn't in the open issues any more, so merge this yourself.`
 					: !gatesClear(pr.gates)
 						? null
 						: pr.gates.Tests !== "passed"

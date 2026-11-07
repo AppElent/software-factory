@@ -797,9 +797,12 @@ export function createApp(d: AppDeps): Hono {
 			privateProjects: store.projects().filter((p) => p.isPrivate || !p.readAt),
 			neverTouch: store.neverTouch(),
 			home: homedir(),
+			cloneFolder: store.settings().projects.cloneFolder,
 			email: email.code === 0 ? email.stdout.trim() : null,
 		});
 	};
+
+	let selfClone: ReturnType<typeof cloneRepo> | null = null;
 
 	/** Adds the factory's own repo when it isn't in yet. A version's folder gets replaced, so it needs a real clone. */
 	const needSelfProject = async () => {
@@ -813,11 +816,16 @@ export function createApp(d: AppDeps): Hono {
 		const { kept } = filterNeverTouch(store.neverTouch(), [{ repo: self.repo, path }]);
 		if (kept.length === 0) throw new ActionError("A Never touch rule matches that repo.", 403);
 		if (inVersion && !config.demo) {
+			// A second click waits for the first clone, so a failure can't remove a clone that's still going.
+			if (selfClone) await selfClone;
 			if (existsSync(path)) {
 				if (!(await isCheckoutOf(path, self.repo)))
 					throw new ActionError(`${path} holds something else.`, 409);
 			} else {
-				const res = await cloneRepo(cli, self.repo, path);
+				selfClone = cloneRepo(cli, self.repo, path).finally(() => {
+					selfClone = null;
+				});
+				const res = await selfClone;
 				if (res.code !== 0) {
 					rmSync(path, { recursive: true, force: true });
 					throw new ActionError(`Couldn't clone ${self.repo}. ${scrub(res.stderr).slice(0, 200)}`, 502);

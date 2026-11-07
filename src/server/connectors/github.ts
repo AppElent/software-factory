@@ -438,23 +438,23 @@ export async function tryReadPrFiles(cli: Cli, repo: string, number: number) {
 	}
 }
 
-const MOST_FILES_GITHUB_LISTS = 3000;
+export const MOST_FILES_GITHUB_LISTS = 3000;
 
 /**
- * Every path a PR touches, including the old name of a moved file, or null when GitHub didn't say or stopped
- * listing. This one guards merges, and `gh pr view` lists 100 files at most.
+ * Every path a PR touches, including the old name of a moved file, or null when GitHub didn't say. GitHub stops
+ * listing at MOST_FILES_GITHUB_LISTS, so a list that long may not be all of it. This one guards merges, and
+ * `gh pr view` lists 100 files at most.
  */
 export async function tryReadPrPaths(cli: Cli, repo: string, number: number): Promise<string[] | null> {
 	const res = await cli("gh", [
 		"api",
 		"--paginate",
-		`repos/${repo}/pulls/${number}/files`,
+		`repos/${repo}/pulls/${number}/files?per_page=100`,
 		"--jq",
 		".[] | .filename, (.previous_filename // empty)",
 	]);
 	if (res.code !== 0) return null;
-	const paths = res.stdout.split("\n").filter(Boolean);
-	return paths.length >= MOST_FILES_GITHUB_LISTS ? null : paths;
+	return res.stdout.split("\n").filter(Boolean);
 }
 
 export async function readPrFiles(cli: Cli, repo: string, number: number) {

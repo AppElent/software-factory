@@ -61,6 +61,7 @@ export async function realSmoke(dir: string, sha: string) {
 			SF_DEMO: "1",
 			SF_PORT: String(port),
 			SF_DATA_DIR: data,
+			SF_CONFIG_DIR: data,
 			SF_RELEASES_DIR: dirname(dir),
 		},
 		stdio: "ignore",
@@ -184,6 +185,7 @@ export class Releases {
 		// A restart cuts off whatever was getting ready. It gets a new try.
 		const cut = this.rows().filter((r) => r.state === "preparing");
 		if (cut.length > 0) this.save(this.rows().filter((r) => r.state !== "preparing"));
+		this.settleRows();
 		for (const r of cut) {
 			rmSync(join(this.d.dir, `.tmp-${r.sha}`), { recursive: true, force: true });
 			rmSync(join(this.d.dir, r.sha), { recursive: true, force: true });
@@ -198,6 +200,17 @@ export class Releases {
 
 	stop() {
 		if (this.timer) clearInterval(this.timer);
+	}
+
+	/** What's actually running wins. A crash between moving `current` and saving leaves the list behind. */
+	private settleRows() {
+		const sha = this.running();
+		const rows = this.rows();
+		const next = rows.map((r): VersionInfo => {
+			if (r.sha === sha) return r.state === "running" ? r : { ...r, state: "running", error: null };
+			return r.state === "running" ? { ...r, state: "replaced" } : r;
+		});
+		if (JSON.stringify(next) !== JSON.stringify(rows)) this.save(next);
 	}
 
 	/** Looks for a newer commit on the default branch, and gets it ready. Nothing switches until you say. */
@@ -247,15 +260,17 @@ export class Releases {
 			if (res.code !== 0) throw new Error(res.stderr.trim() || "GitHub didn't answer.");
 			return JSON.parse(res.stdout);
 		};
-		const { check_runs: runs } = (await read("check-runs?per_page=100")) as {
+		const { check_runs: runs, total_count: totalRuns } = (await read("check-runs?per_page=100")) as {
 			check_runs: Array<{ status: string; conclusion: string | null }>;
+			total_count?: number;
 		};
 		const status = (await read("status")) as { state: string; total_count: number };
 		const bad = (r: { conclusion: string | null }) =>
 			!["success", "neutral", "skipped"].includes(r.conclusion ?? "");
 		if (runs.some((r) => r.status === "completed" && bad(r))) return "red";
 		if (status.total_count > 0 && ["failure", "error"].includes(status.state)) return "red";
-		if (runs.some((r) => r.status !== "completed")) return "waiting";
+		// A check past the first 100 could be the red one.
+		if (runs.some((r) => r.status !== "completed") || (totalRuns ?? 0) > runs.length) return "waiting";
 		if (status.total_count > 0 && status.state !== "success") return "waiting";
 		if (runs.length > 0 || status.total_count > 0) return "passed";
 		const age = committedAt ? Date.now() - Date.parse(committedAt) : Number.POSITIVE_INFINITY;
@@ -267,7 +282,7 @@ export class Releases {
 		const label = sha.slice(0, 7);
 		const now = new Date().toISOString();
 		// A newer commit makes one you never switched to pointless.
-		const stale = this.rows().filter((r) => r.state === "ready");
+		const stale = this.rows().filter((r) => r.state === "ready" && r.sha !== this.running());
 		for (const r of stale) rmSync(join(dir, r.sha), { recursive: true, force: true });
 		const others = this.rows().filter((r) => r.state !== "ready");
 		this.save([
@@ -336,6 +351,11 @@ export class Releases {
 			if (checks === null) throw new ActionError("Couldn't read its checks on GitHub. Try again.", 409);
 			if (checks !== "passed")
 				throw new ActionError(`The checks on ${row.label} aren't green any more.`, 409);
+			// That took a moment. A newer commit can have replaced it, or a deploy can have started.
+			if (!this.rows().some((r) => r.sha === sha && r.state === "ready") || !existsSync(join(dir, sha)))
+				throw new ActionError("That version isn't ready to run.", 409);
+			const nowBusy = busy?.();
+			if (nowBusy) throw new ActionError(nowBusy, 409);
 		}
 		const link = join(dir, `.current-${sha}`);
 		rmSync(link, { force: true });
@@ -378,17 +398,26 @@ export function privateTerms(input: {
 	privateProjects: Array<{ name: string; repo: string }>;
 	neverTouch: string[];
 	home: string;
+	cloneFolder?: string;
 	email: string | null;
 }): PrivateTerm[] {
 	const out = new Map<string, boolean>();
+	// `~/Developer/acme` is about acme. The folders on the way there are on every Mac.
+	const folders = `~/${input.home}/${input.cloneFolder ?? ""}`.split("/").map((s) => s.toLowerCase());
 	for (const p of input.privateProjects) {
 		out.set(p.name, false);
 		out.set(p.repo.split("/")[1] ?? p.repo, false);
 	}
 	for (const rule of input.neverTouch) {
-		const parts = rule.split(/[*/?]+/).filter(Boolean);
-		const longest = parts.sort((a, b) => b.length - a.length)[0];
-		if (longest) out.set(longest.replace(/^[-_.]+|[-_.]+$/g, ""), true);
+		const isPath = /^[~/]/.test(rule);
+		const parts = rule
+			.split(/[*/?]+/)
+			.map((s) => s.replace(/^[-_.]+|[-_.]+$/g, ""))
+			.filter((s) => s && !folders.includes(s.toLowerCase()));
+		// A folder halfway down a path is a plain word, and matching it inside words would flag everything.
+		parts.forEach((s, i) => {
+			out.set(s, !isPath || i === parts.length - 1 || out.get(s) === true);
+		});
 	}
 	out.set(input.home, false);
 	const user = input.home.split("/").filter(Boolean).at(-1);

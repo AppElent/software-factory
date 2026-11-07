@@ -54,9 +54,11 @@ interface IssueStateRow {
 /** A folder in someone else's home came from another Mac's config file, and means nothing here. */
 const cloneFolderHere = (saved: string | null | undefined) => {
 	const home = homedir();
-	const here = saved && !(saved.startsWith("/Users/") && !saved.startsWith(`${home}/`));
-	return here ? saved : join(home, "Developer");
+	const elsewhere = saved?.startsWith("/Users/") && !saved.startsWith(`${home}/`) && !existsSync(saved);
+	return saved && !elsewhere ? saved : join(home, "Developer");
 };
+
+const REGRESSED = "regressed_while_broken";
 
 export const OPEN_FILTER = "state NOT IN ('done', 'closed')";
 
@@ -129,17 +131,24 @@ export class Store {
 			cloneFolder?: string;
 		};
 		const notifications = kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications");
+		const approvals: ApprovalSettings = {
+			...DEFAULT_APPROVALS,
+			...kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals"),
+			...saved.approvals,
+		};
+		// A file that can't be read isn't a yes, and the old values in the database may not be what you want now.
+		if (this.file.error()) approvals.mergeWithoutMe = WORK_TYPE_MAP(false);
+		for (const type of kvGet<WorkType[]>(this.db, REGRESSED) ?? []) {
+			approvals.mergeWithoutMe = { ...approvals.mergeWithoutMe, [type]: false };
+			approvals.turnedOffByRegression = { ...approvals.turnedOffByRegression, [type]: true };
+		}
 		return {
 			agents: {
 				...DEFAULT_AGENTS,
 				...kvGet<Partial<AgentSettings>>(this.db, "settings:agents"),
 				...saved.agents,
 			},
-			approvals: {
-				...DEFAULT_APPROVALS,
-				...kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals"),
-				...saved.approvals,
-			},
+			approvals,
 			notifications: {
 				...DEFAULT_NOTIFICATIONS,
 				...notifications,
@@ -167,6 +176,30 @@ export class Store {
 		this.saveSettings({ approvals: a });
 	}
 
+	/** A regression always stops merging alone. When the file can't be written, that's held here until it can. */
+	stopMergingAfterRegression(type: WorkType): boolean {
+		if (this.file.error()) {
+			const held = kvGet<WorkType[]>(this.db, REGRESSED) ?? [];
+			if (!held.includes(type)) kvSet(this.db, REGRESSED, [...held, type]);
+			return true;
+		}
+		const approvals = this.settings().approvals;
+		if (!approvals.mergeWithoutMe[type]) return false;
+		this.saveApprovals({
+			...approvals,
+			mergeWithoutMe: { ...approvals.mergeWithoutMe, [type]: false },
+			turnedOffByRegression: { ...approvals.turnedOffByRegression, [type]: true },
+		});
+		return true;
+	}
+
+	/** Writes what stopMergingAfterRegression held, once the file is fixed. */
+	settleRegressions(): void {
+		if (this.file.error() || !kvGet<WorkType[]>(this.db, REGRESSED)?.length) return;
+		this.saveApprovals(this.settings().approvals);
+		kvSet(this.db, REGRESSED, []);
+	}
+
 	neverTouch(): string[] {
 		return readNeverTouch(this.configDir);
 	}
@@ -183,7 +216,7 @@ export class Store {
 	}
 
 	saveModes(modes: Mode[], defaultMode: string): void {
-		this.file.update((data) => ({ ...data, modes, defaultMode }));
+		this.file.update((data) => ({ ...data, modes: modes.map((m) => ({ ...m })), defaultMode }));
 	}
 
 	line(): { stopped: boolean; stoppedAt: string | null } {

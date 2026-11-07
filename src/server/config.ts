@@ -26,11 +26,15 @@ export interface Config {
 const fromHome = (...p: string[]) => join(homedir(), ...p);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+	const demo = env.SF_DEMO === "1";
+	// Sample data replaces what's there, so it never runs on the real folders.
+	if (demo && !env.SF_DATA_DIR) throw new Error("Sample data needs its own folder. Set SF_DATA_DIR.");
 	const dataDir = env.SF_DATA_DIR ?? fromHome("Library", "Application Support", "Software Factory");
 	mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 	// A chosen data folder, as in demo mode and tests, keeps everything together and away from the real config.
-	const configDir =
-		env.SF_CONFIG_DIR ?? (env.SF_DATA_DIR ? dataDir : fromHome(".config", "software-factory"));
+	const configDir = demo
+		? dataDir
+		: (env.SF_CONFIG_DIR ?? (env.SF_DATA_DIR ? dataDir : fromHome(".config", "software-factory")));
 	mkdirSync(configDir, { recursive: true, mode: 0o700 });
 	moveNeverTouch(dataDir, configDir);
 	return {
@@ -39,7 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		port: Number(env.SF_PORT ?? 4310),
 		host: "127.0.0.1",
 		sessionToken: sessionToken(dataDir),
-		demo: env.SF_DEMO === "1",
+		demo,
 	};
 }
 

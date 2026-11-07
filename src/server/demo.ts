@@ -592,7 +592,10 @@ export function installDemo(store: Store) {
 	let versionRows: VersionInfo[] = quietVersions();
 
 	const setEnvironments = (project: string, environments: EnvironmentConfig[]) =>
-		store.file.update((c) => ({ ...c, environments: { ...c.environments, [project]: environments } }));
+		store.file.update((c) => ({
+			...c,
+			environments: { ...c.environments, [project]: environments.map((e) => ({ ...e })) },
+		}));
 
 	const envConfig = (
 		project: string,

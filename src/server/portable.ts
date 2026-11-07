@@ -4,7 +4,7 @@ import type { Mode } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { filterNeverTouch } from "./config.ts";
 import { ConfigFileError } from "./config-file.ts";
-import { kvSet } from "./db.ts";
+import { kvGet, kvSet } from "./db.ts";
 import { type Executor, ExecutorError } from "./executor/types.ts";
 import type { Store } from "./store.ts";
 
@@ -33,6 +33,9 @@ const RESTORED_MODE: Mode = {
 /** Set until T3 has answered for every project, because on a new Mac it often can't yet. */
 export const PICK_UP = "pick_up_pending";
 
+/** The file couldn't be read when this database was new, so its projects still have to come in. */
+const RESTORE_OWED = "restore_owed";
+
 const entries = (store: Store) =>
 	store.projects().map((p) => ({
 		repo: p.repo,
@@ -49,8 +52,10 @@ const entries = (store: Store) =>
 export function mirrorProjects(store: Store) {
 	// A database that has never held a project has nothing to say, and an empty list would wipe the file.
 	const held = store.db.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number };
-	if (held.n === 0) return;
-	const next = entries(store);
+	if (held.n === 0 || kvGet(store.db, RESTORE_OWED) === true) return;
+	// A field from a newer version, or one you added, stays on its entry.
+	const before = new Map(store.file.read().projects.map((p) => [p.repo, p]));
+	const next = entries(store).map((e) => ({ ...before.get(e.repo), ...e }));
 	if (JSON.stringify(next) === JSON.stringify(store.file.read().projects)) return;
 	try {
 		store.file.update((data) => ({ ...data, projects: next }));
@@ -66,10 +71,16 @@ export function mirrorProjects(store: Store) {
  */
 export function restoreProjects(store: Store): number {
 	const seen = store.db.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number };
-	if (seen.n > 0) return 0;
+	const owed = kvGet(store.db, RESTORE_OWED) === true;
+	if (seen.n > 0 && !owed) return 0;
+	if (store.file.error()) {
+		kvSet(store.db, RESTORE_OWED, true);
+		return 0;
+	}
+	const have = new Set(store.projects().map((p) => p.repo));
 	const wanted = store.file
 		.read()
-		.projects.filter((p) => REPO.test(p.repo))
+		.projects.filter((p) => REPO.test(p.repo) && !have.has(p.repo))
 		.map((p) => ({ ...p, path: p.localPath }));
 	const { kept } = filterNeverTouch(store.neverTouch(), wanted);
 	const insert = store.db.prepare(
@@ -91,8 +102,9 @@ export function restoreProjects(store: Store): number {
 			store.iso(),
 		);
 	}
+	if (owed) kvSet(store.db, RESTORE_OWED, false);
 	if (kept.length > 0) {
-		kvSet(store.db, "new_device", true);
+		if (seen.n === 0) kvSet(store.db, "new_device", true);
 		kvSet(store.db, PICK_UP, true);
 	}
 	return kept.length;
@@ -109,9 +121,9 @@ const Threads = z.array(
 
 const parseThreads = (text: string) => {
 	try {
-		return Threads.safeParse(JSON.parse(text)).data ?? [];
+		return Threads.safeParse(JSON.parse(text)).data ?? null;
 	} catch {
-		return [];
+		return null;
 	}
 };
 
@@ -128,23 +140,29 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 	for (const project of store.projects()) {
 		if (!project.localPath) continue;
 		const res = await cli("t3", ["thread", "list", "--project", project.localPath, "--json"]);
-		if (res.code !== 0) {
+		const threads = res.code === 0 ? parseThreads(res.stdout) : null;
+		if (!threads) {
 			complete = false;
 			continue;
 		}
-		for (const thread of parseThreads(res.stdout)) {
+		for (const thread of threads) {
 			const match = WO_TITLE.exec(thread.title);
 			if (!match) continue;
 			const id = Number(match[1]);
 			highest = Math.max(highest, id);
 			if (thread.settled) continue;
+			if (store.db.prepare("SELECT 1 FROM work_orders WHERE thread_id = ?").get(thread.threadId)) continue;
 			const state = await executor.status(thread.threadId).catch((e) => {
 				if (e instanceof ExecutorError) return null;
 				throw e;
 			});
-			if (!state) continue;
+			if (!state) {
+				complete = false;
+				continue;
+			}
 			const alive = ["running", "queued", "waiting_native"].includes(state.status);
 			let prNumber: number | null = null;
+			let prKnown = true;
 			if (state.branch) {
 				const prs = await cli("gh", [
 					"pr",
@@ -160,21 +178,25 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 				]);
 				if (prs.code === 0) {
 					try {
-						prNumber = OpenPrs.safeParse(JSON.parse(prs.stdout)).data?.[0]?.number ?? null;
+						prNumber = OpenPrs.parse(JSON.parse(prs.stdout))[0]?.number ?? null;
 					} catch {
-						// Reads as no PR. The engine looks again.
+						prKnown = false;
 					}
-				}
+				} else prKnown = false;
 			}
-			if (!alive && prNumber === null) continue;
+			if (!alive && prNumber === null) {
+				// Finished with no PR is history, but only if GitHub really said so. `gh` may not be signed in yet.
+				if (!prKnown) complete = false;
+				continue;
+			}
 			const at = store.iso();
-			const added = store.db
-				.prepare(
-					`INSERT OR IGNORE INTO work_orders (id, project, type, title, description, stage, state, source, gates, agent, mode, thread_id, thread_link, branch, worktree, pr_number, created_at, updated_at, stage_at)
-					VALUES (?, ?, 'Bug fix', ?, '', 'Build', 'building', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				)
-				.run(
-					id,
+			const adopt = store.db.prepare(
+				`INSERT OR IGNORE INTO work_orders (id, project, type, title, description, stage, state, source, gates, agent, mode, thread_id, thread_link, branch, worktree, pr_number, created_at, updated_at, stage_at)
+				VALUES (?, ?, 'Bug fix', ?, '', 'Build', 'building', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			const insert = (number: number | null) =>
+				adopt.run(
+					number,
 					project.slug,
 					match[2] as string,
 					JSON.stringify({ kind: "restored" }),
@@ -190,10 +212,14 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 					at,
 					at,
 				);
-			if (added.changes > 0) {
+			// A work order started while T3 wasn't answering can have this number already. The thread still counts.
+			const taken = insert(id).changes === 0;
+			const added = taken ? insert(null) : null;
+			const newId = taken ? Number(added?.lastInsertRowid) : id;
+			if (newId) {
 				adopted += 1;
 				store.addActivity(
-					id,
+					newId,
 					"Picked up again from its T3 thread. You merge this one, whatever mode it started in.",
 				);
 			}

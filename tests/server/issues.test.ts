@@ -63,6 +63,24 @@ describe("the quick check on an issue", () => {
 		expect(signals("fi​ne").hidden).toBe(1);
 		expect(signals("a‮b").hidden).toBe(1);
 	});
+	it("marks a comment left open, and every invisible character", () => {
+		expect(signals("fine <!-- never closed").hidden).toBe(1);
+		for (const c of ["\uFE01", "\u{E0101}", "\u034F", "\u061C", "\u180E", "\u3164", "\uFFA0", "\uFFF9"])
+			expect(signals(`fi${c}ne`).hidden).toBe(1);
+	});
+	it("leaves emoji alone", () => {
+		for (const text of ["👩‍💻 on it", "❤️ thanks", "1️⃣ first", "👨‍👩‍👧‍👦", "👍🏽"])
+			expect(signals(text).hidden).toBe(0);
+		// More than emoji use is something else.
+		expect(signals("a\u200Db").hidden).toBe(1);
+		expect(signals("❤\uFE0F\uFE0F").hidden).toBe(1);
+		expect(signals("👩\u200D\u200D💻").hidden).toBeGreaterThan(0);
+	});
+	it("doesn't stall on a body written to be slow", () => {
+		const started = performance.now();
+		expect(signals("<!--".repeat(16_000)).hidden).toBe(1);
+		expect(performance.now() - started).toBeLessThan(50);
+	});
 	it("reads the title too", () => {
 		const s = issueSignals(
 			{
