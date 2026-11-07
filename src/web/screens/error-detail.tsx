@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import type { ErrorDetail, Limits } from "../../shared/types.ts";
+import type { ErrorDetail, Limits, Mode } from "../../shared/types.ts";
+import { confirmOnProductionError, FixButton, fixLabel } from "../fix.tsx";
 import { ago, clock, plural } from "../format.ts";
 import {
 	Banner,
@@ -22,7 +23,7 @@ import {
 	StatusLine,
 } from "../kit.tsx";
 import { useAction, useError, useProjects, useQueue } from "../queries.ts";
-import { kindWord, startFix, triage } from "./errors.tsx";
+import { fixBody, kindWord, startFix, triage } from "./errors.tsx";
 import { prSize } from "./prs.tsx";
 
 const dateWords = (iso: string) =>
@@ -66,9 +67,12 @@ function ErrorPage({ e }: { e: ErrorDetail }) {
 	const limits = queue.data?.limits;
 	const [verb, setVerb] = useState("change");
 
-	const start = useAction(() => startFix(e), {
-		onSuccess: (r) => void navigate({ to: "/work-orders/$id", params: { id: String(r.id) } }),
-	});
+	const start = useAction(
+		({ mode, confirmed }: { mode: Mode | null; confirmed: boolean }) => startFix(e, mode, confirmed),
+		{
+			onSuccess: (r) => void navigate({ to: "/work-orders/$id", params: { id: String(r.id) } }),
+		},
+	);
 	const act = useAction((action: "snooze" | "dismiss" | "undo") => triage([e.id], action), {
 		onSuccess: (_, action) => {
 			if (action === "dismiss") void navigate({ to: "/errors", search: { dismissed: e.id } });
@@ -130,9 +134,14 @@ function ErrorPage({ e }: { e: ErrorDetail }) {
 				) : (
 					<>
 						<p className="m-0 text-meta text-text-muted">{hint}</p>
-						<Button variant="primary" grow disabled={start.pending} onClick={() => void start.run()}>
-							{blocked ? "Add to Intake" : "Start work order"}
-						</Button>
+						<FixButton
+							grow
+							label={(mode) => fixLabel(1, mode, !!blocked)}
+							pending={start.pending}
+							run={(mode, confirmed) => void start.run({ mode, confirmed })}
+							confirm={confirmOnProductionError(1)}
+							commands={() => [fixBody(e)]}
+						/>
 						<InlineError>{start.error && "Couldn't start this. Try again."}</InlineError>
 					</>
 				)}

@@ -351,11 +351,20 @@ const PrFiles = z.object({
 	files: z.array(z.object({ path: z.string(), additions: z.number(), deletions: z.number() })),
 });
 
-export async function readPrFiles(cli: Cli, repo: string, number: number) {
+/** The files a PR changes, or null when GitHub didn't say. Nothing that guards a merge may read null as "none". */
+export async function tryReadPrFiles(cli: Cli, repo: string, number: number) {
 	const res = await cli("gh", ["pr", "view", String(number), "-R", repo, "--json", "files"]);
-	if (res.code !== 0) return [];
-	const parsed = PrFiles.safeParse(JSON.parse(res.stdout));
-	return parsed.success ? parsed.data.files : [];
+	if (res.code !== 0) return null;
+	try {
+		const parsed = PrFiles.safeParse(JSON.parse(res.stdout));
+		return parsed.success ? parsed.data.files : null;
+	} catch {
+		return null;
+	}
+}
+
+export async function readPrFiles(cli: Cli, repo: string, number: number) {
+	return (await tryReadPrFiles(cli, repo, number)) ?? [];
 }
 
 /** Squash by default. Repos that forbid it get a merge commit. Returns GitHub's words on failure. */
@@ -386,7 +395,13 @@ export async function closePr(cli: Cli, repo: string, number: number) {
 	return cli("gh", ["pr", "close", String(number), "-R", repo]);
 }
 
-export async function prByBranch(cli: Cli, repo: string, branch: string): Promise<number | null> {
+export const PR_UNREADABLE = "unreadable";
+
+export async function prByBranch(
+	cli: Cli,
+	repo: string,
+	branch: string,
+): Promise<number | null | typeof PR_UNREADABLE> {
 	const res = await cli("gh", [
 		"pr",
 		"list",
@@ -399,9 +414,13 @@ export async function prByBranch(cli: Cli, repo: string, branch: string): Promis
 		"--json",
 		"number,state",
 	]);
-	if (res.code !== 0) return null;
-	const parsed = z.array(z.object({ number: z.number() })).safeParse(JSON.parse(res.stdout));
-	return parsed.success ? (parsed.data[0]?.number ?? null) : null;
+	if (res.code !== 0) return PR_UNREADABLE;
+	try {
+		const parsed = z.array(z.object({ number: z.number() })).safeParse(JSON.parse(res.stdout));
+		return parsed.success ? (parsed.data[0]?.number ?? null) : PR_UNREADABLE;
+	} catch {
+		return PR_UNREADABLE;
+	}
 }
 
 export async function prState(

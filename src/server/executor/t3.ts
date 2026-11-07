@@ -44,7 +44,9 @@ export function t3Executor(cli: Cli): Executor {
 					"--branch",
 					req.branch,
 					"--json",
-					...agentFlags(req.agent),
+					...(req.model
+						? [...(req.provider ? ["--provider", req.provider] : []), "--model", req.model]
+						: agentFlags(req.agent)),
 				],
 				{ stdin: req.prompt, timeoutMs: 60_000 },
 			);

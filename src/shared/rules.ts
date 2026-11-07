@@ -314,8 +314,25 @@ export function qualifies(rec: Record_, t: { runs: number; firstTryPct: number }
 /** Work orders on a PR the factory didn't open. Its branch and its merge belong to whoever opened it. */
 export const ownsNoPr = (kind: string) => kind === "rebase_pr" || kind === "pr_changes";
 
+/**
+ * A mode's merge is chosen for one run, so a gate that isn't set up doesn't block it, as it does Merge without me.
+ * Tests still have to have run: a green lint is no reason to merge.
+ */
+export const modeGatesPassed = (g: Gates) => gatesPassed(g) && g.Tests === "passed";
+
+/** The files an agent could use to loosen the rules around itself. They always wait for you. */
+const OWNER_ONLY_EVERYWHERE = [/^\.github\/workflows\//];
+const OWNER_ONLY_HERE = [/^src\/server\/security\.ts$/, /^src\/shared\/rules\.ts$/, /^docs\/adr\//];
+
+export function ownerOnlyFiles(paths: string[], isThisApp: boolean): string[] {
+	const rules = isThisApp ? [...OWNER_ONLY_EVERYWHERE, ...OWNER_ONLY_HERE] : OWNER_ONLY_EVERYWHERE;
+	return paths.filter((p) => rules.some((r) => r.test(p)));
+}
+
 export function mayMergeAlone(input: {
 	on: boolean;
+	/** The run's mode merges, rather than the Merge without me setting. */
+	byMode?: boolean;
 	projectMerging: "follow" | "ask";
 	gates: Gates;
 	mergeable: string;
@@ -326,7 +343,7 @@ export function mayMergeAlone(input: {
 }): boolean {
 	if (!input.on || input.projectMerging === "ask") return false;
 	if (input.hold || ownsNoPr(input.sourceKind)) return false;
-	if (!allFourPassed(input.gates)) return false;
+	if (!(input.byMode ? modeGatesPassed(input.gates) : allFourPassed(input.gates))) return false;
 	if (input.mergeState !== "CLEAN") return false;
 	return mergeBlockers(input).length === 0;
 }

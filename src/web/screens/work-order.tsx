@@ -580,6 +580,7 @@ function WorkOrderPage({
 				<Facts
 					rows={[
 						["Agent", wo.agent],
+						...(wo.mode ? ([["Mode", wo.mode.name]] as [string, string][]) : []),
 						["Worktree", wo.worktree ? (wo.worktree.split("/").at(-1) ?? wo.worktree) : "–", true],
 						["Time", span(wo.createdAt, wo.finishedAt ? Date.parse(wo.finishedAt) : undefined), true],
 					]}

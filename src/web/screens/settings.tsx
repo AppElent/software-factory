@@ -36,11 +36,13 @@ import {
 	StatusLine,
 } from "../kit.tsx";
 import { useAction, useHealth, useProjects, useRepos, useSettings, useTools } from "../queries.ts";
+import { ModesSection } from "./modes.tsx";
 import { RepoChooser } from "./welcome.tsx";
 
 const SECTIONS = [
 	{ id: "agents", label: "Agents" },
 	{ id: "approvals", label: "Approvals" },
+	{ id: "modes", label: "Modes" },
 	{ id: "notifications", label: "Notifications" },
 	{ id: "projects", label: "Projects" },
 	{ id: "tools", label: "Tools" },
@@ -77,6 +79,7 @@ export function SettingsScreen() {
 					<div className="flex min-w-0 max-w-[820px] flex-[1_1_480px] flex-col gap-5">
 						{section === "agents" && <AgentsSection />}
 						{section === "approvals" && <ApprovalsSection />}
+						{section === "modes" && <ModesSection />}
 						{section === "notifications" && <NotificationsSection />}
 						{section === "projects" && <ProjectsSection />}
 						{section === "add-projects" && <AddProjectsSection />}

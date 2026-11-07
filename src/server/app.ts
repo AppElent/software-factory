@@ -7,17 +7,21 @@ import { backup } from "node:sqlite";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { mergeBlockers, originIs, qualifies, snoozeUntil } from "../shared/rules.ts";
+import { defaultModes, modeProblems, t3Command, USEFUL_SKILLS } from "../shared/modes.ts";
+import { mergeBlockers, originIs, qualifies, slugify, snoozeUntil } from "../shared/rules.ts";
 import type {
 	BackSummary,
 	BulkMergeResult,
 	ErrorDetail,
+	Mode,
+	ModesResponse,
 	PrDetail,
 	ProjectDetail,
 	ReadingResponse,
 	RepoListResponse,
 	Settings,
 	SyncResult,
+	WorkOrder,
 } from "../shared/types.ts";
 import { WORK_TYPES } from "../shared/types.ts";
 import type { Bus } from "./bus.ts";
@@ -25,6 +29,7 @@ import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import type { Config } from "./config.ts";
 import { filterNeverTouch, NeverTouchError, writeNeverTouch } from "./config.ts";
+import { ConfigFileError, ModeSchema } from "./config-file.ts";
 import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
 import { checkTools, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
@@ -32,9 +37,11 @@ import type { Engine } from "./engine.ts";
 import { ActionError } from "./engine.ts";
 import { NewProjects, type ScaffoldRunner, TEMPLATES } from "./newproject.ts";
 import type { Notifier } from "./notify.ts";
+import { commandPrompt } from "./playbooks/index.ts";
 import type { Poller } from "./poller.ts";
 import { readFloor, readHealth, readProjectRecord, readQueue, readShell, triageBaseline } from "./read.ts";
 import { CSP, guard, SESSION_HEADER } from "./security.ts";
+import { detectSkills } from "./skills.ts";
 import type { Store } from "./store.ts";
 
 const WEB_ROOT = resolve(new URL("../../dist/web", import.meta.url).pathname);
@@ -120,6 +127,7 @@ export function createApp(d: AppDeps): Hono {
 	app.onError((e, c) => {
 		if (e instanceof ActionError) return c.json({ error: e.message }, e.status as 400);
 		if (e instanceof NeverTouchError) return c.json({ error: e.message }, 503);
+		if (e instanceof ConfigFileError) return c.json({ error: e.message }, 409);
 		console.error(scrub(e instanceof Error ? (e.stack ?? e.message) : String(e)));
 		return c.json({ error: "Something went wrong in the service." }, 500);
 	});
@@ -539,25 +547,40 @@ export function createApp(d: AppDeps): Hono {
 
 	app.get("/api/work-orders", (c) => c.json(store.workOrders()));
 
+	const workOrderInput = z.object({
+		project: z.string(),
+		type: z.enum(WORK_TYPES),
+		title: z.string().optional(),
+		description: z.string().min(1),
+		mode: z.string().optional(),
+		/** The page asked you once more, for a mode that merges on its own. */
+		confirmed: z.boolean().optional(),
+		source: z
+			.object({
+				kind: z.enum([
+					"person",
+					"error",
+					"issue",
+					"environment",
+					"red_main",
+					"stale_pr",
+					"rebase_pr",
+					"toolkit",
+					"new_project",
+				]),
+				fingerprint: z.string().optional(),
+				prNumber: z.number().optional(),
+				newProjectId: z.number().optional(),
+			})
+			.optional(),
+	});
+
 	app.post("/api/work-orders", async (c) => {
-		const input = await body(
-			c.req,
-			z.object({
-				project: z.string(),
-				type: z.enum(WORK_TYPES),
-				title: z.string().optional(),
-				description: z.string().min(1),
-				source: z
-					.object({
-						kind: z.enum(["person", "error", "red_main", "stale_pr", "rebase_pr", "toolkit", "new_project"]),
-						fingerprint: z.string().optional(),
-						prNumber: z.number().optional(),
-						newProjectId: z.number().optional(),
-					})
-					.optional(),
-			}),
-		);
+		const input = await body(c.req, workOrderInput);
 		const source = await sourceFor(input.source ?? { kind: "person" }, input.project);
+		const mode = modeFor(input.mode);
+		if (mode?.merge === "factory" && source.kind === "error" && !input.confirmed)
+			throw new ActionError(`${mode.name} on a production error needs confirming.`, 409);
 		const id = engine.create({
 			project: input.project,
 			type: input.type,
@@ -565,8 +588,66 @@ export function createApp(d: AppDeps): Hono {
 			description: input.description,
 			source,
 			prNumber: source.prNumber ?? null,
+			mode,
 		});
 		return c.json({ id, waiting: store.workOrder(id)?.state === "waiting" });
+	});
+
+	/** The same run as a terminal command, so nothing here is needed to do it. */
+	app.post("/api/work-orders/command", async (c) => {
+		const input = await body(c.req, workOrderInput);
+		const project = needProject(input.project);
+		if (!project.localPath) throw new ActionError("That project has no folder on this Mac.", 409);
+		const source = await sourceFor(input.source ?? { kind: "person" }, input.project);
+		const mode = modeFor(input.mode);
+		const title = input.title ?? firstLine(input.description);
+		const prompt = commandPrompt({
+			mode,
+			source,
+			title,
+			description: input.description,
+		} as unknown as WorkOrder);
+		return c.json({
+			command: t3Command({
+				path: project.localPath,
+				title,
+				base: project.defaultBranch,
+				branch: `fix/${slugify(title, 40)}`,
+				prompt,
+				provider: mode?.provider,
+				model: mode?.model,
+			}),
+		});
+	});
+
+	/* ---------- modes ---------- */
+
+	const skills = () => (config.demo ? [...USEFUL_SKILLS.slice(0, 4), "write-release-notes"] : detectSkills());
+
+	const modesResponse = (): ModesResponse => ({
+		...store.modes(skills()),
+		defaults: defaultModes(skills()),
+		skills: skills(),
+		configPath: store.file.path,
+	});
+
+	const modeFor = (id: string | undefined): Mode | null => {
+		if (!id) return null;
+		const mode = store.modes(skills()).modes.find((m) => m.id === id);
+		if (!mode) throw new ActionError("That mode doesn't exist any more.", 409);
+		return mode;
+	};
+
+	app.get("/api/modes", (c) => c.json(modesResponse()));
+
+	app.put("/api/modes", async (c) => {
+		const next = await body(c.req, z.object({ modes: z.array(ModeSchema), defaultMode: z.string() }));
+		const problems = modeProblems(next.modes, next.defaultMode);
+		if (problems.length > 0) throw new ActionError(problems.join(" "), 400);
+		store.saveModes(next.modes, next.defaultMode);
+		audit(store.db, "change modes", `${next.modes.length} modes`, "you", null, store.now());
+		bus.publish(["modes", "shell"]);
+		return c.json(modesResponse());
 	});
 
 	/** Builds the context an agent gets. The browser only names the item; the text comes from here. */
@@ -768,7 +849,7 @@ export function createApp(d: AppDeps): Hono {
 				agent: z.enum(["claude", "codex"]),
 			}),
 		);
-		kvSet(store.db, "settings:agents", next);
+		store.saveSettings({ agents: next });
 		bus.publish(["settings", "queue", "floor", "shell"]);
 		void engine.tick();
 		return c.json(store.settings().agents);
@@ -812,7 +893,7 @@ export function createApp(d: AppDeps): Hono {
 			if (!next.mergeWithoutMe[type] && current.mergeWithoutMe[type])
 				audit(store.db, "turn off merge without me", type, "you", null, store.now());
 		}
-		kvSet(store.db, "settings:approvals", { ...next, turnedOffByRegression: turnedOff });
+		store.saveSettings({ approvals: { ...next, turnedOffByRegression: turnedOff } });
 		bus.publish(["settings", "health"]);
 		void engine.tick();
 		return c.json(store.settings().approvals);
@@ -836,8 +917,7 @@ export function createApp(d: AppDeps): Hono {
 				onlyWhenAway: z.boolean(),
 			}),
 		);
-		const prev = store.settings().notifications;
-		kvSet(store.db, "settings:notifications", { ...prev, ...next });
+		store.saveSettings({ notifications: next });
 		bus.publish(["settings"]);
 		return c.json(store.settings().notifications);
 	});
@@ -848,8 +928,8 @@ export function createApp(d: AppDeps): Hono {
 			z.object({ cloneFolder: z.string().min(1), neverTouch: z.array(z.string().min(1)) }),
 		);
 		// Paths from here go straight to git and the file system, which don't expand a typed ~.
-		kvSet(store.db, "settings:cloneFolder", next.cloneFolder.replace(/^~(?=$|\/)/, homedir()));
-		writeNeverTouch(config.dataDir, next.neverTouch);
+		store.saveSettings({ cloneFolder: next.cloneFolder.replace(/^~(?=$|\/)/, homedir()) });
+		writeNeverTouch(store.configDir, next.neverTouch);
 		audit(store.db, "change never touch rules", `${next.neverTouch.length} rules`, "you", null, store.now());
 		bus.publish(["settings", "projects", "queue", "floor", "prs", "errors", "shell"]);
 		return c.json(store.settings().projects);

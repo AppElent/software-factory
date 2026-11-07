@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.0.0
+version: 2.1.0
 status: current
 ---
 
@@ -80,6 +80,23 @@ Off by default and built last.
 - Once on: a PR with all four gates passed merges and ships alone, and shows on the floor. `Not set up` isn't passed. A project set to Always ask me is exempt.
 - One regression turns it off for that work type.
 - It merges only with all four gates passed and GitHub calling the PR `CLEAN`. It never merges a work order you stopped, or a rebase or requested change on a PR the factory didn't open. If GitHub refuses, it says so on the work order and doesn't ask again until a new commit.
+
+### Modes
+
+A mode is a way to start work: a prompt added before the work order's own instructions, a plan rule, who merges, and optionally a provider and model. Fix buttons run your default mode. Choosing another applies to that run only, and the next one starts on the default again.
+
+- Modes live in the config file, with defaults built from the skills found on this Mac. The defaults work with no skills installed.
+- A mode that merges on its own can't be the default. If an edit makes it so, the factory uses the first mode that doesn't.
+- A work order keeps a copy of its mode, so editing a mode never changes work already running.
+- A mode that merges does it through Review, so Stop the line and a failing gate hold it. It needs Typecheck, Tests and Lint passed, with Preview passed or not set up, and GitHub calling the PR `CLEAN`. Tests not set up means it waits and says why.
+- Its agent is told not to merge. The factory merges, and the audit log names the mode.
+- **Always yours, in every mode and setting:** changes to `.github/workflows/`, and on this app's own repo also `src/server/security.ts`, `src/shared/rules.ts` and `docs/adr/`. When the factory can't read which files changed, it waits and reads again.
+- Starting a merging mode on a production error asks once more, and the server refuses it without that confirmation.
+- Copy as command gives the same work as a `t3 thread start` command that runs without this app. Text from outside stays delimited as data, and can't end the command's quoted prompt.
+
+### Config file
+
+`~/.config/software-factory/config.json` holds what you'd want on a new Mac: settings, modes, environments and projects. It is plain JSON, written whole and readable only by you. It wins over older values in the database. A file that doesn't parse is never overwritten: saves refuse and say why until you fix it.
 
 ### New project
 

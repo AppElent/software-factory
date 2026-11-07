@@ -1,7 +1,8 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import type { ErrorItem } from "../../shared/types.ts";
+import type { ErrorItem, Mode } from "../../shared/types.ts";
 import { api } from "../api.ts";
+import { confirmOnProductionError, FixButton, fixLabel } from "../fix.tsx";
 import { plural, span } from "../format.ts";
 import {
 	BulkBar,
@@ -25,12 +26,22 @@ export const triage = (ids: string[], action: "snooze" | "dismiss" | "undo") =>
 	api.post("/api/triage", { fingerprints: ids.map(fingerprintOf), action });
 
 /** The service builds the agent's context from the fingerprint, so the old fix comes along on a regression. */
-export const startFix = (e: Pick<ErrorItem, "id" | "project" | "title">) =>
+export const fixBody = (e: Pick<ErrorItem, "id" | "project" | "title">) => ({
+	project: e.project,
+	type: "Bug fix",
+	description: `Fix ${e.title}`,
+	source: { kind: "error", fingerprint: fingerprintOf(e.id) },
+});
+
+export const startFix = (
+	e: Pick<ErrorItem, "id" | "project" | "title">,
+	mode: Mode | null = null,
+	confirmed = false,
+) =>
 	api.post<{ id: number; waiting: boolean }>("/api/work-orders", {
-		project: e.project,
-		type: "Bug fix",
-		description: `Fix ${e.title}`,
-		source: { kind: "error", fingerprint: fingerprintOf(e.id) },
+		...fixBody(e),
+		mode: mode?.id,
+		confirmed,
 	});
 
 /** "1 minute ago", the spelled-out age the Errors boards use. */
@@ -127,10 +138,10 @@ export function ErrorsScreen() {
 		},
 	});
 	const start = useAction(
-		async (list: ErrorItem[]) => {
+		async ({ list, mode, confirmed }: { list: ErrorItem[]; mode: Mode | null; confirmed: boolean }) => {
 			// One at a time. Those already started leave the selection, so Try again doesn't repeat them.
 			for (const e of list) {
-				await startFix(e);
+				await startFix(e, mode, confirmed);
 				setSelected((prev) => {
 					const next = new Set(prev);
 					next.delete(e.id);
@@ -225,13 +236,6 @@ export function ErrorsScreen() {
 		.join(" ");
 	const n = chosen.length;
 	const count = startable.length;
-	const startLabel = atLimit
-		? count === 1
-			? "Add to Intake"
-			: `Add ${count} to Intake`
-		: count === 1
-			? "Start work order"
-			: `Start ${count} work orders`;
 
 	return (
 		<Page>
@@ -275,9 +279,13 @@ export function ErrorsScreen() {
 							Dismiss
 						</Button>
 						{count > 0 && (
-							<Button variant="primary" disabled={start.pending} onClick={() => void start.run(startable)}>
-								{startLabel}
-							</Button>
+							<FixButton
+								label={(mode) => fixLabel(count, mode, atLimit)}
+								pending={start.pending}
+								run={(mode, confirmed) => void start.run({ list: startable, mode, confirmed })}
+								confirm={confirmOnProductionError(count)}
+								commands={() => startable.map(fixBody)}
+							/>
 						)}
 					</BulkBar>
 				</div>

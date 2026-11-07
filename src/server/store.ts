@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { defaultModes } from "../shared/modes.ts";
 import type { TriageRecord } from "../shared/rules.ts";
 import { agentHoldsMerge, isRegression, noGates, triageHides } from "../shared/rules.ts";
 import type {
@@ -8,6 +9,7 @@ import type {
 	AgentSettings,
 	ApprovalSettings,
 	ErrorItem,
+	Mode,
 	NotificationSettings,
 	Project,
 	PullRequest,
@@ -21,6 +23,7 @@ import type {
 } from "../shared/types.ts";
 import { scrub } from "./cli.ts";
 import { filterNeverTouch, readNeverTouch } from "./config.ts";
+import { ConfigFile } from "./config-file.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
 
@@ -68,11 +71,15 @@ export const agentLabel = (agent: string) => (agent === "codex" ? "Codex in T3" 
 export class Store {
 	readonly db: Db;
 	readonly dataDir: string;
+	readonly configDir: string;
+	readonly file: ConfigFile;
 	readonly now: () => Date;
 
-	constructor(db: Db, dataDir: string, now: () => Date = () => new Date()) {
+	constructor(db: Db, dataDir: string, now: () => Date = () => new Date(), configDir: string = dataDir) {
 		this.db = db;
 		this.dataDir = dataDir;
+		this.configDir = configDir;
+		this.file = new ConfigFile(configDir);
 		this.now = now;
 	}
 
@@ -82,27 +89,71 @@ export class Store {
 
 	/* ---------- settings ---------- */
 
+	/** The config file wins. Values still in the database are from before it existed. */
 	settings(): Settings {
+		const saved = this.file.read().settings as {
+			agents?: Partial<AgentSettings>;
+			approvals?: Partial<ApprovalSettings>;
+			notifications?: Partial<NotificationSettings>;
+			cloneFolder?: string;
+		};
+		const notifications = kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications");
 		return {
-			agents: { ...DEFAULT_AGENTS, ...kvGet<Partial<AgentSettings>>(this.db, "settings:agents") },
-			approvals: { ...DEFAULT_APPROVALS, ...kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals") },
+			agents: {
+				...DEFAULT_AGENTS,
+				...kvGet<Partial<AgentSettings>>(this.db, "settings:agents"),
+				...saved.agents,
+			},
+			approvals: {
+				...DEFAULT_APPROVALS,
+				...kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals"),
+				...saved.approvals,
+			},
 			notifications: {
 				...DEFAULT_NOTIFICATIONS,
-				...kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications"),
+				...notifications,
+				...saved.notifications,
+				// How the last test went is a fact about this Mac, so it isn't config.
+				lastTest: notifications?.lastTest ?? null,
 			},
 			projects: {
-				cloneFolder: kvGet<string>(this.db, "settings:cloneFolder") ?? join(homedir(), "Developer"),
-				neverTouch: readNeverTouch(this.dataDir),
+				cloneFolder:
+					saved.cloneFolder ?? kvGet<string>(this.db, "settings:cloneFolder") ?? join(homedir(), "Developer"),
+				neverTouch: readNeverTouch(this.configDir),
 			},
 		};
 	}
 
+	saveSettings(change: {
+		agents?: AgentSettings;
+		approvals?: ApprovalSettings;
+		notifications?: Omit<NotificationSettings, "lastTest">;
+		cloneFolder?: string;
+	}): void {
+		this.file.update((data) => ({ ...data, settings: { ...data.settings, ...change } }));
+	}
+
 	saveApprovals(a: ApprovalSettings): void {
-		kvSet(this.db, "settings:approvals", a);
+		this.saveSettings({ approvals: a });
 	}
 
 	neverTouch(): string[] {
-		return readNeverTouch(this.dataDir);
+		return readNeverTouch(this.configDir);
+	}
+
+	/* ---------- modes ---------- */
+
+	/** Saved modes, or the defaults for the skills on this Mac until you save some. */
+	modes(skills: string[]): { modes: Mode[]; defaultMode: string } {
+		const data = this.file.read();
+		const modes = data.modes ?? defaultModes(skills);
+		const wanted = data.defaultMode;
+		const usable = modes.find((m) => m.id === wanted && m.merge !== "factory");
+		return { modes, defaultMode: usable?.id ?? modes.find((m) => m.merge !== "factory")?.id ?? "" };
+	}
+
+	saveModes(modes: Mode[], defaultMode: string): void {
+		this.file.update((data) => ({ ...data, modes, defaultMode }));
 	}
 
 	line(): { stopped: boolean; stoppedAt: string | null } {
@@ -348,6 +399,7 @@ export class Store {
 		const source = JSON.parse(r.source) as WorkOrderSource;
 		return {
 			id: r.id,
+			mode: r.mode ? (JSON.parse(r.mode) as Mode) : null,
 			project: r.project,
 			projectName: project?.name ?? r.project,
 			type: r.type,
@@ -400,12 +452,13 @@ export class Store {
 		agent: string;
 		prNumber?: number | null;
 		branch?: string | null;
+		mode?: Mode | null;
 	}): number {
 		const at = this.iso();
 		const res = this.db
 			.prepare(
-				`INSERT INTO work_orders (project, type, title, description, stage, state, source, fingerprint, gates, agent, pr_number, created_at, updated_at, stage_at)
-				VALUES (?, ?, ?, ?, 'Intake', 'waiting', ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO work_orders (project, type, title, description, stage, state, source, fingerprint, gates, agent, pr_number, mode, created_at, updated_at, stage_at)
+				VALUES (?, ?, ?, ?, 'Intake', 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				input.project,
@@ -417,6 +470,7 @@ export class Store {
 				JSON.stringify(noGates()),
 				input.agent,
 				input.prNumber ?? null,
+				input.mode ? JSON.stringify(input.mode) : null,
 				at,
 				at,
 				at,
@@ -524,6 +578,7 @@ export interface WorkOrderRow {
 	regressed: number;
 	failed_sha: string | null;
 	state_at: string | null;
+	mode: string | null;
 }
 
 export type WorkOrderPatch = Pick<

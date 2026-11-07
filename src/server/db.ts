@@ -43,10 +43,17 @@ CREATE TABLE IF NOT EXISTS notified (key TEXT PRIMARY KEY, at TEXT NOT NULL);
 
 export type Db = DatabaseSync;
 
+/** `CREATE TABLE IF NOT EXISTS` doesn't reach a table an older version made. */
+function addColumn(db: Db, table: string, column: string, type: string) {
+	const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+	if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+
 export function openDb(path: string): Db {
 	const db = new DatabaseSync(path);
 	db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;");
 	db.exec(SCHEMA);
+	addColumn(db, "work_orders", "mode", "TEXT");
 	return db;
 }
 
@@ -69,7 +76,7 @@ export function audit(
 	db: Db,
 	action: string,
 	target: string,
-	startedBy: "you" | "factory" = "you",
+	startedBy = "you",
 	detail: string | null = null,
 	now: Date = new Date(),
 ): void {

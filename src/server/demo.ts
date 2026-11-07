@@ -233,7 +233,7 @@ export function installDemo(store: Store) {
 		}
 		kvSet(store.db, "settings:cloneFolder", clones);
 		// The client-* repos on the demo's GitHub list are skipped before reading, as a real rule would.
-		writeNeverTouch(store.dataDir, ["client-*"]);
+		writeNeverTouch(store.configDir, ["client-*"]);
 	};
 	prepareRepos();
 
@@ -1273,6 +1273,7 @@ export function installDemo(store: Store) {
 				const seed = SCENARIOS[name];
 				if (!seed) return c.json({ error: "Unknown scenario" }, 404);
 				reset();
+				store.file.reset();
 				seed();
 				bus.publish([
 					"queue",

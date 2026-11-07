@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import type { Gates, Limits, QueueItem, QueueKind, StartBlock, WorkOrder } from "../../shared/types.ts";
+import type { Gates, Limits, Mode, QueueItem, QueueKind, WorkOrder } from "../../shared/types.ts";
 import { GATE_NAMES } from "../../shared/types.ts";
 import { api } from "../api.ts";
+import { confirmOnProductionError, FixButton, fixLabel } from "../fix.tsx";
 import { ago, plural, span } from "../format.ts";
 import {
 	Button,
@@ -26,7 +27,7 @@ export type TriageAction = "snooze" | "dismiss";
 
 export interface PaneActions {
 	limits: Limits;
-	start: () => void;
+	start: (mode?: Mode | null, confirmed?: boolean) => void;
 	startPending: boolean;
 	startError: string | null;
 	/** Set when a sync couldn't start because the project's folder is missing. */
@@ -88,7 +89,7 @@ function Triage({ actions }: { actions: PaneActions }) {
 function StartButton({ actions, label }: { actions: PaneActions; label: ReactNode }) {
 	return (
 		<>
-			<Button variant="primary" grow disabled={actions.startPending} onClick={actions.start}>
+			<Button variant="primary" grow disabled={actions.startPending} onClick={() => actions.start()}>
 				{label}
 			</Button>
 			<InlineError>{actions.startError}</InlineError>
@@ -103,8 +104,29 @@ function StartButton({ actions, label }: { actions: PaneActions; label: ReactNod
 	);
 }
 
-/** The word on a button that starts work, which changes when nothing can start right now. */
-const startLabel = (block: StartBlock, label = "Start work order") => (block ? "Add to Intake" : label);
+/** Starting a fix, with a choice of how. */
+function FixStart({ actions, item }: { actions: PaneActions; item: QueueItem }) {
+	const body = {
+		project: item.project,
+		type: "Bug fix",
+		title: item.title,
+		description: item.title,
+		source: { kind: item.kind === "error" ? "error" : "red_main", fingerprint: item.fingerprint },
+	};
+	return (
+		<>
+			<FixButton
+				grow
+				label={(mode) => fixLabel(1, mode, !!actions.limits.startBlock)}
+				pending={actions.startPending}
+				run={(mode, confirmed) => actions.start(mode, confirmed)}
+				confirm={item.kind === "error" ? confirmOnProductionError(1) : undefined}
+				commands={() => [body]}
+			/>
+			<InlineError>{actions.startError}</InlineError>
+		</>
+	);
+}
 
 function waitHint(limits: Limits): string {
 	if (limits.startBlock === "stopped") return "The line is stopped. This waits in Intake until you restart.";
@@ -179,7 +201,7 @@ function ErrorPane({ item, actions }: { item: QueueItem; actions: PaneActions })
 						? waitHint(actions.limits)
 						: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge."}
 				</p>
-				<StartButton actions={actions} label={startLabel(actions.limits.startBlock)} />
+				<FixStart actions={actions} item={item} />
 				<Triage actions={actions} />
 				<ButtonLink to={item.href} grow>
 					Open full error
@@ -212,7 +234,7 @@ function RedMainPane({ item, actions }: { item: QueueItem; actions: PaneActions 
 					["Blocks", plural(main.blocks, "open PR")],
 				]}
 			/>
-			<StartButton actions={actions} label={startLabel(actions.limits.startBlock)} />
+			<FixStart actions={actions} item={item} />
 			<Triage actions={actions} />
 			{log && (
 				<ButtonOut href={log} grow>

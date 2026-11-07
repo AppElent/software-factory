@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { ShellResponse, SourceHealth, WorkType } from "../shared/types.ts";
 import { api, connection } from "./api.ts";
+import { useCopyCommand } from "./fix.tsx";
 import { ago, clock, plural } from "./format.ts";
 import { typing } from "./keyboard.ts";
 import {
@@ -24,7 +25,16 @@ import {
 	Glyph,
 	InlineError,
 } from "./kit.tsx";
-import { useAction, useFloor, useProjects, usePrs, useQueue, useShell, useWorkOrders } from "./queries.ts";
+import {
+	useAction,
+	useFloor,
+	useModes,
+	useProjects,
+	usePrs,
+	useQueue,
+	useShell,
+	useWorkOrders,
+} from "./queries.ts";
 
 /* ---------- shared overlays ---------- */
 
@@ -389,12 +399,22 @@ function NewWorkOrderForm({
 	const [project, setProject] = useState(initialProject ?? "");
 	const [text, setText] = useState(initialText ?? "");
 	const [type, setType] = useState<WorkType>("Bug fix");
+	const modes = useModes();
+	const [modeId, setModeId] = useState("");
+	const mode = modeId || modes.data?.defaultMode || "";
+	const { copy, view: copyView } = useCopyCommand();
 	const [invalid, setInvalid] = useState(false);
 	const textRef = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => textRef.current?.focus(), []);
 	const selected = project || projects.data?.[0]?.slug || "";
 	const create = useAction(
-		() => api.post<{ id: number }>("/api/work-orders", { project: selected, type, description: text.trim() }),
+		() =>
+			api.post<{ id: number }>("/api/work-orders", {
+				project: selected,
+				type,
+				description: text.trim(),
+				mode: mode || undefined,
+			}),
 		{
 			onSuccess: (r) => {
 				void navigate({ to: "/work-orders/$id", params: { id: String(r.id) } });
@@ -460,9 +480,38 @@ function NewWorkOrderForm({
 					</label>
 				))}
 			</fieldset>
+			<Field label="Mode" hint={modes.data?.modes.find((m) => m.id === mode)?.description}>
+				{(p) => (
+					<select {...p} value={mode} onChange={(e) => setModeId(e.target.value)}>
+						{modes.data?.modes.map((m) => (
+							<option key={m.id} value={m.id}>
+								{m.name}
+							</option>
+						))}
+					</select>
+				)}
+			</Field>
 			<InlineError>{create.error && `Couldn't start this. ${create.error}`}</InlineError>
+			{copyView}
 			<div className="flex flex-wrap justify-end gap-2">
 				<Button onClick={onClose}>Cancel</Button>
+				<Button
+					disabled={!text.trim()}
+					onClick={() =>
+						void copy(() =>
+							api
+								.post<{ command: string }>("/api/work-orders/command", {
+									project: selected,
+									type,
+									description: text.trim(),
+									mode: mode || undefined,
+								})
+								.then((r) => r.command),
+						)
+					}
+				>
+					Copy as command
+				</Button>
 				<Button type="submit" variant="primary" disabled={create.pending}>
 					{atLimit ? "Add to Intake" : "Start work order"}
 				</Button>

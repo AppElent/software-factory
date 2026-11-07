@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { Bus } from "./bus.ts";
 import { realCli } from "./cli.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, selfRepo } from "./config.ts";
 import { openDb } from "./db.ts";
 import { installDemo } from "./demo.ts";
 import { Engine, type EngineEvent } from "./engine.ts";
@@ -15,7 +15,7 @@ import { Store } from "./store.ts";
 
 const config = loadConfig();
 const db = openDb(join(config.dataDir, "factory.db"));
-const store = new Store(db, config.dataDir);
+const store = new Store(db, config.dataDir, undefined, config.configDir);
 // Reading the rules at boot means a broken file stops the service before it reads anything.
 store.neverTouch();
 
@@ -60,6 +60,7 @@ const engine = new Engine({
 	onEvent,
 	// The demo's folders are samples. Closing a sample work order touches nothing real.
 	git: demo ? async () => ({ ok: true, error: "" }) : undefined,
+	selfRepo: demo ? null : selfRepo(),
 });
 
 poller = new Poller({

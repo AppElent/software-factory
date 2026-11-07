@@ -11,7 +11,7 @@ import { planPrompt } from "../../src/server/playbooks/index.ts";
 import { findRegressions, readItemsForNotify, readQueue, triageBaseline } from "../../src/server/read.ts";
 import { Store } from "../../src/server/store.ts";
 import { awaitChecks, NO_CHECKS_MS, noGates, REGRESSION_GRACE_MS } from "../../src/shared/rules.ts";
-import type { CheckRun, PullRequest, WorkOrder } from "../../src/shared/types.ts";
+import type { CheckRun, Mode, PullRequest, WorkOrder } from "../../src/shared/types.ts";
 
 type Calls = string[];
 
@@ -98,7 +98,7 @@ beforeEach(() => {
 	store = new Store(openDb(join(dir, "t.db")), dir, () => new Date(clock));
 	exec = new FakeExecutor();
 	calls = [];
-	cliResult = { "pr view": { code: 0, stdout: '{"state":"OPEN"}' } };
+	cliResult = { "pr view": { code: 0, stdout: '{"state":"OPEN","files":[]}' } };
 	engine = new Engine({
 		store,
 		cli,
@@ -1534,5 +1534,149 @@ describe("a broken Never touch file", () => {
 	it("doesn't reject the tick that reads it", async () => {
 		writeNeverTouchBroken();
 		await expect(engine.tick()).resolves.toBeUndefined();
+	});
+});
+
+describe("modes", () => {
+	const mode = (over: Partial<Mode> = {}): Mode => ({
+		id: "m",
+		name: "Full send",
+		description: "",
+		prompt: "",
+		plan: "follow",
+		merge: "you",
+		provider: null,
+		model: null,
+		builtin: false,
+		...over,
+	});
+	const toReview = async (m: Mode) => {
+		const id = start({ type: "Chore", mode: m });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		return id;
+	};
+	const send = mode({ merge: "factory", plan: "skip" });
+
+	it("skips the plan, or asks for one, whatever the work type says", async () => {
+		const skip = start({ mode: mode({ plan: "skip" }) });
+		await settle();
+		expect(wo(skip).stage).toBe("Build");
+		const always = start({ type: "Chore", title: "Other", mode: mode({ plan: "always" }) });
+		await settle();
+		expect(wo(always).stage).toBe("Plan");
+	});
+
+	it("puts the mode's prompt before the instructions, and passes its model on", async () => {
+		const id = start({ type: "Chore", mode: mode({ prompt: "full stop", provider: "codex", model: "x-1" }) });
+		await settle();
+		const req = exec.threads.get(threadOf(id))?.req;
+		expect(req?.prompt.startsWith("full stop\n\n")).toBe(true);
+		expect(req?.prompt).toContain("Don't merge.");
+		expect(req).toMatchObject({ provider: "codex", model: "x-1" });
+	});
+
+	it("keeps the mode as it was when the work started", async () => {
+		const id = start({ type: "Chore", mode: mode({ name: "Then" }) });
+		expect(wo(id).mode?.name).toBe("Then");
+	});
+
+	it("merges when the mode says so and every real gate passed", async () => {
+		const id = await toReview(send);
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+		expect(wo(id).activity.map((a) => a.text)).toContain("Merged by Full send");
+		const row = store.db.prepare("SELECT started_by FROM audit_log WHERE action = 'merge PR'").get() as {
+			started_by: string;
+		};
+		expect(row.started_by).toBe("factory (Full send)");
+	});
+
+	it("doesn't merge when the mode leaves it to you", async () => {
+		const id = await toReview(mode());
+		await settle();
+		expect(wo(id)).toMatchObject({ stage: "Review", mergedAt: null });
+	});
+
+	it("doesn't merge while the line is stopped", async () => {
+		const id = await toReview(send);
+		// It merged on reaching Review if the line was running, so start this one with it stopped.
+		expect(wo(id).mergedAt).not.toBeNull();
+		const other = start({ type: "Chore", title: "Other", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":8}]' };
+		putPr(8);
+		await engine.setLine(true);
+		exec.finish(threadOf(other), "Opened the PR.");
+		await settle();
+		await settle();
+		expect(wo(other).mergedAt).toBeNull();
+	});
+
+	it("waits for you when Tests aren't set up, and says why once", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("passed"), Tests: "not_set_up" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id)).toMatchObject({ stage: "Review", mergedAt: null });
+		const said = wo(id).activity.filter((a) => a.text.includes("Tests aren't set up"));
+		expect(said).toHaveLength(1);
+	});
+
+	it("merges with Preview not set up, which Merge without me wouldn't", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("passed"), Preview: "not_set_up" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+	});
+
+	it("leaves workflow changes to you, in every mode", async () => {
+		cliResult["pr view"] = {
+			code: 0,
+			stdout: JSON.stringify({
+				state: "OPEN",
+				files: [{ path: ".github/workflows/ci.yml", additions: 1, deletions: 1 }],
+			}),
+		};
+		const id = await toReview(send);
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(wo(id).activity.map((a) => a.text)).toContain("This changes files that always wait for you");
+	});
+
+	it("doesn't merge when it can't read which files changed", async () => {
+		cliResult["pr view"] = { code: 0, stdout: '{"state":"OPEN"}' };
+		const id = await toReview(send);
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		cliResult["pr view"] = { code: 0, stdout: '{"state":"OPEN","files":[]}' };
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+	});
+
+	it("doesn't call a failed PR lookup a run that opened no PR", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = { code: 1, stderr: "HTTP 502" };
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		expect(wo(id).state).not.toBe("run_failed");
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		await settle();
+		expect(wo(id).prNumber).toBe(7);
 	});
 });

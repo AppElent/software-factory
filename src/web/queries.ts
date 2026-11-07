@@ -5,6 +5,7 @@ import type {
 	ErrorItem,
 	FloorResponse,
 	HealthResponse,
+	ModesResponse,
 	NewProjectRun,
 	PrDetail,
 	Project,
@@ -81,6 +82,8 @@ export const useHealth = () =>
 	useQuery({ queryKey: ["health"], queryFn: () => api.get<HealthResponse>("/api/health?window=14d") });
 export const useSettings = () =>
 	useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") });
+export const useModes = () =>
+	useQuery({ queryKey: ["modes"], queryFn: () => api.get<ModesResponse>("/api/modes") });
 export const useTools = () =>
 	useQuery({ queryKey: ["tools"], queryFn: () => api.get<ToolStatus[]>("/api/tools") });
 export const useRepos = (enabled = true) =>

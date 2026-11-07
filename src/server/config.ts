@@ -1,11 +1,22 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { applyNeverTouch } from "../shared/rules.ts";
 
 export interface Config {
 	dataDir: string;
+	/** Where the plain config file and never-touch rules live. Deleting the data folder leaves them. */
+	configDir?: string;
 	port: number;
 	host: "127.0.0.1";
 	sessionToken: string;
@@ -17,13 +28,26 @@ const fromHome = (...p: string[]) => join(homedir(), ...p);
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	const dataDir = env.SF_DATA_DIR ?? fromHome("Library", "Application Support", "Software Factory");
 	mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+	// A chosen data folder, as in demo mode and tests, keeps everything together and away from the real config.
+	const configDir =
+		env.SF_CONFIG_DIR ?? (env.SF_DATA_DIR ? dataDir : fromHome(".config", "software-factory"));
+	mkdirSync(configDir, { recursive: true, mode: 0o700 });
+	moveNeverTouch(dataDir, configDir);
 	return {
 		dataDir,
+		configDir,
 		port: Number(env.SF_PORT ?? 4310),
 		host: "127.0.0.1",
 		sessionToken: sessionToken(dataDir),
 		demo: env.SF_DEMO === "1",
 	};
+}
+
+/** Older installs kept the rules in the data folder. Deleting that folder must not delete a safety rule. */
+function moveNeverTouch(dataDir: string, configDir: string) {
+	const from = join(dataDir, "never-touch.json");
+	const to = join(configDir, "never-touch.json");
+	if (dataDir !== configDir && existsSync(from) && !existsSync(to)) copyFileSync(from, to);
 }
 
 /** One token per install. It lives only in the data folder and the served page. */
@@ -63,9 +87,9 @@ export function filterNeverTouch<T extends { repo?: string; path?: string | null
 /** The rules can't be read, so nothing can be shown or done safely until the file is fixed. */
 export class NeverTouchError extends Error {}
 
-/** Never-touch rules are private config: a JSON file in the data folder, never in the repo or the database. */
-export function readNeverTouch(dataDir: string): string[] {
-	const file = join(dataDir, "never-touch.json");
+/** Never-touch rules are private config: a JSON file beside the config file, never in the repo or the database. */
+export function readNeverTouch(configDir: string): string[] {
+	const file = join(configDir, "never-touch.json");
 	if (!existsSync(file)) return [];
 	// A broken file must not silently allow everything through, or drop a rule it couldn't read.
 	const refuse = () =>
@@ -80,6 +104,18 @@ export function readNeverTouch(dataDir: string): string[] {
 	return parsed;
 }
 
-export function writeNeverTouch(dataDir: string, rules: string[]): void {
-	writeFileSync(join(dataDir, "never-touch.json"), `${JSON.stringify(rules, null, "\t")}\n`, { mode: 0o600 });
+export function writeNeverTouch(configDir: string, rules: string[]): void {
+	writeFileSync(join(configDir, "never-touch.json"), `${JSON.stringify(rules, null, "\t")}\n`, {
+		mode: 0o600,
+	});
+}
+
+/** This app's own repo, from its checkout's origin. Forks and copies get their own. */
+export function selfRepo(root: string = new URL("../..", import.meta.url).pathname): string | null {
+	try {
+		const url = execFileSync("git", ["remote", "get-url", "origin"], { cwd: root, encoding: "utf8" });
+		return /[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/.exec(url)?.[1] ?? null;
+	} catch {
+		return null;
+	}
 }

@@ -12,6 +12,7 @@ import {
 	mergeBlockers,
 	NO_CHECKS_MS,
 	noGates,
+	ownerOnlyFiles,
 	ownsNoPr,
 	parseReply,
 	slugify,
@@ -22,7 +23,9 @@ import type {
 	AgentQuestion,
 	GateName,
 	Limits,
+	Mode,
 	Plan,
+	Project,
 	PullRequest,
 	StartBlock,
 	WorkOrder,
@@ -32,7 +35,15 @@ import type {
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import { NeverTouchError } from "./config.ts";
-import { closePr, failedLog, mergePr, prByBranch, prState } from "./connectors/github.ts";
+import {
+	closePr,
+	failedLog,
+	mergePr,
+	PR_UNREADABLE,
+	prByBranch,
+	prState,
+	tryReadPrFiles,
+} from "./connectors/github.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Executor, ThreadState } from "./executor/types.ts";
 import { ExecutorError } from "./executor/types.ts";
@@ -92,6 +103,8 @@ export interface EngineDeps {
 	/** Asks for a GitHub read soon. */
 	pollSoon: () => void;
 	git?: GitRunner;
+	/** This app's own repo, where more files wait for you. */
+	selfRepo?: string | null;
 	/** Events the queue can't show, for notifications. */
 	onEvent?: (event: EngineEvent) => void;
 }
@@ -125,6 +138,7 @@ export class Engine {
 	private readonly publish: (keys: string[]) => void;
 	private readonly pollSoon: () => void;
 	private readonly git: GitRunner;
+	private readonly selfRepo: string | null;
 	private readonly onEvent: (event: EngineEvent) => void;
 	private ticking = false;
 	private tickAgain = false;
@@ -138,6 +152,7 @@ export class Engine {
 		this.publish = deps.publish;
 		this.pollSoon = deps.pollSoon;
 		this.git = deps.git ?? realGit;
+		this.selfRepo = deps.selfRepo ?? null;
 		this.onEvent = deps.onEvent ?? (() => {});
 	}
 
@@ -271,7 +286,8 @@ export class Engine {
 
 	private async startFromIntake(wo: WorkOrder, localPath: string, base: string) {
 		const review = this.store.settings().approvals.planReview[wo.type];
-		const needsPlan = review === "always" && !ownsNoPr(wo.source.kind) && wo.source.kind !== "toolkit";
+		const wantsPlan = wo.mode?.plan === "always" || (wo.mode?.plan !== "skip" && review === "always");
+		const needsPlan = wantsPlan && !ownsNoPr(wo.source.kind) && wo.source.kind !== "toolkit";
 		const stage = needsPlan ? "Plan" : "Build";
 		const prompt = needsPlan ? planPrompt(wo) : this.directPrompt(wo);
 		// T3 can't start on a branch that already exists, so starting over after a lost thread takes a new one.
@@ -293,6 +309,8 @@ export class Engine {
 				baseBranch: latest.stdout.trim() || base,
 				branch,
 				agent: this.store.settings().agents.agent,
+				provider: wo.mode?.provider,
+				model: wo.mode?.model,
 			});
 			const state = await this.executor.status(threadId).catch(() => null);
 			this.store.addActivity(wo.id, "Created worktree and branch");
@@ -455,6 +473,8 @@ export class Engine {
 			const project = this.store.project(wo.project);
 			const number =
 				wo.prNumber ?? (project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch) : null);
+			// GitHub didn't answer, which says nothing about the agent. The next pass asks again.
+			if (number === PR_UNREADABLE) return;
 			if (!number) {
 				const message = "The agent finished without opening a PR.";
 				this.store.addActivity(wo.id, message, parsed.text || null);
@@ -495,7 +515,8 @@ export class Engine {
 		if (!project || !wo.prNumber) return false;
 		const state = await prState(this.cli, project.repo, wo.prNumber);
 		if (state === "MERGED") {
-			this.markMerged(wo, "Merged on GitHub");
+			// Only a mode's own prompt tells an agent anything about merging, and "don't" isn't always what it says.
+			this.markMerged(wo, wo.mode?.prompt ? "Merged on GitHub, not by the factory" : "Merged on GitHub");
 			return true;
 		}
 		if (state === "CLOSED") {
@@ -636,6 +657,8 @@ export class Engine {
 		}
 		const project = this.store.project(wo.project);
 		const approvals = this.store.settings().approvals;
+		const byMode = wo.mode?.merge === "factory" && !approvals.mergeWithoutMe[wo.type];
+		if (project && byMode) this.sayWhyModeWaits(wo, pr, project);
 		if (
 			!project ||
 			project.paused ||
@@ -645,7 +668,8 @@ export class Engine {
 			this.staleRead(project) ||
 			this.store.line().stopped ||
 			!mayMergeAlone({
-				on: approvals.mergeWithoutMe[wo.type],
+				on: approvals.mergeWithoutMe[wo.type] || byMode,
+				byMode,
 				projectMerging: project.merging,
 				gates: pr.gates,
 				mergeable: pr.mergeable,
@@ -659,17 +683,31 @@ export class Engine {
 		// GitHub said no to this commit. Asking again every pass won't change that; a new commit might.
 		const refusedKey = `merge_refused:${wo.id}`;
 		if (kvGet<string>(this.store.db, refusedKey) === pr.headSha) return;
+		// Both settings decide who merges, and neither gets to skip this. The list is read for this commit.
+		const files = await tryReadPrFiles(this.cli, project.repo, pr.number);
+		// Not knowing what it changes is a reason to wait. The next pass reads it again.
+		if (files === null) return;
+		const held = ownerOnlyFiles(
+			files.map((f) => f.path),
+			project.repo.toLowerCase() === this.selfRepo?.toLowerCase(),
+		);
+		if (held.length > 0) {
+			kvSet(this.store.db, refusedKey, pr.headSha);
+			this.store.addActivity(wo.id, "This changes files that always wait for you", held.join("\n"));
+			this.publish([`work-order:${wo.id}`]);
+			return;
+		}
 		const res = await mergePr(this.cli, project.repo, pr.number, pr.headSha);
 		audit(
 			this.store.db,
 			"merge PR",
 			`${project.repo}#${pr.number}`,
-			"factory",
+			wo.mode?.merge === "factory" ? `factory (${wo.mode.name})` : "factory",
 			res.reason || null,
 			this.store.now(),
 		);
 		if (res.ok) {
-			this.markMerged(wo, "Merged without you");
+			this.markMerged(wo, wo.mode?.merge === "factory" ? `Merged by ${wo.mode.name}` : "Merged without you");
 			this.onEvent({ kind: "merged_alone", workOrder: wo, prTitle: pr.title });
 		} else {
 			kvSet(this.store.db, refusedKey, pr.headSha);
@@ -677,6 +715,24 @@ export class Engine {
 			this.publish([`work-order:${wo.id}`]);
 		}
 		this.pollSoon();
+	}
+
+	/** A run you chose to send can stop at Review for reasons of its own. Says so once, so it doesn't look stuck. */
+	private sayWhyModeWaits(wo: WorkOrder, pr: PullRequest, project: Project) {
+		const reason =
+			project.merging === "ask"
+				? `${project.name} is set to ask you before merging.`
+				: !gatesClear(pr.gates)
+					? null
+					: pr.gates.Tests !== "passed"
+						? "Tests aren't set up on this project, so a merge is yours to make."
+						: null;
+		if (!reason) return;
+		const key = `mode_waits:${wo.id}`;
+		if (kvGet<string>(this.store.db, key) === reason) return;
+		kvSet(this.store.db, key, reason);
+		this.store.addActivity(wo.id, `${wo.mode?.name} is waiting for you. ${reason}`);
+		this.publish([`work-order:${wo.id}`]);
 	}
 
 	private async ship(wo: WorkOrder) {
@@ -729,6 +785,7 @@ export class Engine {
 		description: string;
 		source: WorkOrderSource;
 		prNumber?: number | null;
+		mode?: Mode | null;
 	}): number {
 		const project = this.store.project(input.project);
 		if (!project) throw new ActionError("That project isn't in the factory.", 404);
@@ -903,12 +960,20 @@ export class Engine {
 			if (closesRemote) {
 				const remote = await this.gitStep(project.localPath, ["push", "origin", "--delete", wo.branch]);
 				if (remote.ok)
-					audit(this.store.db, "delete branch", `${project.repo}:${wo.branch}`, "you", null, this.store.now());
+					audit(
+						this.store.db,
+						"delete branch",
+						`${project.repo}:${wo.branch}`,
+						"you",
+						null,
+						this.store.now(),
+					);
 				else left.push(`the branch ${wo.branch} on GitHub (${remote.error})`);
 			}
 		}
 		this.store.addActivity(id, text);
-		if (left.length > 0) this.store.addActivity(id, `Couldn't delete ${left.join(", and ")}. Delete it by hand.`);
+		if (left.length > 0)
+			this.store.addActivity(id, `Couldn't delete ${left.join(", and ")}. Delete it by hand.`);
 		this.patch(id, { state: "closed", finished_at: this.store.iso() });
 		this.pollSoon();
 	}

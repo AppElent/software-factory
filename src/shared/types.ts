@@ -32,11 +32,22 @@ export type WorkOrderState =
 	| "closed";
 
 export interface WorkOrderSource {
-	kind: "person" | "error" | "red_main" | "stale_pr" | "rebase_pr" | "pr_changes" | "toolkit" | "new_project";
+	kind:
+		| "person"
+		| "error"
+		| "issue"
+		| "environment"
+		| "red_main"
+		| "stale_pr"
+		| "rebase_pr"
+		| "pr_changes"
+		| "toolkit"
+		| "new_project";
 	fingerprint?: string;
 	/** Text from outside the factory. Reaches the agent only as delimited data. */
 	data?: string;
 	prNumber?: number;
+	issueNumber?: number;
 	regressionOf?: { workOrderId: number; prNumber: number | null };
 }
 
@@ -69,8 +80,37 @@ export interface ActivityEntry {
 	detail?: string;
 }
 
+export type ModePlan = "follow" | "always" | "skip";
+export type ModeMerge = "you" | "factory";
+
+/** How one run goes. Chosen per run, and saved in the plain config file. */
+export interface Mode {
+	id: string;
+	name: string;
+	description: string;
+	/** Added before the work order's own instructions. */
+	prompt: string;
+	plan: ModePlan;
+	merge: ModeMerge;
+	provider: string | null;
+	model: string | null;
+	/** One of the modes a new install starts with, so Reset to default has something to go back to. */
+	builtin: boolean;
+}
+
+export interface ModesResponse {
+	modes: Mode[];
+	defaultMode: string;
+	defaults: Mode[];
+	/** Skills found on this Mac. Offered, never assumed. */
+	skills: string[];
+	configPath: string;
+}
+
 export interface WorkOrder {
 	id: number;
+	/** The mode as it was when this started, so editing a mode doesn't change running work. */
+	mode: Mode | null;
 	project: string;
 	projectName: string;
 	type: WorkType;

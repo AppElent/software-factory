@@ -17,6 +17,9 @@ export interface StartRequest {
 	baseBranch: string;
 	branch: string;
 	agent: string;
+	/** From the work order's mode. Leaves the choice to T3 when empty. */
+	provider?: string | null;
+	model?: string | null;
 }
 
 /** The seam for running agents. T3 is the default adapter. See docs/adr/0002-t3-runner.md. */

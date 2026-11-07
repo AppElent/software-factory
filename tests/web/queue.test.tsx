@@ -28,7 +28,9 @@ describe("queue: populated", () => {
 		expect(screen.getByText("start work order")).toBeInTheDocument();
 		// One primary per view: the pane's. The header's is secondary.
 		expect(screen.getByRole("button", { name: "New work order" })).toHaveClass("btn-secondary");
-		expect(within(pane()).getByRole("button", { name: "Start work order" })).toHaveClass("btn-filled");
+		expect(await within(pane()).findByRole("button", { name: "Fix with Standard" })).toHaveClass(
+			"btn-filled",
+		);
 	});
 
 	it("never mentions cost", async () => {
@@ -104,7 +106,7 @@ describe("queue: pane by item kind", () => {
 		expect(p.getByText("Red for")).toBeInTheDocument();
 		expect(p.getByText("Blocks")).toBeInTheDocument();
 		expect(p.getByText(/CI \/ check failed/)).toBeInTheDocument();
-		expect(p.getByRole("button", { name: "Start work order" })).toBeInTheDocument();
+		expect(await p.findByRole("button", { name: "Fix with Standard" })).toBeInTheDocument();
 		expect(p.getByRole("button", { name: "Snooze" })).toBeInTheDocument();
 	});
 
@@ -236,8 +238,8 @@ describe("queue: states", () => {
 		expect(
 			p.getByText("All 3 agent slots are busy. This waits in Intake and starts when a slot opens."),
 		).toBeInTheDocument();
-		expect(p.queryByRole("button", { name: "Start work order" })).not.toBeInTheDocument();
-		await user.click(p.getByRole("button", { name: "Add to Intake" }));
+		expect(p.queryByRole("button", { name: "Fix with Standard" })).not.toBeInTheDocument();
+		await user.click(await p.findByRole("button", { name: "Add to Intake with Standard" }));
 		await waitFor(() => expect(h.mutations.some((m) => m.startsWith("POST /api/work-orders "))).toBe(true));
 		await waitFor(() => expect(h.router.state.location.pathname).toBe("/floor"));
 	});
@@ -247,7 +249,7 @@ describe("queue: states", () => {
 		await rows();
 		const p = within(pane());
 		expect(p.getByText("New work waits in Intake until you review a PR.")).toBeInTheDocument();
-		expect(p.getByRole("button", { name: "Add to Intake" })).toBeInTheDocument();
+		expect(await p.findByRole("button", { name: "Add to Intake with Standard" })).toBeInTheDocument();
 	});
 
 	it("line stopped: the wait is named", async () => {
@@ -255,7 +257,7 @@ describe("queue: states", () => {
 		await rows();
 		const p = within(pane());
 		expect(p.getByText("The line is stopped. This waits in Intake until you restart.")).toBeInTheDocument();
-		expect(p.getByRole("button", { name: "Add to Intake" })).toBeInTheDocument();
+		expect(await p.findByRole("button", { name: "Add to Intake with Standard" })).toBeInTheDocument();
 	});
 
 	it("loading: skeleton and status, never the empty state", async () => {
@@ -350,7 +352,7 @@ describe("queue: actions", () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/");
 		await rows();
-		await user.click(within(pane()).getByRole("button", { name: "Start work order" }));
+		await user.click(await within(pane()).findByRole("button", { name: "Fix with Standard" }));
 		await waitFor(() => expect(h.router.state.location.pathname).toMatch(/^\/work-orders\/\d+$/));
 		const sent = h.mutations.find((m) => m.startsWith("POST /api/work-orders "));
 		expect(sent).toContain('"source":{"kind":"error","fingerprint":"error:6001"}');
@@ -361,7 +363,7 @@ describe("queue: actions", () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/?select=main%3Agather");
 		await rows();
-		await user.click(within(pane()).getByRole("button", { name: "Start work order" }));
+		await user.click(await within(pane()).findByRole("button", { name: "Fix with Standard" }));
 		await waitFor(() => expect(h.router.state.location.pathname).toMatch(/^\/work-orders\/\d+$/));
 		expect(h.mutations.find((m) => m.startsWith("POST /api/work-orders "))).toContain(
 			'"source":{"kind":"red_main","fingerprint":"main:gather"}',
@@ -401,7 +403,7 @@ describe("queue: actions", () => {
 		const h = await renderApp("/");
 		await rows();
 		h.failNext("/api/work-orders");
-		await user.click(within(pane()).getByRole("button", { name: "Start work order" }));
+		await user.click(await within(pane()).findByRole("button", { name: "Fix with Standard" }));
 		expect(await within(pane()).findByRole("alert")).toHaveTextContent("Couldn't start this. Try again.");
 		expect(h.router.state.location.pathname).toBe("/");
 	});
