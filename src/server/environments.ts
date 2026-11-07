@@ -305,7 +305,8 @@ export class Environments {
 				.filter((e) => e.environment === sentry && e.triage?.action !== "dismiss").length,
 			issues: store.issues(project.slug).filter((i) => i.labels.some((l) => l.toLowerCase() === label))
 				.length,
-			folder: project.localPath,
+			// A restored project's folder may only exist on the Mac it came from.
+			folder: project.localPath && existsSync(project.localPath) ? project.localPath : null,
 			workOrderId:
 				(
 					store.db

@@ -35,6 +35,7 @@ export interface Harness {
 	failNext: (match: string, status?: number, error?: string) => void;
 	router: ReturnType<typeof makeRouter>;
 	client: QueryClient;
+	store: Store;
 }
 
 const makeRouter = (path: string) =>
@@ -155,6 +156,7 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		failNext: (match, status = 500, error = "That failed.") => failures.push({ match, status, error }),
 		router,
 		client,
+		store,
 	};
 }
 

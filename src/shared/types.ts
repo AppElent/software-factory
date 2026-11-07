@@ -499,6 +499,8 @@ export interface IssueAdvice {
 	verdict: "legit" | "off" | "unsure";
 	why: string;
 	at: string;
+	/** The agent never answered, so asking again is worth it. */
+	failed?: boolean;
 }
 
 export interface Issue {

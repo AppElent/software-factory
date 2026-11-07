@@ -593,6 +593,18 @@ describe("environments", () => {
 		expect(store.file.read().environments.fairway?.[0]).toMatchObject({ fromNewer: 1 });
 	});
 
+	it("doesn't call a folder that isn't on this Mac the project's folder", async () => {
+		seed();
+		store.db.prepare("UPDATE projects SET local_path = ?").run(join(dir, "from-another-mac"));
+		const res = await app.request("/api/projects/fairway/environments", { headers: HOST });
+		const data = (await res.json()) as {
+			folder: string | null;
+			environments: Array<{ folder: string | null }>;
+		};
+		expect(data.folder).toBeNull();
+		expect(data.environments[0]?.folder).toBeNull();
+	});
+
 	it("won't remove an environment while it's deploying", async () => {
 		seed();
 		holdDeploy = true;
@@ -944,7 +956,7 @@ describe("issues", () => {
 		exec.askReply = new Error("T3 is down");
 		await post("/api/issues/ask", { project: "fairway", number: 5 });
 		await vi.waitFor(() => expect(store.issue("fairway", 5)?.asking).toBe(false));
-		expect(store.issue("fairway", 5)?.advice).toMatchObject({ verdict: "unsure" });
+		expect(store.issue("fairway", 5)?.advice).toMatchObject({ verdict: "unsure", failed: true });
 	});
 
 	it("writes the work order from what's stored, not what the page sent", async () => {

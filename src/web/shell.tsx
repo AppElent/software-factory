@@ -323,7 +323,7 @@ export function ShellOutlet() {
 							role="alert"
 							glyph="err"
 							title="Your config file can't be used."
-							body={`${shell.data.configError} Modes, environments and settings are back to their defaults, and nothing merges on its own until it's fixed.`}
+							body={`${shell.data.configError} Modes, environments and settings may show their defaults, because the file can't say what you set. Nothing merges on its own until it's fixed.`}
 						/>
 					</div>
 				)}

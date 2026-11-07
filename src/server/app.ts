@@ -53,7 +53,7 @@ import { CSP, guard, SESSION_HEADER } from "./security.ts";
 import { detectSkills } from "./skills.ts";
 import type { Store } from "./store.ts";
 
-const WEB_ROOT = resolve(new URL("../../dist/web", import.meta.url).pathname);
+const WEB_ROOT = resolve(import.meta.dirname, "../../dist/web");
 const AWAY_MS = 4 * 3_600_000;
 
 const MIME: Record<string, string> = {
@@ -972,7 +972,7 @@ export function createApp(d: AppDeps): Hono {
 			environments: environments.viewsFor(project),
 			deploys: environments.history(project.slug),
 			configPath: store.file.path,
-			folder: project.localPath,
+			folder: project.localPath && existsSync(project.localPath) ? project.localPath : null,
 		};
 		return c.json(response);
 	});
@@ -1104,6 +1104,7 @@ export function createApp(d: AppDeps): Hono {
 						verdict: "unsure",
 						why: `Couldn't get an answer: ${scrub(e instanceof Error ? e.message : String(e)).slice(0, 200)}`,
 						at: store.iso(),
+						failed: true,
 					},
 					issue.bodyHash,
 				);

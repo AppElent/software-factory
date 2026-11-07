@@ -60,7 +60,7 @@ describe("A project's environments", () => {
 		const prod = await column("Production");
 		expect(within(prod).getByText(/3 behind main/)).toBeInTheDocument();
 		expect(within(prod).getByText("pnpm deploy:production")).toBeInTheDocument();
-		expect(within(prod).getByRole("button", { name: "Deploy 3 commits" })).toBeInTheDocument();
+		expect(within(prod).getByRole("button", { name: "Deploy" })).toBeInTheDocument();
 	});
 
 	it("shows a running deploy's log and a way to stop it", async () => {
@@ -82,11 +82,11 @@ describe("A project's environments", () => {
 		const user = userEvent.setup();
 		const h = await renderApp(PROJECT, "environments");
 		const prod = await column("Production");
-		await user.click(within(prod).getByRole("button", { name: "Deploy 3 commits" }));
+		await user.click(within(prod).getByRole("button", { name: "Deploy" }));
 		const dialog = await screen.findByRole("alertdialog");
 		expect(h.mutations).toEqual([]);
 		expect(within(dialog).getByText("pnpm deploy:production")).toBeInTheDocument();
-		await user.click(within(dialog).getByRole("button", { name: "Deploy 3 commits" }));
+		await user.click(within(dialog).getByRole("button", { name: "Deploy" }));
 		await waitFor(() => expect(h.mutations.at(-1)).toContain("POST /api/environments/deploy"));
 		expect(sent(h.mutations.at(-1))).toEqual({ project: "fairway", env: "Production", confirmed: true });
 	});
@@ -114,6 +114,16 @@ describe("A project's environments", () => {
 		await user.click(await screen.findByRole("button", { name: "Edit environments" }));
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByText(/config/)).toBeInTheDocument();
+		await user.click(within(dialog).getByRole("button", { name: "Add environment" }));
+		await user.type(within(dialog).getAllByLabelText("Deploy command").at(-1) as HTMLElement, "ship");
+		expect(within(dialog).getByRole("button", { name: "Save environments" })).toBeDisabled();
+		expect(within(dialog).getByText("Give each environment a name to save.")).toBeInTheDocument();
+		await user.clear(within(dialog).getAllByLabelText("Deploy command").at(-1) as HTMLElement);
+		await user.click(
+			within(dialog)
+				.getAllByRole("button", { name: /^Remove/ })
+				.at(-1) as HTMLElement,
+		);
 		await user.click(within(dialog).getByRole("button", { name: "Add environment" }));
 		const names = within(dialog).getAllByLabelText("Name");
 		await user.type(names.at(-1) as HTMLElement, "QA");

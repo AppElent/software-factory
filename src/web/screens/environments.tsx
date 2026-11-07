@@ -136,7 +136,7 @@ export function DeployActions({
 			</div>
 		);
 	if (!e.deployCommand) return <p className="m-0 text-meta text-text-muted">No deploy command yet.</p>;
-	const label = again ? "Deploy again" : e.behind ? `Deploy ${plural(e.behind, "commit")}` : "Deploy";
+	const label = again ? "Deploy again" : "Deploy";
 	const command = e.deployCommand;
 	return (
 		<div className="flex flex-col gap-2">
@@ -172,7 +172,9 @@ export function DeployActions({
 				error={deploy.error}
 				onAction={() => void deploy.run(true)}
 			>
-				<p className="m-0">{folder ? `This runs in ${folder}:` : "This runs:"}</p>
+				<p className="m-0">
+					{folder ? `This runs in ${folder}, on what's checked out there:` : "This runs:"}
+				</p>
 				<CodeBlock>{command}</CodeBlock>
 			</ConfirmDialog>
 		</div>
@@ -609,6 +611,7 @@ function EditEnvironments({
 	const set = (i: number, patch: Partial<EnvironmentConfig>) =>
 		setRows((r) => r.map((x, n) => (n === i ? { ...x, ...patch } : x)));
 	const clean = rows.filter((r) => r.name.trim()).map(({ key: _key, ...e }) => e);
+	const unnamed = rows.some((r) => !r.name.trim() && (r.deployCommand || r.url || r.healthUrl));
 	return (
 		<FormDialog open onOpenChange={(o) => !o && onClose()} title="Edit environments" width={720}>
 			<p className="m-0 text-text-muted">
@@ -707,7 +710,7 @@ function EditEnvironments({
 					</div>
 					<Field
 						label="Deploy command"
-						hint="Runs in the project's folder, in a shell, when you press Deploy."
+						hint="Runs in the project's folder, in a shell, on what's checked out there, when you press Deploy."
 					>
 						{(p) => (
 							<textarea
@@ -738,12 +741,12 @@ function EditEnvironments({
 				<Button onClick={() => setRows((r) => [...r, keyed(blank())])}>Add environment</Button>
 				<span className="ms-auto flex flex-wrap gap-2">
 					<Button onClick={onClose}>Cancel</Button>
-					<Button variant="primary" disabled={save.pending} onClick={() => void save.run(clean)}>
+					<Button variant="primary" disabled={save.pending || unnamed} onClick={() => void save.run(clean)}>
 						Save environments
 					</Button>
 				</span>
 			</div>
-			<InlineError>{save.error}</InlineError>
+			<InlineError>{save.error ?? (unnamed ? "Give each environment a name to save." : null)}</InlineError>
 		</FormDialog>
 	);
 }

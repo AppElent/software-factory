@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const LABEL = process.env.SF_SERVICE_LABEL ?? "com.appelent.software-factory";
 
@@ -11,7 +12,7 @@ const LABEL = process.env.SF_SERVICE_LABEL ?? "com.appelent.software-factory";
 const stableNode = () =>
 	process.execPath.replace(/\/Cellar\/(node(?:@[^/]+)?)\/[^/]+\/bin\/node$/, "/opt/$1/bin/node");
 const plist = join(homedir(), "Library", "LaunchAgents", `${LABEL}.plist`);
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const domain = `gui/${process.getuid()}`;
 const logs = join(homedir(), "Library", "Logs", "Software Factory");
 const run = (...args) => execFileSync("launchctl", args, { stdio: "pipe" });

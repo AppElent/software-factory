@@ -513,7 +513,7 @@ export function parseReply(reply: string): ParsedReply {
 }
 
 /** Characters that show as nothing, so a person reading the text can't see what they carry. */
-const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+export const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 /** The same, leaving what normal emoji are made of. One joiner between emoji, or one selector after one. */
 const LOOKS_HIDDEN =
 	/(?!(?<=[\p{Extended_Pictographic}\p{Emoji_Modifier}]\uFE0F?)\u200D(?=\p{Extended_Pictographic}))(?!(?<=[\p{Extended_Pictographic}0-9#*])\uFE0F)[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;

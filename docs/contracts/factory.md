@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.7.1
+version: 2.7.2
 status: current
 ---
 
@@ -93,7 +93,7 @@ A mode is a way to start work: a prompt added before the work order's own instru
 - **Always yours, in every mode and setting:** changes to `.github/workflows/`, and on this app's own repo also `src/server/security.ts`, `src/shared/rules.ts`, `docs/adr/`, `package.json`, the lockfile, `.npmrc` and `scripts/`. When the factory can't read which files changed, it waits and reads again. A PR with more files than GitHub lists waits for you.
 - A PR from a fork is never a work order's, even when its branch has the same name, and the factory never merges one.
 - Everything that stops a merge is read again after reading the file list, so Stop, Stop the line and a pause count right up to the merge.
-- A config file that can't be read says so on every page. Until it's fixed, nothing merges on its own, and settings are the defaults. Never touch rules can still be saved.
+- A config file that can't be read says so on every page. Until it's fixed, nothing merges on its own, and modes, environments and settings can show their defaults. Never touch rules can still be saved.
 - Settings from before the config file move into it once, and leave the database.
 - Starting a merging mode on a production error asks once more, and the server refuses it without that confirmation.
 - Copy as command gives the same work as a `t3 thread start` command that runs without this app. Text from outside stays delimited as data, and can't end the command's quoted prompt.
@@ -132,7 +132,7 @@ Automations are T3's scheduled tasks. They live in T3 and keep running without t
 An environment belongs to a project and lives in the config file: name, URL, health URL, deploy command, Sentry environment, issue label and whether it's production. The Sentry environment defaults to the lowercase name, and the issue label to `env:<name>`.
 
 - **Health.** Every minute the factory asks each health URL. A 2xx or 3xx answer is up, and over 2 seconds is slow. One failed check is a blip. Two in a row is down. `Check now` tries twice straight away.
-- **Deploy.** `Deploy` runs the saved command in the project's folder, in a shell. The command comes from your config file, never from the repo or the page, and changing it needs the session token. Production asks you first. One deploy runs at a time per environment. The log streams to the page, scrubbed of secrets. `Stop deploy` signals the whole process group. A deploy times out after 30 minutes. A restart marks a running deploy failed and says the command may have kept running.
+- **Deploy.** `Deploy` runs the saved command in the project's folder, in a shell, on what's checked out there. It doesn't fetch or pull, because that folder can hold your own work, so a fix merged on GitHub needs pulling first. The command comes from your config file, never from the repo or the page, and changing it needs the session token. Production asks you first. One deploy runs at a time per environment. The log streams to the page, scrubbed of secrets. `Stop deploy` signals the whole process group. A deploy times out after 30 minutes. A restart marks a running deploy failed and says the command may have kept running.
 - **Stop the line** doesn't block a deploy you press. It stops agents, and a deploy is your own action.
 - **Look in the repo** reads GitHub environments, `deploy:<env>` scripts, workflows with `workflow_dispatch` and wrangler config. It shows what it finds. Nothing runs or saves until you add it.
 - **Queue.** A down production tops Needs you. Any other down environment goes under Later. Dismissing an outage holds until that environment goes down again.
@@ -195,7 +195,7 @@ A person writes a change, and it becomes an ordinary work order on the factory's
 
 Each version runs from its own folder, and `current` points at one. See ADR 0005.
 
-- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A repo a Never touch rule matches is left alone. A commit with red or unfinished checks waits, and so does one with no checks that the factory first saw under 5 minutes ago. Otherwise it's cloned, installed without install scripts and built in a new folder, then started on a spare port with sample data, no tokens and a throwaway home folder. A version that's ready stays offered until a newer one is ready too. It must report its own commit and serve the page. A commit that fails stays failed on the timer. `Check for a new version` tries it again, because a failure can be the network's.
+- **Getting ready.** Every 10 minutes and on `Check for a new version`, the factory looks at the default branch. A repo a Never touch rule matches is left alone. A commit with red or unfinished checks waits, and so does one with no checks that the factory first saw under 5 minutes ago. Otherwise it's cloned, installed without install scripts or a pnpmfile and built in a new folder, then started on a spare port with sample data. All of it gets no tokens and a throwaway home folder. A version that's ready stays offered until a newer one is ready too. It must report its own commit and serve the page. A commit that fails stays failed on the timer. `Check for a new version` tries it again, because a failure can be the network's.
 - **Updating.** Only by pressing `Update`, which reads the commit's checks again first. A running deploy blocks it, because the restart would cut the deploy off.
 - **Going back.** A guard outside the service expects the new commit to answer within 90 seconds. If not, it switches back, marks the version failed, and restarts. `Roll back` switches to an older folder the same way. The running version and the two newest before it are kept.
 - **Database.** Migrations stay additive, so an older version runs on a newer database. There are no backups.

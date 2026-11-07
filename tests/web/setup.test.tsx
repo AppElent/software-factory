@@ -519,6 +519,6 @@ describe("a config file that can't be used", () => {
 		await renderApp("/", "config_broken");
 		const alert = await screen.findByRole("alert");
 		expect(alert).toHaveTextContent("Your config file can't be used.");
-		expect(alert).toHaveTextContent("nothing merges on its own until it's fixed");
+		expect(alert).toHaveTextContent("Nothing merges on its own until it's fixed");
 	});
 });

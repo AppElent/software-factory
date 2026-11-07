@@ -33,11 +33,14 @@ const BLANK: Omit<Mode, "id"> = {
 	builtin: false,
 };
 
-const describe = (m: Mode) =>
-	m.description.trim() ||
-	(m.merge === "factory"
+const whoMerges = (m: Mode) =>
+	m.merge === "factory"
 		? "The factory merges once gates pass, unless the line is stopped."
-		: "You review and merge.");
+		: "You review and merge.";
+
+/** Words written for one Who merges are false after changing it, and the split button shows them when you choose. */
+const describe = (m: Mode, before: Mode) =>
+	m.merge === before.merge && m.description.trim() ? m.description : whoMerges(m);
 
 function ModeForm({
 	data,
@@ -62,7 +65,7 @@ function ModeForm({
 		api.put<ModesResponse>("/api/modes", { modes, defaultMode });
 	const save = useAction(
 		() => {
-			const next = { ...draft, description: describe(draft) };
+			const next = { ...draft, description: describe(draft, mode) };
 			const list = isNew ? [...data.modes, next] : data.modes.map((m) => (m.id === mode.id ? next : m));
 			return put(list);
 		},

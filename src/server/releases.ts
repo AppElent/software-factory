@@ -50,14 +50,18 @@ const sparePort = () =>
 		});
 	});
 
-/** A version that isn't running yet gets no tokens and no pointers to the real folders. */
 /** An upgrade can have removed the folder this process started from. Until the next restart, `node` still finds one. */
 const nodeBinary = () => (existsSync(process.execPath) ? process.execPath : "node");
 
-export const candidateEnv = (): NodeJS.ProcessEnv =>
-	Object.fromEntries(
-		Object.entries(cliEnv()).filter(([k]) => !/^SF_|token|secret|password|credential|api_?key/i.test(k)),
-	);
+/** Code that isn't running yet gets no tokens, no pointers to the real folders, and a home folder of its own. */
+export const candidateEnv = (home: string): NodeJS.ProcessEnv => ({
+	...Object.fromEntries(
+		Object.entries(cliEnv()).filter(
+			([k]) => !/^(SF_|XDG_|GH_|NPM_CONFIG_)|token|secret|password|credential|api_?key/i.test(k),
+		),
+	),
+	HOME: home,
+});
 
 /** Starts the version on a spare port with sample data, so its first run touches nothing real. */
 export async function realSmoke(dir: string, sha: string) {
@@ -66,9 +70,7 @@ export async function realSmoke(dir: string, sha: string) {
 	const child = spawn(nodeBinary(), ["src/server/main.ts"], {
 		cwd: dir,
 		env: {
-			...candidateEnv(),
-			// Whatever it does with the home folder lands in the throwaway one.
-			HOME: data,
+			...candidateEnv(data),
 			SF_DEMO: "1",
 			SF_PORT: String(port),
 			SF_DATA_DIR: data,
@@ -321,6 +323,7 @@ export class Releases {
 		publish(["versions"]);
 		const tmp = join(dir, `.tmp-${sha}`);
 		rmSync(tmp, { recursive: true, force: true });
+		const home = mkdtempSync(join(tmpdir(), "sf-build-"));
 		const step = async (what: string, cmd: string, args: string[], cwd?: string, env?: NodeJS.ProcessEnv) => {
 			const res = await cli(cmd, args, { cwd, env, timeoutMs: STEP_TIMEOUT_MS });
 			if (res.code !== 0) throw new Error(`${what} failed. ${scrub(res.stderr).trim().slice(-200)}`.trim());
@@ -330,14 +333,15 @@ export class Releases {
 			const origin = await step("Finding the repo", "git", ["remote", "get-url", "origin"], root);
 			await step("Clone", "git", ["clone", "--quiet", origin, tmp]);
 			await step("Checkout", "git", ["checkout", "--quiet", "--detach", sha], tmp);
+			// A build runs the commit's own code, so it gets a home folder that holds nothing of yours.
 			await step(
 				"Install",
 				"pnpm",
-				["install", "--frozen-lockfile", "--ignore-scripts"],
+				["install", "--frozen-lockfile", "--ignore-scripts", "--ignore-pnpmfile"],
 				tmp,
-				candidateEnv(),
+				candidateEnv(home),
 			);
-			await step("Build", "pnpm", ["build"], tmp, candidateEnv());
+			await step("Build", "pnpm", ["build"], tmp, candidateEnv(home));
 			const folder = join(dir, sha);
 			rmSync(folder, { recursive: true, force: true });
 			renameSync(tmp, folder);
@@ -356,6 +360,8 @@ export class Releases {
 				state: "failed",
 				error: scrub(e instanceof Error ? e.message : String(e)).slice(0, 300),
 			});
+		} finally {
+			rmSync(home, { recursive: true, force: true });
 		}
 	}
 

@@ -10,7 +10,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { applyNeverTouch } from "../shared/rules.ts";
 
 export interface Config {
@@ -115,7 +115,7 @@ export function writeNeverTouch(configDir: string, rules: string[]): void {
 }
 
 /** This app's own repo, from its checkout's origin. Forks and copies get their own. */
-export function selfRepo(root: string = new URL("../..", import.meta.url).pathname): string | null {
+export function selfRepo(root: string = resolve(import.meta.dirname, "../..")): string | null {
 	try {
 		const url = execFileSync("git", ["remote", "get-url", "origin"], { cwd: root, encoding: "utf8" });
 		return /[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/.exec(url)?.[1] ?? null;

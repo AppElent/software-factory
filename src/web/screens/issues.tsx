@@ -1,6 +1,6 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { issueWorkType, suspectRanges } from "../../shared/rules.ts";
+import { INVISIBLE, issueWorkType, suspectRanges } from "../../shared/rules.ts";
 import type { Issue, IssueGroup, Mode } from "../../shared/types.ts";
 import { api } from "../api.ts";
 import { commandsFor, FixButton, fixLabel, useCopyCommand, type WorkOrderBody } from "../fix.tsx";
@@ -144,7 +144,7 @@ function IssueText({ text }: { text: string }) {
 					<mark key={n} className="bg-transparent text-inherit underline decoration-status-fail decoration-2">
 						{/* Characters you can't see get a name you can. */}
 						{p.text.replace(
-							/[​-‏‪-‮⁠-⁤﻿]/g,
+							INVISIBLE,
 							(c) => `[hidden U+${(c.codePointAt(0) ?? 0).toString(16).toUpperCase()}]`,
 						)}
 					</mark>
@@ -179,10 +179,12 @@ function Detail({
 	issue,
 	atLimit,
 	onHide,
+	hideError,
 }: {
 	issue: Issue;
 	atLimit: boolean;
 	onHide: (i: Issue, action: "not_legit") => void;
+	hideError: string | null;
 }) {
 	const navigate = useNavigate();
 	const modes = useModes();
@@ -232,12 +234,13 @@ function Detail({
 				<Signal glyph={issue.asking ? "run" : advice ? adviceGlyph : "idle"} name="Agent's read">
 					{issue.asking ? (
 						"An agent is reading this."
-					) : advice ? (
+					) : advice && !advice.failed ? (
 						`${advice.why} This is advice only.`
 					) : (
 						<span className="inline-flex flex-wrap items-center gap-2">
+							{advice && <span>{advice.why}</span>}
 							<Button disabled={ask.pending} onClick={() => void ask.run()}>
-								Ask an agent to read this
+								{advice ? "Ask again" : "Ask an agent to read this"}
 							</Button>
 							<span className="text-meta text-text-muted">
 								Advice only. It reads in an empty folder, away from your projects.
@@ -250,20 +253,29 @@ function Detail({
 			<div className="max-w-[72ch] rounded-sm bg-bg-surface px-4 py-3">
 				<IssueText text={issue.body} />
 			</div>
-			<p className="m-0 max-w-[72ch] text-text-muted">
-				{issue.editedSinceRead
-					? "This changed on GitHub after you read it. Read this version before a mode that merges comes back."
-					: issue.readAt
-						? "You read this version. If it's edited on GitHub, you read it again."
-						: `The agent gets this version as data, not instructions. If the issue is edited on GitHub, you read it again before ${merging?.name ?? "a mode that merges"} comes back.`}
-			</p>
-			{issue.workOrderId ? (
-				<p className="m-0">
-					<Glyph kind="run" /> Being fixed in{" "}
-					<Lnk to="/work-orders/$id" params={{ id: String(issue.workOrderId) }}>
-						WO-{issue.workOrderId}
-					</Lnk>
+			{(issue.locked || issue.readAt) && (
+				<p className="m-0 max-w-[72ch] text-text-muted">
+					{issue.editedSinceRead
+						? "This changed on GitHub after you read it. Read this version before a mode that merges comes back."
+						: issue.readAt
+							? "You read this version. If it's edited on GitHub, you read it again."
+							: `The agent gets this version as data, not instructions. If the issue is edited on GitHub, you read it again before ${merging?.name ?? "a mode that merges"} comes back.`}
 				</p>
+			)}
+			{issue.workOrderId ? (
+				<div className="flex flex-wrap items-center gap-2">
+					<p className="m-0">
+						<Glyph kind="run" /> Being fixed in{" "}
+						<Lnk to="/work-orders/$id" params={{ id: String(issue.workOrderId) }}>
+							WO-{issue.workOrderId}
+						</Lnk>
+					</p>
+					{issue.locked && (
+						<Button disabled={read.pending} onClick={() => void read.run()}>
+							{merging ? `I've read this, unlock ${merging.name}` : "I've read this"}
+						</Button>
+					)}
+				</div>
 			) : (
 				<div className="flex flex-wrap items-start gap-2">
 					<FixButton
@@ -285,7 +297,7 @@ function Detail({
 				</div>
 			)}
 			{view}
-			<InlineError>{start.error ?? read.error}</InlineError>
+			<InlineError>{start.error ?? read.error ?? hideError}</InlineError>
 		</section>
 	);
 }
@@ -447,6 +459,7 @@ export function IssuesScreen() {
 							issue={current}
 							atLimit={atLimit}
 							onHide={(i, action) => void hide.run({ items: [i], action })}
+							hideError={hide.error && chosen.length === 0 ? "Couldn't change this. Try again." : null}
 						/>
 					)}
 				</div>

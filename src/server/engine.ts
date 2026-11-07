@@ -667,9 +667,16 @@ export class Engine {
 		const paths = await tryReadPrPaths(this.cli, project.repo, pr.number);
 		// Not knowing what it changes is a reason to wait. The next pass reads it again.
 		if (paths === null) return;
-		// That took a moment, and you can have pressed Stop or Stop the line since. Everything counts again.
+		// That took a moment. You can have pressed Stop, a gate can have failed, or a new commit can have come in.
 		const current = this.store.workOrder(wo.id);
-		if (!current || current.state !== wo.state || !this.mergeAllowed(current, pr)) return;
+		const latest = this.store.prs(wo.project).find((p) => p.number === pr.number);
+		if (
+			!current ||
+			current.state !== wo.state ||
+			latest?.headSha !== pr.headSha ||
+			!this.mergeAllowed(current, latest)
+		)
+			return;
 		if (paths.length >= MOST_FILES_GITHUB_LISTS) {
 			kvSet(this.store.db, refusedKey, pr.headSha);
 			this.store.addActivity(wo.id, "This changes too many files to check, so it waits for you");

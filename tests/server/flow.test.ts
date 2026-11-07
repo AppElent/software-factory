@@ -1854,6 +1854,26 @@ describe("modes", () => {
 		expect(wo(id).mergedAt).toBeNull();
 	});
 
+	it.each([
+		["a gate failed", { gates: { ...noGates("passed"), Tests: "failed" as const } }],
+		["a new commit came in", { headSha: "sha2" }],
+	])("doesn't merge when %s while it read which files changed", async (_, over) => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		whileReadingFiles = () => {
+			whileReadingFiles = null;
+			putPr(7, over);
+		};
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(calls.join("\n")).toContain("/files");
+		expect(calls.join("\n")).not.toContain("--match-head-commit sha1");
+	});
+
 	it("closing picked-up work leaves a branch that isn't the factory's", async () => {
 		const id = start({ source: { kind: "restored" } });
 		await settle();

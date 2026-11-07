@@ -11,7 +11,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
@@ -44,6 +44,7 @@ let head: string;
 let checkRuns: Array<{ status: string; conclusion: string | null }>;
 let onChecks: (() => void) | null;
 let touchable: boolean;
+const pnpmHomes = new Map<string, string | undefined>();
 let status: { state: string; total_count: number };
 let committed: string;
 let failing: string | null;
@@ -53,8 +54,9 @@ let exits: number;
 let smoke: (d: string, sha: string) => Promise<void>;
 let busy: string | null;
 
-const cli: Cli = async (cmd, args) => {
+const cli: Cli = async (cmd, args, opts) => {
 	const line = [cmd, ...args].join(" ");
+	if (cmd === "pnpm") pnpmHomes.set(`pnpm ${args[0]}`, opts?.env?.HOME);
 	calls.push(line);
 	const ok = (stdout = "") => ({ code: 0, stdout, stderr: "", timedOut: false, missing: false });
 	if (failing && line.startsWith(failing))
@@ -147,21 +149,37 @@ describe("getting a version ready", () => {
 		expect(saved()[0]).toMatchObject({ sha: B, state: "ready", message: "Add a filter (#48)" });
 		expect(existsSync(join(dir, B))).toBe(true);
 		expect(existsSync(join(dir, `.tmp-${B}`))).toBe(false);
-		expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts");
+		expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile");
 		expect(calls).toContain("pnpm build");
 		expect(guards).toEqual([]);
 		expect(exits).toBe(0);
 	});
 
-	it("gives code that isn't running yet no tokens and no pointers to the real folders", () => {
-		vi.stubEnv("GH_TOKEN", "x");
-		vi.stubEnv("SENTRY_AUTH_TOKEN", "x");
-		vi.stubEnv("SF_DATA_DIR", "/real");
-		vi.stubEnv("MY_API_KEY", "x");
-		const env = candidateEnv();
+	it("gives code that isn't running yet no tokens, no pointers to the real folders, and its own home", () => {
+		for (const k of [
+			"GH_TOKEN",
+			"SENTRY_AUTH_TOKEN",
+			"SF_DATA_DIR",
+			"MY_API_KEY",
+			"XDG_CONFIG_HOME",
+			"GH_CONFIG_DIR",
+		])
+			vi.stubEnv(k, "x");
+		const env = candidateEnv("/throwaway");
 		vi.unstubAllEnvs();
-		expect(Object.keys(env).filter((k) => /GH_TOKEN|SENTRY_AUTH|SF_DATA|API_KEY/.test(k))).toEqual([]);
+		expect(Object.keys(env).filter((k) => /GH_|SENTRY_AUTH|SF_DATA|API_KEY|XDG_/.test(k))).toEqual([]);
 		expect(env.PATH).toBeTruthy();
+		expect(env.HOME).toBe("/throwaway");
+	});
+
+	it("installs and builds with a home folder that holds nothing of yours, and removes it", async () => {
+		seed([row(A, "running")]);
+		await make(A).check();
+		const homes = ["pnpm install", "pnpm build"].map((c) => pnpmHomes.get(c));
+		expect(homes[0]).toBeTruthy();
+		expect(homes[0]).toBe(homes[1]);
+		expect(homes[0]).not.toBe(homedir());
+		expect(existsSync(homes[0] as string)).toBe(false);
 	});
 
 	it("smoke tests the finished folder", async () => {
