@@ -435,6 +435,19 @@ describe("securityOf", () => {
 		expect(gaps.missing).toEqual(["dependabotConfig"]);
 	});
 
+	it("is unknown, never green, when GitHub wouldn't list alerts", () => {
+		expect(securityOf({ alerts: [], total: 0, setup, unread: true }, deadlines, NOW, url).status).toBe(
+			"unknown",
+		);
+		const kept = securityOf(
+			{ alerts: [alert(1, "critical", 3)], total: 1, setup, unread: true },
+			deadlines,
+			NOW,
+			url,
+		);
+		expect(kept.status).toBe("red");
+	});
+
 	it("keeps GitHub's total past the alerts it read", () => {
 		expect(securityOf({ alerts: [alert(1, "low", 1)], total: 140, setup }, deadlines, NOW, url).total).toBe(
 			140,

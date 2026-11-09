@@ -370,6 +370,8 @@ function readSecurity(node: z.infer<typeof RepoNode>): SecurityRead {
 	return {
 		alerts,
 		total: node.vulnerabilityAlerts?.totalCount ?? alerts.length,
+		// With alerts off there are none to list. Otherwise no list means GitHub refused, which isn't zero.
+		unread: !node.vulnerabilityAlerts && node.hasVulnerabilityAlertsEnabled !== false,
 		setup: {
 			alerts: node.hasVulnerabilityAlertsEnabled ?? null,
 			securityUpdates: null,

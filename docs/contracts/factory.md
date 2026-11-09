@@ -191,7 +191,7 @@ Open Dependabot alerts and a setup checklist, read from GitHub with everything e
 - **Deadlines.** Each severity has one, counted from when the alert opened. By default critical and high turn a project red right away, and moderate and low never do. Settings changes them, and a change applies on the next page load, without reading GitHub again.
 - **Status.** Red: an alert is past its deadline. Amber: open alerts, or a setup item that's off. Green: neither. Not read yet: GitHub hasn't answered for it.
 - **Setup:** Dependabot alerts, security updates, `.github/dependabot.yml`, and protection on the default branch, by a rule or an active ruleset. An item GitHub won't tell us about, often for lack of admin rights, is unknown and never counts as off. Security updates are read at most every 30 minutes, because they need one call per repo.
-- **Alerts read:** the first 100 open ones per repo. The total comes from GitHub, so a project with more says how many are left on GitHub.
+- **Alerts read:** the first 100 open ones per repo. The total comes from GitHub, so a project with more says how many are left on GitHub. When GitHub won't list them, the alerts from the last read stay, and a project with none from before reads as unknown, never clear.
 - **Turn on** sets alerts, then security updates, on GitHub. It asks first, and is logged. The dependabot.yml and branch protection need a change in the repo, so they go through a work order.
 - **Fix in a work order** sends package names, versions and advisory IDs. Advisory text stays out, because anyone can write it.
 - **Queue.** A project past a deadline ranks after red main in Needs you. Setup that's off goes under Later, after toolkit. Dismissing holds until the overdue alerts or the missing items change.

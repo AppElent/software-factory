@@ -504,7 +504,8 @@ export function securityOf(
 	const missing = SECURITY_CHECKS.filter((c) => read.setup[c] === false);
 	const overdue = alerts.filter((a) => a.overdue).length;
 	const total = Math.max(read.total, alerts.length);
-	const status = overdue ? "red" : total || missing.length ? "amber" : "green";
+	// A refused alert read with nothing kept from before can't be called clear.
+	const status = overdue ? "red" : total || missing.length ? "amber" : read.unread ? "unknown" : "green";
 	return { status, total, overdue, counts, missing, alerts };
 }
 

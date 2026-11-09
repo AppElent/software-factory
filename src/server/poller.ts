@@ -1,5 +1,5 @@
 import { awaitChecks, isRegression } from "../shared/rules.ts";
-import type { ErrorItem, Project, ToolkitState, WorkType } from "../shared/types.ts";
+import type { ErrorItem, Project, SecurityRead, ToolkitState, WorkType } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import { filterNeverTouch } from "./config.ts";
@@ -181,12 +181,23 @@ export class Poller {
 		this.securityUpdatesCache.delete(repo);
 	}
 
+	/** The alerts from the last read, so one refused read doesn't clear a warning. */
+	private lastAlerts(slug: string): Pick<SecurityRead, "alerts" | "total"> | Record<string, never> {
+		const row = this.d.store.db.prepare("SELECT security FROM projects WHERE slug = ?").get(slug) as
+			| { security: string | null }
+			| undefined;
+		if (!row?.security) return {};
+		const last = JSON.parse(row.security) as SecurityRead;
+		return { alerts: last.alerts, total: last.total };
+	}
+
 	private saveRepo(
 		project: Project,
 		r: Awaited<ReturnType<typeof readRepos>>["repos"][number],
 		toolkit: ToolkitState,
 	) {
 		const { store } = this.d;
+		const security = r.security.unread ? { ...r.security, ...this.lastAlerts(project.slug) } : r.security;
 		store.db
 			.prepare(
 				"UPDATE projects SET name = ?, url = ?, is_private = ?, default_branch = ?, toolkit = ?, main = ?, security = ?, pushed_at = ?, read_at = ? WHERE slug = ?",
@@ -198,7 +209,7 @@ export class Poller {
 				r.defaultBranch,
 				JSON.stringify(toolkit),
 				r.main ? JSON.stringify(r.main) : null,
-				JSON.stringify(r.security),
+				JSON.stringify(security),
 				r.pushedAt,
 				store.iso(),
 				project.slug,

@@ -165,11 +165,16 @@ function SecurityPane({ p }: { p: ProjectSecurity }) {
 						{p.status === "red"
 							? `${plural(p.overdue, "alert")} past the deadline.`
 							: p.status === "unknown"
-								? "GitHub hasn't been read for this project yet."
+								? p.unread
+									? "GitHub wouldn't list alerts. Reading them may need admin rights."
+									: "GitHub hasn't been read for this project yet."
 								: p.total
 									? `${plural(p.total, "open alert")}, none past the deadline.`
 									: `${word}.`}{" "}
 						{p.readAt && `Read ${ago(p.readAt)}.`}
+						{p.unread &&
+							p.status !== "unknown" &&
+							" GitHub wouldn't list alerts this time, so these are from an earlier read."}
 					</span>
 				</p>
 			</div>

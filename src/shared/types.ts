@@ -194,6 +194,8 @@ export interface SecurityRead {
 	/** Open alerts on GitHub. Only the first 100 are read. */
 	total: number;
 	setup: SecuritySetup;
+	/** GitHub wouldn't list alerts on the last read. The alerts are the last ones it did list, if any. */
+	unread?: boolean;
 }
 
 /** `red`: an alert past its deadline. `amber`: open alerts or a setup gap. `unknown`: not read yet. */
@@ -216,6 +218,7 @@ export interface ProjectSecurity extends SecuritySummary {
 	setup: SecuritySetup;
 	alerts: SecurityAlert[];
 	readAt: string | null;
+	unread: boolean;
 }
 
 export interface SecurityResponse {

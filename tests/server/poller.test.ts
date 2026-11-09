@@ -161,3 +161,49 @@ describe("a Never touch rule on the toolkit repo", () => {
 		expect(seen.some((c) => c.includes("developer-tools"))).toBe(true);
 	});
 });
+
+describe("a refused alert read", () => {
+	it("keeps the alerts from the last read, so the warning stays", async () => {
+		const read = JSON.parse(fixture("gh/repo-read.json"));
+		const node = read.data.r0 as { nameWithOwner: string; vulnerabilityAlerts?: unknown };
+		for (const key of Object.keys(read.data)) if (key !== "r0" && key !== "rateLimit") delete read.data[key];
+		const local: Cli = async (_cmd, args) => ok(args.includes("graphql") ? JSON.stringify(read) : "{}");
+		// Toolkit drift isn't what this reads.
+		writeFileSync(join(dir, "never-touch.json"), JSON.stringify(["developer-tools"]));
+		store.db
+			.prepare("INSERT INTO projects (slug, repo, name, url, local_path, added_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run("fx", node.nameWithOwner, "fx", "", "/tmp", store.iso());
+		const poller = new Poller({
+			store,
+			cli: local,
+			publish: () => {},
+			engine: () =>
+				new Engine({
+					store,
+					cli: local,
+					executor: new FakeExecutor(),
+					publish: () => {},
+					pollSoon: () => {},
+				}),
+		} as never);
+		const alert = {
+			number: 4,
+			createdAt: "2026-01-01T00:00:00Z",
+			securityVulnerability: {
+				severity: "CRITICAL",
+				package: { name: "pkg", ecosystem: "NPM" },
+				advisory: { ghsaId: "GHSA-1", summary: "" },
+			},
+		};
+		node.vulnerabilityAlerts = { totalCount: 1, nodes: [alert] };
+		await poller.readGithub();
+		expect(store.security()[0]?.status).toBe("red");
+
+		node.vulnerabilityAlerts = null;
+		await poller.readGithub();
+		const after = store.security()[0];
+		expect(after?.status).toBe("red");
+		expect(after?.unread).toBe(true);
+		expect(after?.alerts.map((a) => a.number)).toEqual([4]);
+	});
+});

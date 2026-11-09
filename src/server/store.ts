@@ -347,6 +347,7 @@ export class Store {
 					branchProtected: null,
 				},
 				readAt: read ? r.read_at : null,
+				unread: !!read?.unread,
 			};
 		});
 	}

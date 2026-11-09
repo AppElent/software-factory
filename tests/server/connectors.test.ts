@@ -144,6 +144,8 @@ describe("GitHub security", () => {
 		const refused = await withSecurity({ vulnerabilityAlerts: null, rulesets: null });
 		expect(refused?.setup).toMatchObject({ alerts: null, dependabotConfig: null, branchProtected: null });
 		expect(refused?.alerts).toEqual([]);
+		expect(refused?.unread).toBe(true);
+		expect(off?.unread).toBe(false);
 	});
 
 	it("reads ruleset exclusions and wildcards against the default branch", async () => {
