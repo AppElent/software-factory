@@ -207,7 +207,7 @@ function PrReview({ pr }: { pr: PrDetail }) {
 			<StatusLine>
 				{merged && (
 					<>
-						Merged. Shipping to production now. <Lnk to="/floor">See the floor</Lnk>
+						Merged on GitHub. <Lnk to="/floor">See the floor</Lnk>
 					</>
 				)}
 			</StatusLine>

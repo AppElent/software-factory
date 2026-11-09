@@ -105,7 +105,7 @@ function statusOf(wo: WorkOrder, view: View, stoppedAt: string | null): { glyph:
 		case "verifying":
 			return { glyph: "run", text: `Gates running · ${span(wo.stageAt)}` };
 		case "shipping":
-			return { glyph: "run", text: "Merged. Shipping to production now." };
+			return { glyph: "run", text: "Merged on GitHub." };
 		case "observing":
 			return { glyph: "pass", text: `Shipped ${ago(wo.mergedAt)} · watching for errors` };
 		case "done":

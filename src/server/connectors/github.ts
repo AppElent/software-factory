@@ -502,6 +502,7 @@ export async function prByBranch(
 	repo: string,
 	branch: string,
 	since: string,
+	opts: { openOnly?: boolean } = {},
 ): Promise<number | null | typeof PR_UNREADABLE> {
 	const res = await cli("gh", [
 		"pr",
@@ -521,6 +522,7 @@ export async function prByBranch(
 			.array(
 				z.object({
 					number: z.number(),
+					state: z.string().optional(),
 					isCrossRepository: z.boolean().optional(),
 					createdAt: z.string().optional(),
 				}),
@@ -528,8 +530,10 @@ export async function prByBranch(
 			.safeParse(JSON.parse(res.stdout));
 		if (!parsed.success) return PR_UNREADABLE;
 		// A new database can reuse a number, and so a branch name. A PR from before this run isn't this run's.
-		const fresh = (at?: string) => !at || Date.parse(at) >= Date.parse(since);
-		return parsed.data.find((pr) => !pr.isCrossRepository && fresh(pr.createdAt))?.number ?? null;
+		// Picked-up work is as old as its thread, so any open PR on its branch counts, and a finished one never does.
+		const fresh = (pr: { state?: string; createdAt?: string }) =>
+			opts.openOnly ? pr.state === "OPEN" : !pr.createdAt || Date.parse(pr.createdAt) >= Date.parse(since);
+		return parsed.data.find((pr) => !pr.isCrossRepository && fresh(pr))?.number ?? null;
 	} catch {
 		return PR_UNREADABLE;
 	}

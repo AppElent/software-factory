@@ -807,7 +807,7 @@ if notMerged:
     [Merging…] (inert) disabled when busy
 if merged:
   (role: status)
-  Merged. Shipping to production now.
+  Merged on GitHub.
   [See the floor] → FloorBoard
 if notMerged:
   [Request changes] on toggle
@@ -906,7 +906,7 @@ if notMerged:
   [Send back to the agent] → FloorBoard
 if merged:
   (role: status)
-  Merged. Shipping to production now.
+  Merged on GitHub.
   [See the floor] → FloorBoard
 if notMerged:
   [Request changes] on toggle
@@ -964,7 +964,7 @@ if notMerged:
   [Start rebase work order] → FloorBoard
 if merged:
   (role: status)
-  Merged. Shipping to production now.
+  Merged on GitHub.
   [See the floor] → FloorBoard
 if notMerged:
   [Request changes] on toggle

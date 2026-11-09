@@ -474,12 +474,14 @@ export class Engine {
 		}
 		if (wo.stage === "Build") {
 			const project = this.store.project(wo.project);
-			// A picked-up run is as old as its thread, not as the moment it was picked up, and its branch is the
-			// thread's own. So any PR on it counts.
-			const since = wo.source.kind === "restored" ? new Date(0).toISOString() : wo.createdAt;
+			// A picked-up run is as old as its thread, not as the moment it was picked up. On a factory branch, an open
+			// PR is its PR, however old. Any other branch T3 reports could be anything, even `main`.
+			const openOnly = wo.source.kind === "restored" && !branchIsntOurs(wo);
 			const number =
 				wo.prNumber ??
-				(project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch, since) : null);
+				(project && wo.branch
+					? await prByBranch(this.cli, project.repo, wo.branch, wo.createdAt, { openOnly })
+					: null);
 			// GitHub didn't answer, which says nothing about the agent. The next pass asks again.
 			if (number === PR_UNREADABLE) return;
 			if (!number) {

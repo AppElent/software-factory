@@ -253,7 +253,7 @@ Works for any open PR, including ones without a work order, where the Work order
 | --- | --- | --- | --- |
 | Ready | All gates passed, no conflict | `Merge`, no dialog: this page is the review | PRFix, PRPassed |
 | Merging | After click | Disabled `Merging…` | PRFix (`st`) |
-| Merged | GitHub confirms | `Merged. Shipping to production now.` `See the floor` | PRFix (`st`) |
+| Merged | GitHub confirms | `Merged on GitHub.` `See the floor` | PRFix (`st`) |
 | Gate failed | Any gate failed | Banner with cause, `Open the log`; `Send back to the agent`; Merge absent | PRFailed |
 | Needs rebase | Base moved or conflicts | Banner, gates `Out of date`, `Start rebase work order` | PRRebase |
 | Running | Gates in progress | Merge absent, `Checks running` | Not drawn |

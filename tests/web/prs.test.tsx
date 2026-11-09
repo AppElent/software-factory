@@ -174,7 +174,7 @@ describe("PR review", () => {
 		expect(within(pane).getByRole("link", { name: /^WO-\d+$/ })).toBeInTheDocument();
 		await user.click(within(pane).getByRole("button", { name: "Merge" }));
 		await waitFor(() => expect(h.mutations).toContain("POST /api/prs/roadmaps/96/merge {}"));
-		expect(await within(pane).findByText(/Merged\. Shipping to production now\./)).toBeInTheDocument();
+		expect(await within(pane).findByText(/Merged on GitHub\./)).toBeInTheDocument();
 		expect(within(pane).getByRole("link", { name: "See the floor" })).toBeInTheDocument();
 		expect(within(pane).queryByRole("button", { name: "Merge" })).toBeNull();
 		expect(within(pane).queryByText(/ready to merge/)).toBeNull();

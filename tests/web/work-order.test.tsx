@@ -421,7 +421,7 @@ describe("work order", () => {
 
 	it("shipping and observing say the change is out, with no actions to take", async () => {
 		await openOrder("Remove the old export");
-		expect(paneStatus()).toHaveTextContent("Merged. Shipping to production now.");
+		expect(paneStatus()).toHaveTextContent("Merged on GitHub.");
 		expect(within(pane()).queryByRole("button")).not.toBeInTheDocument();
 	});
 

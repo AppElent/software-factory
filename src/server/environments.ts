@@ -396,6 +396,8 @@ export class Environments {
 			`repos/${repo}/deployments?environment=${encodeURIComponent(name)}&per_page=5`,
 			Deployment,
 		);
+		// What finished last is what's out there, and that needn't be the one asked for last.
+		let found: { sha: string; created_at: string } | null = null;
 		for (const deployment of recent ?? []) {
 			const statuses = await read(
 				`repos/${repo}/deployments/${deployment.id}/statuses?per_page=1`,
@@ -403,11 +405,14 @@ export class Environments {
 			);
 			// GitHub didn't answer, which says nothing about this one, so keep what's known.
 			if (!statuses) return null;
-			// When it finished, not when it was asked for, is what makes it newer than a deploy from here.
 			const latest = statuses[0];
-			if (latest?.state === "success") return { sha: deployment.sha, created_at: latest.created_at };
+			if (
+				latest?.state === "success" &&
+				(!found || Date.parse(latest.created_at) > Date.parse(found.created_at))
+			)
+				found = { sha: deployment.sha, created_at: latest.created_at };
 		}
-		return null;
+		return found;
 	}
 
 	private async readDeployed(project: Project, env: EnvironmentConfig) {

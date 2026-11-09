@@ -675,6 +675,15 @@ describe("environments", () => {
 		it("doesn't guess past a status it couldn't read", async () => {
 			expect(await deployedAfter({ 2: null, 1: "success" })).toBeNull();
 		});
+		it("takes the one that finished last, even if it was asked for first", async () => {
+			const before = finished[1];
+			finished[1] = "2026-11-10T09:00:00Z";
+			try {
+				expect(await deployedAfter({ 2: "success", 1: "success" })).toBe("older");
+			} finally {
+				finished[1] = before as string;
+			}
+		});
 		it("goes by when a deployment finished, not when it was asked for", async () => {
 			seed();
 			store.db

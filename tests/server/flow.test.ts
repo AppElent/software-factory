@@ -1844,6 +1844,32 @@ describe("modes", () => {
 		expect(wo(id).state).not.toBe("run_failed");
 	});
 
+	it("doesn't take a finished PR for a picked-up run's, or any old PR on a branch that isn't the factory's", async () => {
+		const merged = JSON.stringify([
+			{ number: 3, state: "MERGED", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+		]);
+		const open = JSON.stringify([
+			{ number: 5, state: "OPEN", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+		]);
+		for (const [branch, prs] of [
+			[null, merged],
+			["main", open],
+			["main", merged],
+		] as const) {
+			const id = start({ type: "Chore" });
+			await settle();
+			store.db
+				.prepare("UPDATE work_orders SET source = ?, branch = COALESCE(?, branch) WHERE id = ?")
+				.run(JSON.stringify({ kind: "restored" }), branch, id);
+			cliResult["pr list"] = { code: 0, stdout: prs };
+			exec.finish(threadOf(id), "Done.");
+			await settle();
+			expect(wo(id).prNumber).toBeNull();
+			expect(wo(id).state).toBe("run_failed");
+		}
+		expect(gitCalls.join("\n")).not.toContain("branch -D");
+	});
+
 	it("takes a PR this run opened, even if the agent merged it already", async () => {
 		const id = start({ type: "Chore" });
 		await settle();
