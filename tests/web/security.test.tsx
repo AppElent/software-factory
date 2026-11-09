@@ -57,6 +57,15 @@ describe("security", () => {
 		);
 	});
 
+	it("never calls it all clear while a project is unread", async () => {
+		const h = await renderApp("/security?projects=foundry,fairway", "security");
+		expect(await screen.findByText("1 need attention")).toBeInTheDocument();
+		h.store.db.prepare("UPDATE projects SET security = NULL WHERE slug = 'fairway'").run();
+		await h.client.invalidateQueries();
+		expect(await screen.findByText("1 not read")).toBeInTheDocument();
+		expect(screen.queryByText("All clear")).toBeNull();
+	});
+
 	it("narrows to the chosen projects", async () => {
 		await renderApp("/security?projects=fairway", "security");
 		await screen.findByRole("button", { name: /^Fairway/ });

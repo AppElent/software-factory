@@ -537,6 +537,7 @@ export function readHealth(store: Store, days = 14, projects: string[] = []): He
 	);
 	return {
 		finished: all.length,
+		finishedChosen: merged.length,
 		byType,
 		daily,
 		window: {

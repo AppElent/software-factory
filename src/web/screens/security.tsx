@@ -288,16 +288,19 @@ export function SecurityScreen() {
 	const current = list.find((p) => p.slug === select) ?? list[0] ?? null;
 	const red = list.filter((p) => p.status === "red").length;
 	const amber = list.filter((p) => p.status === "amber").length;
-	const summary = [red && `${red} past deadline`, amber && `${amber} need attention`]
-		.filter(Boolean)
-		.join(" · ");
+	const unknown = list.filter((p) => p.status === "unknown").length;
+	// "All clear" only when every project was read and is green.
+	const summary =
+		[red && `${red} past deadline`, amber && `${amber} need attention`, unknown && `${unknown} not read`]
+			.filter(Boolean)
+			.join(" · ") || (list.length ? "All clear" : "No projects");
 	const { critical, high } = q.data.deadlines;
 	const deadlineWords = (d: number | null) =>
 		d === null ? "never" : d === 0 ? "right away" : `after ${plural(d, "day")}`;
 	return (
 		<Page pane={current ? <SecurityPane key={current.slug} p={current} /> : undefined}>
 			<div className="flex flex-col gap-4">
-				<PageHeader title="Security" summary={summary || "All clear"} actions={<ProjectPicker />} />
+				<PageHeader title="Security" summary={summary} actions={<ProjectPicker />} />
 				<ChosenNote />
 				<p className="m-0 text-meta text-text-muted">
 					Open Dependabot alerts and setup, read from GitHub. Critical alerts turn a project red{" "}

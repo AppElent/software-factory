@@ -689,7 +689,10 @@ export interface DailyNumbers {
 }
 
 export interface HealthResponse {
+	/** Finished work orders in the whole factory, which decides when numbers are worth showing. */
 	finished: number;
+	/** Finished work orders in the chosen projects. The same as `finished` when none are chosen. */
+	finishedChosen: number;
 	byType: WorkTypeHealth[];
 	daily: DailyNumbers[];
 	totals: {

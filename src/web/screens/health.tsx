@@ -287,13 +287,14 @@ function ByWorkType({
 function Early({ health }: { health: HealthResponse }) {
 	const n = health.finished;
 	const tiles: Array<[string, string, string]> = [
-		["Shipped", String(n), "so far"],
+		["Shipped", String(health.finishedChosen), "so far"],
 		["First-try", "–", "Not enough runs"],
 		["Median to PR", "–", "Not enough runs"],
 	];
 	return (
 		<Page>
-			<PageHeader title="Health" summary={`${plural(n, "work order")} so far`} />
+			<PageHeader title="Health" summary={`${plural(n, "work order")} so far`} actions={<ProjectPicker />} />
+			<ChosenNote />
 			<Banner
 				title="Too little data to trust yet"
 				body={`Numbers show after ${EARLY_UNTIL} finished work orders, because 3 runs can swing from 100% to 67% on one failure. ${EARLY_UNTIL - n} to go.`}

@@ -93,6 +93,16 @@ describe("Health", () => {
 		await waitFor(() => expect(opener).toHaveFocus());
 	});
 
+	it("early: the Shipped tile counts the chosen projects, and the picker is there", async () => {
+		await renderApp("/health?projects=gather", "few_runs");
+		// The threshold stays factory-wide: all 3 are in Fairway.
+		expect(await screen.findByText("3 work orders so far")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Projects: Gather" })).toBeInTheDocument();
+		expect(screen.getByText(/Showing 1 of \d+ projects\./)).toBeInTheDocument();
+		const shipped = screen.getByText("Shipped").parentElement;
+		expect(shipped).toHaveTextContent("Shipped 0 so far");
+	});
+
 	it("holds the numbers back under 10 finished work orders", async () => {
 		await renderApp("/health", "few_runs");
 		expect(await screen.findByText("3 work orders so far")).toBeInTheDocument();
