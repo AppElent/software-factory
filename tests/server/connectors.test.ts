@@ -8,6 +8,7 @@ import {
 	readRepos,
 	readSecurityUpdates,
 	readToolkit,
+	refMatches,
 	turnOnSecurity,
 } from "../../src/server/connectors/github.ts";
 import { parseDetail, readIssues, SentryError } from "../../src/server/connectors/sentry.ts";
@@ -143,6 +144,22 @@ describe("GitHub security", () => {
 		const refused = await withSecurity({ vulnerabilityAlerts: null, rulesets: null });
 		expect(refused?.setup).toMatchObject({ alerts: null, dependabotConfig: null, branchProtected: null });
 		expect(refused?.alerts).toEqual([]);
+	});
+
+	it("reads ruleset exclusions and wildcards against the default branch", async () => {
+		const rule = (include: string[], exclude: string[] = []) => ({
+			rulesets: {
+				nodes: [{ enforcement: "ACTIVE", target: "BRANCH", conditions: { refName: { include, exclude } } }],
+			},
+		});
+		// The fixture's default branch is main.
+		expect((await withSecurity(rule(["~ALL"], ["refs/heads/main"])))?.setup.branchProtected).toBe(false);
+		expect((await withSecurity(rule(["~ALL"], ["~DEFAULT_BRANCH"])))?.setup.branchProtected).toBe(false);
+		expect((await withSecurity(rule(["refs/heads/ma*"])))?.setup.branchProtected).toBe(true);
+		expect(refMatches("refs/heads/release/*", "release/1")).toBe(true);
+		expect(refMatches("refs/heads/*", "release/1")).toBe(false);
+		expect(refMatches("refs/heads/**", "release/1")).toBe(true);
+		expect(refMatches("refs/heads/main.x", "mainyx")).toBe(false);
 	});
 
 	it("reads security updates, and turns both on in order", async () => {

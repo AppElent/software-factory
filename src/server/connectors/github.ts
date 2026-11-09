@@ -64,7 +64,7 @@ const Rulesets = z
 					conditions: z
 						.object({
 							refName: z
-								.object({ include: z.array(z.string()) })
+								.object({ include: z.array(z.string()), exclude: z.array(z.string()).optional() })
 								.nullable()
 								.optional(),
 						})
@@ -228,7 +228,7 @@ const FIELDS = `
 		number createdAt vulnerableManifestPath
 		securityVulnerability { severity package { name ecosystem } advisory { ghsaId summary } firstPatchedVersion { identifier } }
 	} }
-	rulesets(first: 20, includeParents: true) { nodes { enforcement target conditions { refName { include } } } }
+	rulesets(first: 20, includeParents: true) { nodes { enforcement target conditions { refName { include exclude } } } }
 	dependabotYml: object(expression: "HEAD:.github/dependabot.yml") { id }
 	dependabotYaml: object(expression: "HEAD:.github/dependabot.yaml") { id }
 	defaultBranchRef { name branchProtectionRule { id } target { ... on Commit { oid messageHeadline committedDate statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
@@ -320,6 +320,25 @@ const SEVERITY: Record<string, Severity> = {
 	LOW: "low",
 };
 
+/** Whether a ruleset ref pattern covers the default branch. Patterns are fnmatch: `*` stops at `/`, `**` doesn't. */
+export function refMatches(pattern: string, branch: string): boolean {
+	if (pattern === "~ALL" || pattern === "~DEFAULT_BRANCH") return true;
+	const full = pattern.startsWith("refs/") ? pattern : `refs/heads/${pattern}`;
+	const re = full
+		.split(/(\*\*|\*|\?)/)
+		.map((part) =>
+			part === "**"
+				? ".*"
+				: part === "*"
+					? "[^/]*"
+					: part === "?"
+						? "[^/]"
+						: part.replace(/[.+^${}()|[\]\\]/g, "\\$&"),
+		)
+		.join("");
+	return new RegExp(`^${re}$`).test(`refs/heads/${branch}`);
+}
+
 function readSecurity(node: z.infer<typeof RepoNode>): SecurityRead {
 	const alerts = (node.vulnerabilityAlerts?.nodes ?? []).flatMap((a): SecurityAlertRead[] => {
 		const severity = a && SEVERITY[a.securityVulnerability.severity];
@@ -340,13 +359,12 @@ function readSecurity(node: z.infer<typeof RepoNode>): SecurityRead {
 		];
 	});
 	const branch = node.defaultBranchRef?.name ?? "main";
-	const ruleCovers = (include: string[]) =>
-		include.some((r) => r === "~DEFAULT_BRANCH" || r === "~ALL" || r === `refs/heads/${branch}`);
 	const ruleset = node.rulesets?.nodes.some(
 		(r) =>
 			r?.enforcement === "ACTIVE" &&
 			r.target === "BRANCH" &&
-			ruleCovers(r.conditions?.refName?.include ?? []),
+			(r.conditions?.refName?.include ?? []).some((p) => refMatches(p, branch)) &&
+			!(r.conditions?.refName?.exclude ?? []).some((p) => refMatches(p, branch)),
 	);
 	const protectedNow = !!node.defaultBranchRef?.branchProtectionRule || !!ruleset;
 	return {

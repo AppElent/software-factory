@@ -94,6 +94,14 @@ describe("floor", () => {
 		expect(await screen.findByRole("button", { name: "Projects: Foundry" })).toBeInTheDocument();
 	});
 
+	it("an explicit empty choice in a link shows every project and forgets the saved one", async () => {
+		window.localStorage.setItem("sf:projects", "foundry");
+		await renderApp("/floor?projects=");
+		await screen.findByText("Guard the scorecard loader");
+		expect(screen.getByRole("button", { name: "Projects: All projects" })).toBeInTheDocument();
+		await waitFor(() => expect(window.localStorage.getItem("sf:projects")).toBeNull());
+	});
+
 	it("drops a project that's no longer in the factory", async () => {
 		await renderApp("/floor?projects=gone");
 		await screen.findByText("Guard the scorecard loader");

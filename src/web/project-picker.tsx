@@ -64,8 +64,9 @@ export function useRestoreChosenProjects() {
 	const { projects: raw } = useSearch({ strict: false }) as { projects?: string };
 	const navigate = useNavigate();
 	useEffect(() => {
-		if (raw) {
-			remember(raw);
+		// An explicit `?projects=` is a choice too: every project. Only a missing one restores.
+		if (raw !== undefined) {
+			remember(raw || undefined);
 			return;
 		}
 		const saved = remembered();
