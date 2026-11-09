@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.7.7
+version: 2.7.8
 status: current
 ---
 
@@ -24,7 +24,7 @@ Screens and copy are in the [companion](../../designs/control-room/control-room_
 - Closing a work order deletes its worktree and branch. The source error stays in the queue. A step that fails is named in the activity, and nothing reports a delete that didn't happen.
 - When a merged work order finishes Observe, the factory removes its worktree and local branch. When its PR is closed outside the factory, it removes only the worktree. A worktree with uncommitted changes stays, and the activity says so.
 - Closing a PR keeps the branch on GitHub and closes its work order.
-- A PR belongs to the work order whose branch it's on from the moment GitHub shows it, so merging refuses while that agent is still working, and while changes you asked for are waiting, failed, or never pushed. Try again or Close is the way past it.
+- A PR belongs to the work order whose branch it's on from the moment GitHub shows it, except picked-up work on a branch that isn't the factory's, so merging refuses while that agent is still working, and while changes you asked for are waiting, failed, or never pushed. Try again or Close is the way past it.
 - Closing a work order closes its PR first. If GitHub refuses, nothing else changes. Picked-up work on a branch that isn't the factory's only closes the work order: the branch, its folder and any PR stay.
 - Merging is refused when the factory hasn't read the project from GitHub for 15 minutes. Merge without me also waits for that, and for a paused project.
 
@@ -114,7 +114,7 @@ This app can be stopped or deleted, and you lose little. Durable things live whe
 The database holds what can be read again, plus history. Deleting the data folder loses finished work orders, deploy history, the audit log, metrics, dismissals and snoozes, and which issues you've read.
 
 - **Restore.** On a start with a database that has never held a project, projects come back from the config file. Never touch rules still apply. A database with rows, even removed ones, isn't touched.
-- **Pick up.** Work orders come back from T3 when their thread title starts `WO-<number>`, the thread isn't settled, and it's still running or has an open PR. Finished work stays history. Picked-up work keeps its number and its thread, and never merges on its own, whatever mode it started in. On a `factory/wo-` branch, an open PR is its PR, however long before the pickup it opened. Otherwise a run only takes a PR opened after it started, or after the pickup, and never one from the default branch.
+- **Pick up.** Work orders come back from T3 when their thread title starts `WO-<number>`, the thread isn't settled, and it's still running or has an open PR on its `factory/wo-` branch. Finished work stays history. Picked-up work keeps its number and its thread, and never merges on its own, whatever mode it started in. On a `factory/wo-` branch, an open PR is its PR, however long before the pickup it opened. Otherwise a run only takes a PR opened after it started, or after the pickup, and never one from the default branch.
 - **Numbers.** New work orders start above the highest number found in T3, so a new branch can't collide with an old one.
 - **Copy as command.** Starting a work order and deploying both show the terminal command that does the same thing.
 

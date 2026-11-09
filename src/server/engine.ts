@@ -477,6 +477,8 @@ export class Engine {
 			// A picked-up run is as old as its thread, not as the moment it was picked up. On a factory branch, an open
 			// PR is its PR, however old. Any other branch T3 reports could be anything, even `main`.
 			const openOnly = wo.source.kind === "restored" && !branchIsntOurs(wo);
+			// Until GitHub has been read, the default branch is a guess, and so is whether this is it.
+			if (!wo.prNumber && branchIsntOurs(wo) && !project?.readAt) return;
 			const number =
 				wo.prNumber ??
 				(project && wo.branch && wo.branch !== project.defaultBranch

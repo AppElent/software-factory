@@ -384,13 +384,19 @@ describe("picking work up from T3", () => {
 		expect(store.workOrder(40)?.prNumber).toBe(41);
 	});
 
-	it("doesn't take a PR from the default branch for a thread working there", async () => {
+	it("only takes a PR on a factory branch for the thread's, so not a release PR from master", async () => {
 		const store = setup();
-		thread("t1", "main", "running");
-		threads = [{ threadId: "t1", title: "WO-70 X", settled: false }];
-		openPrs.main = 41;
+		thread("t1", "master", "running");
+		thread("t2", "feature/x", "completed");
+		threads = [
+			{ threadId: "t1", title: "WO-70 X", settled: false },
+			{ threadId: "t2", title: "WO-71 Y", settled: false },
+		];
+		openPrs.master = 41;
+		openPrs["feature/x"] = 42;
 		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
 		expect(store.workOrder(70)?.prNumber).toBeNull();
+		expect(store.workOrder(71)).toBeNull();
 	});
 
 	it("doesn't make a second work order for a run still waiting to hear its thread", async () => {

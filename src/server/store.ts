@@ -5,6 +5,7 @@ import { defaultModes } from "../shared/modes.ts";
 import type { TriageRecord } from "../shared/rules.ts";
 import {
 	agentHoldsMerge,
+	branchIsntOurs,
 	isRegression,
 	issueGroup,
 	issueLocked,
@@ -328,7 +329,7 @@ export class Store {
 		const names = new Map(visible.map((p) => [p.slug, p.name]));
 		const links = this.db
 			.prepare(
-				`SELECT id, project, pr_number, branch, type, state, failed_sha FROM work_orders WHERE (pr_number IS NOT NULL OR branch IS NOT NULL) AND ${OPEN_FILTER}`,
+				`SELECT id, project, pr_number, branch, type, state, failed_sha, source FROM work_orders WHERE (pr_number IS NOT NULL OR branch IS NOT NULL) AND ${OPEN_FILTER}`,
 			)
 			.all() as Array<{
 			id: number;
@@ -338,7 +339,11 @@ export class Store {
 			type: WorkType;
 			state: string;
 			failed_sha: string | null;
+			source: string;
 		}>;
+		// Picked-up work on a branch that isn't the factory's, even the default one, doesn't own what's on it.
+		const byBranch = (l: (typeof links)[number]) =>
+			!branchIsntOurs({ source: JSON.parse(l.source) as { kind: string }, branch: l.branch });
 		const rows = this.db.prepare("SELECT project, json FROM prs").all() as Array<{
 			project: string;
 			json: string;
@@ -354,7 +359,7 @@ export class Store {
 				const linked = links.filter(
 					(l) =>
 						l.project === r.project &&
-						(l.pr_number === pr.number || (l.branch === pr.headRef && !pr.fromFork)),
+						(l.pr_number === pr.number || (l.branch === pr.headRef && !pr.fromFork && byBranch(l))),
 				);
 				const holds = (l: (typeof links)[number]) =>
 					agentHoldsMerge({ state: l.state, failedSha: l.failed_sha }, pr.headSha);

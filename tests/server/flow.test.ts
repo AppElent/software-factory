@@ -142,6 +142,9 @@ describe("cleaning up after a work order", () => {
 	it("leaves a picked-up branch that isn't the factory's when its work order finishes", async () => {
 		const id = await merged();
 		store.db
+			.prepare("UPDATE projects SET read_at = ? WHERE slug = 'fairway'")
+			.run(new Date(clock).toISOString());
+		store.db
 			.prepare("UPDATE work_orders SET source = ?, branch = 'main' WHERE id = ?")
 			.run(JSON.stringify({ kind: "restored" }), id);
 		clock += OBSERVE_MS + 1;
@@ -1792,6 +1795,19 @@ describe("modes", () => {
 			expect(of(7)).toBe(id);
 		});
 
+		it("isn't picked-up work's by branch on a branch that isn't the factory's, so merging it doesn't ship that work", async () => {
+			const id = start({ type: "Chore" });
+			await settle();
+			store.db
+				.prepare("UPDATE work_orders SET source = ?, branch = 'main', state = 'run_failed' WHERE id = ?")
+				.run(JSON.stringify({ kind: "restored" }), id);
+			putPr(41, { headRef: "main" });
+			expect(store.prs().find((p) => p.number === 41)?.workOrderId).toBeNull();
+			store.patchWorkOrder(id, { branch: "factory/wo-1-x" });
+			putPr(42, { headRef: "factory/wo-1-x" });
+			expect(store.prs().find((p) => p.number === 42)?.workOrderId).toBe(id);
+		});
+
 		it.each([[true], [undefined]])(
 			"isn't merged even as the work order's PR: fromFork %s",
 			async (fromFork) => {
@@ -1859,6 +1875,9 @@ describe("modes", () => {
 			const id = start({ type: "Chore" });
 			await settle();
 			store.db
+				.prepare("UPDATE projects SET read_at = ? WHERE slug = 'fairway'")
+				.run(new Date(clock).toISOString());
+			store.db
 				.prepare("UPDATE work_orders SET source = ?, branch = COALESCE(?, branch) WHERE id = ?")
 				.run(JSON.stringify({ kind: "restored" }), branch, id);
 			cliResult["pr list"] = { code: 0, stdout: prs };
@@ -1874,6 +1893,9 @@ describe("modes", () => {
 		const id = start({ type: "Chore" });
 		await settle();
 		store.db
+			.prepare("UPDATE projects SET read_at = ? WHERE slug = 'fairway'")
+			.run(new Date(clock).toISOString());
+		store.db
 			.prepare("UPDATE work_orders SET source = ?, branch = 'main' WHERE id = ?")
 			.run(JSON.stringify({ kind: "restored" }), id);
 		cliResult["pr list"] = {
@@ -1888,6 +1910,39 @@ describe("modes", () => {
 			]),
 		};
 		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).toBe("run_failed");
+	});
+
+	it("waits to know the default branch before looking for a picked-up run's PR off a factory branch", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		store.db
+			.prepare("UPDATE projects SET read_at = NULL, default_branch = 'main' WHERE slug = 'fairway'")
+			.run();
+		store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'master' WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{
+					number: 6,
+					state: "OPEN",
+					isCrossRepository: false,
+					createdAt: new Date(clock + 1000).toISOString(),
+				},
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).not.toBe("run_failed");
+		store.db
+			.prepare("UPDATE projects SET read_at = ?, default_branch = 'master' WHERE slug = 'fairway'")
+			.run(new Date(clock).toISOString());
+		await settle();
 		await settle();
 		expect(wo(id).prNumber).toBeNull();
 		expect(wo(id).state).toBe("run_failed");

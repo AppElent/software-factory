@@ -178,8 +178,9 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 			const alive = ["running", "queued", "waiting_native"].includes(state.status);
 			let prNumber: number | null = null;
 			let prKnown = true;
-			// A thread working on the default branch has no PR of its own, so any PR from there is someone else's.
-			if (state.branch && state.branch !== project.defaultBranch) {
+			// Only a factory branch is the thread's own. A PR on any other branch, even the default one, which isn't
+			// known yet on a restored database, may be someone else's. The engine decides those once the run finishes.
+			if (state.branch?.startsWith("factory/wo-")) {
 				const prs = await cli("gh", [
 					"pr",
 					"list",
