@@ -96,7 +96,7 @@ export const realHealthFetch: HealthFetch = async (url) => {
 };
 
 const Deployment = z.array(z.object({ id: z.number(), sha: z.string(), created_at: z.string() }));
-const DeploymentStatus = z.array(z.object({ state: z.string() }));
+const DeploymentStatus = z.array(z.object({ state: z.string(), created_at: z.string() }));
 const Compare = z.object({ ahead_by: z.number() });
 
 interface HealthRow {
@@ -403,7 +403,9 @@ export class Environments {
 			);
 			// GitHub didn't answer, which says nothing about this one, so keep what's known.
 			if (!statuses) return null;
-			if (statuses[0]?.state === "success") return deployment;
+			// When it finished, not when it was asked for, is what makes it newer than a deploy from here.
+			const latest = statuses[0];
+			if (latest?.state === "success") return { sha: deployment.sha, created_at: latest.created_at };
 		}
 		return null;
 	}

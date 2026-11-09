@@ -624,6 +624,8 @@ describe("environments", () => {
 	});
 
 	describe("what's deployed, from GitHub", () => {
+		// The second one took two days to finish.
+		const finished: Record<number, string> = { 2: "2026-11-09T12:00:00Z", 1: "2026-11-06T10:05:00Z" };
 		const reading = (statuses: Record<number, string | null>) =>
 			new Environments({
 				store,
@@ -648,7 +650,7 @@ describe("environments", () => {
 					const state = statuses[id];
 					return state === null
 						? { code: 1, stderr: "no", stdout: "" }
-						: { code: 0, stderr: "", stdout: JSON.stringify([{ state }]) };
+						: { code: 0, stderr: "", stdout: JSON.stringify([{ state, created_at: finished[id] }]) };
 				},
 			});
 		const deployedAfter = async (statuses: Record<number, string | null>) => {
@@ -672,6 +674,19 @@ describe("environments", () => {
 		});
 		it("doesn't guess past a status it couldn't read", async () => {
 			expect(await deployedAfter({ 2: null, 1: "success" })).toBeNull();
+		});
+		it("goes by when a deployment finished, not when it was asked for", async () => {
+			seed();
+			store.db
+				.prepare(
+					"INSERT INTO deploys (project, env, command, state, started_at, finished_at, sha, log) VALUES ('fairway', ?, 'x', 'passed', ?, ?, 'ours', '')",
+				)
+				.run(STAGING.name, "2026-11-08T10:00:00Z", "2026-11-08T11:00:00Z");
+			const reader = reading({ 2: "success", 1: "success" });
+			await reader.checkAll();
+			const staging = reader.all().find((e) => e.name === STAGING.name);
+			expect(staging?.deployedSha).toBe("newer");
+			expect(staging?.deployedAt).toBe(finished[2]);
 		});
 	});
 

@@ -2,7 +2,7 @@
 
 type: contract
 description: Read when changing how work orders move, what needs approval, what the queue ranks, or what the factory may touch.
-version: 2.7.4
+version: 2.7.5
 status: current
 ---
 
@@ -114,7 +114,7 @@ This app can be stopped or deleted, and you lose little. Durable things live whe
 The database holds what can be read again, plus history. Deleting the data folder loses finished work orders, deploy history, the audit log, metrics, dismissals and snoozes, and which issues you've read.
 
 - **Restore.** On a start with a database that has never held a project, projects come back from the config file. Never touch rules still apply. A database with rows, even removed ones, isn't touched.
-- **Pick up.** Work orders come back from T3 when their thread title starts `WO-<number>`, the thread isn't settled, and it's still running or has an open PR. Finished work stays history. Picked-up work keeps its number and its thread, and never merges on its own, whatever mode it started in.
+- **Pick up.** Work orders come back from T3 when their thread title starts `WO-<number>`, the thread isn't settled, and it's still running or has an open PR. Finished work stays history. Picked-up work keeps its number and its thread, and never merges on its own, whatever mode it started in. Its branch is the thread's own, so an open PR on it is its PR, however long before the pickup it opened. A new run only takes a PR opened after it started.
 - **Numbers.** New work orders start above the highest number found in T3, so a new branch can't collide with an old one.
 - **Copy as command.** Starting a work order and deploying both show the terminal command that does the same thing.
 
@@ -137,7 +137,7 @@ An environment belongs to a project and lives in the config file: name, URL, hea
 - **Look in the repo** reads GitHub environments, `deploy:<env>` scripts, workflows with `workflow_dispatch` and wrangler config. It shows what it finds. Nothing runs or saves until you add it.
 - **Queue.** A down production tops Needs you. Any other down environment goes under Later. Dismissing an outage holds until that environment goes down again.
 - **Fix** starts a work order with the fingerprint `env:<project>:<name>`, and the health error and any failed deploy log as delimited data. A mode that merges on its own needs confirming on production.
-- **What's deployed** is the newer of the factory's own last passed deploy and GitHub's deployments for that environment. Behind counts commits on the default branch since then.
+- **What's deployed** is whichever finished last: the factory's own last passed deploy, or GitHub's newest deployment for that environment that succeeded. Behind counts commits on the default branch since then.
 
 ## Issues
 
