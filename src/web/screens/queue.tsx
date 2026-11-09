@@ -28,6 +28,7 @@ import {
 	Skeleton,
 	StatusLine,
 } from "../kit.tsx";
+import { ChosenNote, ProjectPicker, useChosenProjects } from "../project-picker.tsx";
 import { useAction, useQueue, useShell } from "../queries.ts";
 import { useOpenNewWorkOrder } from "../shell.tsx";
 import { canStart, canTriage, ItemPane, spanWords, type TriageAction } from "./queue-pane.tsx";
@@ -68,6 +69,7 @@ const GLYPHS: Partial<Record<QueueItem["kind"], GlyphKind>> = {
 	plan: "ask",
 	waiting_in_t3: "ask",
 	red_main: "fail",
+	security: "fail",
 	failed_gates: "fail",
 	run_failed: "fail",
 	ready_pr: "pass",
@@ -595,8 +597,14 @@ function QueueList({ data }: { data: QueueResponse }) {
 			<PageHeader
 				title="Queue"
 				summary={`${needCount} · ${later.length} can wait`}
-				actions={listing ? <Button onClick={() => openNew()}>New work order</Button> : undefined}
+				actions={
+					<>
+						<ProjectPicker />
+						{listing && <Button onClick={() => openNew()}>New work order</Button>}
+					</>
+				}
 			/>
+			<ChosenNote />
 			<Banners data={data} />
 			<StageStrip data={data} />
 			{listing ? (
@@ -659,10 +667,18 @@ function QueueList({ data }: { data: QueueResponse }) {
 	);
 }
 
+/** Items that belong to no project, such as a missing tool, show whichever projects are chosen. */
+function onlyChosen(data: QueueResponse, chosen: string[]): QueueResponse {
+	if (chosen.length === 0) return data;
+	const keep = (i: QueueItem) => !i.project || chosen.includes(i.project);
+	return { ...data, needsYou: data.needsYou.filter(keep), later: data.later.filter(keep) };
+}
+
 export function QueueScreen() {
 	const queue = useQueue();
 	const shell = useShell();
-	if (queue.data && !queue.data.loading) return <QueueList data={queue.data} />;
+	const [chosen] = useChosenProjects();
+	if (queue.data && !queue.data.loading) return <QueueList data={onlyChosen(queue.data, chosen)} />;
 	if (queue.data) return <QueueLoading projects={queue.data.projects} />;
 	if (queue.isPending) return <QueueLoading projects={shell.data?.counts.projects} />;
 	return (

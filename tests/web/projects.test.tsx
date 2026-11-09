@@ -258,7 +258,7 @@ describe("Project page", () => {
 		).toBeInTheDocument();
 		expect(within(dialog).getByRole("link", { name: "See work orders" })).toHaveAttribute(
 			"href",
-			"/floor?project=fairway",
+			"/floor?projects=fairway",
 		);
 		await waitFor(() => expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus());
 		await user.click(within(dialog).getByRole("button", { name: "Pause project" }));

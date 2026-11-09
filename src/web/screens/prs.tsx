@@ -1,5 +1,5 @@
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { type RefObject, useEffect, useId, useRef, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { allFourPassed, noGates } from "../../shared/rules.ts";
 import type { BulkMergeResult, PrGroup, PullRequest } from "../../shared/types.ts";
 import { api } from "../api.ts";
@@ -21,51 +21,11 @@ import {
 	Skeleton,
 	StatusLine,
 } from "../kit.tsx";
-import { useAction, useProjects, usePrs, useShell } from "../queries.ts";
+import { ProjectPicker, useChosenProjects, useChosenWords } from "../project-picker.tsx";
+import { useAction, usePrs, useShell } from "../queries.ts";
 import { useOpenNewWorkOrder } from "../shell.tsx";
 
 /* ---------- parts the Errors list shares ---------- */
-
-/** Project select. The value lives in `?project=`, so it survives reload and Back. */
-export function ProjectFilter({
-	value,
-	onChange,
-	selectRef,
-}: {
-	value: string | undefined;
-	onChange: (slug: string | undefined) => void;
-	selectRef?: RefObject<HTMLSelectElement | null>;
-}) {
-	const id = useId();
-	const projects = useProjects();
-	return (
-		<span className="flex flex-wrap items-center gap-2">
-			<label htmlFor={id} className="text-meta text-text-muted">
-				Project
-			</label>
-			<select
-				id={id}
-				ref={selectRef}
-				className="max-w-full"
-				value={value ?? ""}
-				onChange={(e) => onChange(e.target.value || undefined)}
-			>
-				<option value="">All projects</option>
-				{projects.data
-					?.slice()
-					.sort((a, b) => a.name.localeCompare(b.name))
-					.map((p) => (
-						<option key={p.slug} value={p.slug}>
-							{p.name}
-						</option>
-					))}
-				{value && projects.data && !projects.data.some((p) => p.slug === value) && (
-					<option value={value}>{value}</option>
-				)}
-			</select>
-		</span>
-	);
-}
 
 /** Never renders loading as empty. `Reading N projects` while the first read runs. */
 export function ListSkeleton({ noun }: { noun: string }) {
@@ -209,18 +169,16 @@ function PrRow({
 }
 
 export function PullRequestsScreen() {
-	const { project } = useSearch({ from: "/shell/prs" });
 	const navigate = useNavigate();
-	const q = usePrs(project);
+	const [chosenProjects, setChosenProjects] = useChosenProjects();
+	const chosenWords = useChosenWords();
+	const q = usePrs(chosenProjects);
 	const shell = useShell();
-	const projects = useProjects();
 	const openNew = useOpenNewWorkOrder();
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [asking, setAsking] = useState(false);
 	const [result, setResult] = useState<BulkResult | null>(null);
 	const resultRef = useRef<HTMLDivElement>(null);
-
-	const setProject = (slug: string | undefined) => void navigate({ to: "/prs", search: { project: slug } });
 
 	const prs = q.data ?? [];
 	const ready = prs.filter((p) => p.group === "ready");
@@ -287,7 +245,7 @@ export function PullRequestsScreen() {
 			</Page>
 		);
 	}
-	if (prs.length === 0 && !project && !result) {
+	if (prs.length === 0 && chosenProjects.length === 0 && !result) {
 		return (
 			<Page>
 				<PageHeader title="Pull requests" summary="0 open" />
@@ -306,7 +264,6 @@ export function PullRequestsScreen() {
 		);
 	}
 
-	const projectName = projects.data?.find((p) => p.slug === project)?.name ?? project ?? "";
 	const toRebase = result?.failed.filter((f) => needsRebase(f.reason)).map((f) => f.pr) ?? [];
 	const n = chosen.length;
 	const mergeLabel = `Merge ${plural(n, "PR")}`;
@@ -320,7 +277,7 @@ export function PullRequestsScreen() {
 				<PageHeader
 					title="Pull requests"
 					summary={openSummary(prs.length, new Set(prs.map((p) => p.project)).size)}
-					actions={<ProjectFilter value={project} onChange={setProject} />}
+					actions={<ProjectPicker />}
 				/>
 				{result && (
 					<div ref={resultRef} tabIndex={-1} className="flex flex-col gap-2">
@@ -365,8 +322,8 @@ export function PullRequestsScreen() {
 						</section>
 					);
 				})}
-				{prs.length === 0 && project && (
-					<NothingIn name={projectName} onShowAll={() => setProject(undefined)} />
+				{prs.length === 0 && chosenProjects.length > 0 && (
+					<NothingIn name={chosenWords} onShowAll={() => setChosenProjects([])} />
 				)}
 			</div>
 			{n > 0 && (

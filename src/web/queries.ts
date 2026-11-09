@@ -18,6 +18,7 @@ import type {
 	QueueResponse,
 	ReadingResponse,
 	RepoListResponse,
+	SecurityResponse,
 	Settings,
 	ShellResponse,
 	ToolStatus,
@@ -35,11 +36,14 @@ export const useShell = () =>
 	});
 export const useQueue = () =>
 	useQuery({ queryKey: ["queue"], queryFn: () => api.get<QueueResponse>("/api/queue") });
-export const useFloor = (project?: string) =>
+/** `?projects=a,b`, or nothing for every project. */
+const only = (projects: string[], first = "?") =>
+	projects.length ? `${first}projects=${projects.map(encodeURIComponent).join(",")}` : "";
+
+export const useFloor = (projects: string[] = []) =>
 	useQuery({
-		queryKey: ["floor", project ?? ""],
-		queryFn: () =>
-			api.get<FloorResponse>(`/api/floor${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+		queryKey: ["floor", projects.join(",")],
+		queryFn: () => api.get<FloorResponse>(`/api/floor${only(projects)}`),
 	});
 export const useWorkOrders = () =>
 	useQuery({ queryKey: ["work-orders"], queryFn: () => api.get<WorkOrder[]>("/api/work-orders") });
@@ -48,11 +52,10 @@ export const useWorkOrder = (id: number) =>
 		queryKey: ["work-order", String(id)],
 		queryFn: () => api.get<WorkOrder>(`/api/work-orders/${id}`),
 	});
-export const usePrs = (project?: string) =>
+export const usePrs = (projects: string[] = []) =>
 	useQuery({
-		queryKey: ["prs", project ?? ""],
-		queryFn: () =>
-			api.get<PullRequest[]>(`/api/prs${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+		queryKey: ["prs", projects.join(",")],
+		queryFn: () => api.get<PullRequest[]>(`/api/prs${only(projects)}`),
 	});
 export const usePr = (project: string, number: number) =>
 	useQuery({
@@ -90,17 +93,15 @@ export const useProjectEnvironments = (slug: string) =>
 			api.get<ProjectEnvironmentsResponse>(`/api/projects/${encodeURIComponent(slug)}/environments`),
 		refetchInterval: 15_000,
 	});
-export const useIssues = (project?: string) =>
+export const useIssues = (projects: string[] = []) =>
 	useQuery({
-		queryKey: ["issues", project ?? ""],
-		queryFn: () =>
-			api.get<IssuesResponse>(`/api/issues${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+		queryKey: ["issues", projects.join(",")],
+		queryFn: () => api.get<IssuesResponse>(`/api/issues${only(projects)}`),
 	});
-export const useErrors = (project?: string) =>
+export const useErrors = (projects: string[] = []) =>
 	useQuery({
-		queryKey: ["errors", project ?? ""],
-		queryFn: () =>
-			api.get<ErrorsResponse>(`/api/errors${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+		queryKey: ["errors", projects.join(",")],
+		queryFn: () => api.get<ErrorsResponse>(`/api/errors${only(projects)}`),
 	});
 export const useError = (id: string) =>
 	useQuery({
@@ -114,8 +115,13 @@ export const useProject = (slug: string) =>
 		queryKey: ["project", slug],
 		queryFn: () => api.get<ProjectDetail>(`/api/projects/${encodeURIComponent(slug)}`),
 	});
-export const useHealth = () =>
-	useQuery({ queryKey: ["health"], queryFn: () => api.get<HealthResponse>("/api/health?window=14d") });
+export const useHealth = (projects: string[] = []) =>
+	useQuery({
+		queryKey: ["health", projects.join(",")],
+		queryFn: () => api.get<HealthResponse>(`/api/health?window=14d${only(projects, "&")}`),
+	});
+export const useSecurity = () =>
+	useQuery({ queryKey: ["security"], queryFn: () => api.get<SecurityResponse>("/api/security") });
 export const useSettings = () =>
 	useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") });
 export const useModes = () =>

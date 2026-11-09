@@ -17,9 +17,10 @@ import {
 	SectionLabel,
 	StatusLine,
 } from "../kit.tsx";
-import { useAction, useIssues, useModes, useProjects, useQueue, useShell } from "../queries.ts";
+import { ProjectPicker, useChosenProjects, useChosenWords } from "../project-picker.tsx";
+import { useAction, useIssues, useModes, useQueue, useShell } from "../queries.ts";
 import { agoWords } from "./errors.tsx";
-import { ListSkeleton, NothingIn, openSummary, ProjectFilter } from "./prs.tsx";
+import { ListSkeleton, NothingIn, openSummary } from "./prs.tsx";
 
 const keyOf = (i: Pick<Issue, "project" | "number">) => `${i.project}:${i.number}`;
 
@@ -303,12 +304,13 @@ function Detail({
 }
 
 export function IssuesScreen() {
-	const { project, select } = useSearch({ from: "/shell/issues" });
+	const { select } = useSearch({ from: "/shell/issues" });
 	const navigate = useNavigate();
-	const q = useIssues(project);
+	const [chosenProjects, setChosenProjects] = useChosenProjects();
+	const chosenWords = useChosenWords();
+	const q = useIssues(chosenProjects);
 	const shell = useShell();
 	const queue = useQueue();
-	const projects = useProjects();
 	const [checked, setChecked] = useState<Set<string>>(new Set());
 	const [note, setNote] = useState<{ text: string; items: Issue[] } | null>(null);
 	const undoRef = useRef<HTMLButtonElement>(null);
@@ -366,10 +368,7 @@ export function IssuesScreen() {
 	}
 
 	const issues = q.data.issues;
-	const setProject = (slug: string | undefined) =>
-		void navigate({ to: "/issues", search: { project: slug } });
-	const open = (i: Issue) =>
-		void navigate({ to: "/issues", search: { project, select: keyOf(i) }, replace: true });
+	const open = (i: Issue) => void navigate({ to: "/issues", search: { select: keyOf(i) }, replace: true });
 	const toggle = (i: Issue) =>
 		setChecked((prev) => {
 			const next = new Set(prev);
@@ -382,7 +381,6 @@ export function IssuesScreen() {
 	const startable = chosen.filter((i) => !i.workOrderId);
 	const lockedCount = startable.filter((i) => i.locked).length;
 	const inProjects = new Set(issues.map((i) => i.project)).size;
-	const projectName = projects.data?.find((p) => p.slug === project)?.name ?? project ?? "";
 
 	const noteLine = (
 		<div className="flex flex-col gap-2">
@@ -400,7 +398,7 @@ export function IssuesScreen() {
 		</div>
 	);
 
-	if (issues.length === 0 && !project) {
+	if (issues.length === 0 && chosenProjects.length === 0) {
 		return (
 			<Page>
 				<PageHeader title="Issues" summary="0 open" />
@@ -421,9 +419,9 @@ export function IssuesScreen() {
 			<PageHeader
 				title="Issues"
 				summary={openSummary(issues.length, inProjects)}
-				actions={<ProjectFilter value={project} onChange={setProject} />}
+				actions={<ProjectPicker />}
 			/>
-			{issues.length === 0 && <NothingIn name={projectName} onShowAll={() => setProject(undefined)} />}
+			{issues.length === 0 && <NothingIn name={chosenWords} onShowAll={() => setChosenProjects([])} />}
 			{noteLine}
 			<div className="flex flex-wrap items-start gap-6">
 				<section

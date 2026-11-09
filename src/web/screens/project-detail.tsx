@@ -286,7 +286,7 @@ function RemoveDialog({
 						: `It has ${open_}. Close them first, or pause the project so nothing new starts.`
 				}
 				extra={
-					<ButtonLink to="/floor" search={{ project: p.slug } as never}>
+					<ButtonLink to="/floor" search={{ projects: p.slug } as never}>
 						See work orders
 					</ButtonLink>
 				}

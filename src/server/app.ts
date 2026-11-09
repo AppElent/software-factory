@@ -22,13 +22,15 @@ import type {
 	ProjectEnvironmentsResponse,
 	ReadingResponse,
 	RepoListResponse,
+	SecurityResponse,
 	Settings,
+	Severity,
 	SyncResult,
 	VersionsResponse,
 	WorkOrder,
 	WorkOrderSource,
 } from "../shared/types.ts";
-import { WORK_TYPES } from "../shared/types.ts";
+import { SEVERITIES, WORK_TYPES } from "../shared/types.ts";
 import { type Automations, NewAutomation } from "./automations.ts";
 import type { Bus } from "./bus.ts";
 import type { Cli } from "./cli.ts";
@@ -36,7 +38,7 @@ import { scrub } from "./cli.ts";
 import type { Config } from "./config.ts";
 import { filterNeverTouch, NeverTouchError, writeNeverTouch } from "./config.ts";
 import { ConfigFileError, EnvironmentSchema, ModeSchema } from "./config-file.ts";
-import { cloneRepo, listRepos, REPO_RE, readPrFiles } from "./connectors/github.ts";
+import { cloneRepo, listRepos, REPO_RE, readPrFiles, turnOnSecurity } from "./connectors/github.ts";
 import { checkTools, installTool, openSignIn, TOOLS } from "./connectors/tools.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
@@ -114,6 +116,13 @@ const launchdRestart = () => {
 		// Not running under launchd: exit and let whoever started it decide.
 		if (err) process.exit(0);
 	});
+};
+
+/** `?projects=a,b`. Empty means every project. */
+const projectsQuery = (raw: string | undefined) => (raw ? raw.split(",").filter(Boolean) : []);
+const inProjects = (raw: string | undefined) => {
+	const list = projectsQuery(raw);
+	return (row: { project: string }) => list.length === 0 || list.includes(row.project);
 };
 
 export function createApp(d: AppDeps): Hono {
@@ -577,7 +586,7 @@ export function createApp(d: AppDeps): Hono {
 		return c.json({ ok: true });
 	});
 
-	app.get("/api/floor", (c) => c.json(readFloor(store, engine, c.req.query("project") || undefined)));
+	app.get("/api/floor", (c) => c.json(readFloor(store, engine, projectsQuery(c.req.query("projects")))));
 
 	app.post("/api/line", async (c) => {
 		const { stopped } = await body(c.req, z.object({ stopped: z.boolean() }));
@@ -962,8 +971,6 @@ export function createApp(d: AppDeps): Hono {
 		const response: EnvironmentsResponse = {
 			projects,
 			names,
-			down: every.filter((e) => e.health.state === "down").length,
-			behind: every.filter((e) => (e.behind ?? 0) > 0).length,
 			checkedAt: checks.at(-1) ?? null,
 		};
 		return c.json(response);
@@ -1021,9 +1028,8 @@ export function createApp(d: AppDeps): Hono {
 	const issueRef = z.object({ project: z.string(), number: z.number().int().positive() });
 
 	app.get("/api/issues", (c) => {
-		const project = c.req.query("project") || undefined;
 		const response: IssuesResponse = {
-			issues: store.issues(project),
+			issues: store.issues().filter(inProjects(c.req.query("projects"))),
 			checkedAt: store.health().find((h) => h.source === "GitHub")?.lastOk ?? null,
 			projects: store.projects().length,
 		};
@@ -1167,7 +1173,7 @@ export function createApp(d: AppDeps): Hono {
 
 	/* ---------- pull requests ---------- */
 
-	app.get("/api/prs", (c) => c.json(store.prs(c.req.query("project") || undefined)));
+	app.get("/api/prs", (c) => c.json(store.prs().filter(inProjects(c.req.query("projects")))));
 
 	app.get("/api/prs/:project/:n", async (c) => {
 		const project = c.req.param("project");
@@ -1223,10 +1229,12 @@ export function createApp(d: AppDeps): Hono {
 	const isOpen = (e: { triage: { action: string } | null }) => e.triage?.action !== "dismiss";
 
 	app.get("/api/errors", (c) => {
-		const project = c.req.query("project") || undefined;
 		const projects = store.projects();
 		return c.json({
-			errors: store.errors(project).filter(isOpen),
+			errors: store
+				.errors()
+				.filter(isOpen)
+				.filter(inProjects(c.req.query("projects"))),
 			checkedAt: store.health().find((h) => h.source === "Sentry")?.lastOk ?? null,
 			withoutSentry: projects.filter((p) => !p.sentryProject).length,
 			quiet: projects.filter((p) => p.sentryProject && !store.errors(p.slug).some(isOpen)).length,
@@ -1258,7 +1266,41 @@ export function createApp(d: AppDeps): Hono {
 
 	app.get("/api/health", (c) => {
 		const m = /^(\d+)d$/.exec(c.req.query("window") ?? "14d");
-		return c.json(readHealth(store, Math.min(Number(m?.[1] ?? 14), 90)));
+		return c.json(
+			readHealth(store, Math.min(Number(m?.[1] ?? 14), 90), projectsQuery(c.req.query("projects"))),
+		);
+	});
+
+	/* ---------- security ---------- */
+
+	app.get("/api/security", (c) => {
+		const response: SecurityResponse = {
+			projects: store.security(),
+			deadlines: store.settings().security.deadlines,
+		};
+		return c.json(response);
+	});
+
+	/** Turns on what GitHub can turn on by API. A dependabot.yml and branch rules are repo changes, so they're work orders. */
+	app.post("/api/projects/:slug/security/turn-on", async (c) => {
+		const project = needProject(c.req.param("slug"));
+		const { what } = await body(
+			c.req,
+			z.object({ what: z.array(z.enum(["alerts", "securityUpdates"])).min(1) }),
+		);
+		// Security updates need alerts, so asking for them asks for both.
+		const both = what.includes("securityUpdates") ? (["alerts", "securityUpdates"] as const) : what;
+		try {
+			await turnOnSecurity(cli, project.repo, [...both]);
+		} catch (e) {
+			audit(store.db, "turn on security", project.repo, "you", scrub(String(e)), store.now());
+			throw new ActionError(e instanceof Error ? e.message : "GitHub refused.", 502);
+		}
+		audit(store.db, "turn on security", project.repo, "you", both.join(", "), store.now());
+		poller.forgetSecurityUpdates(project.repo);
+		poller.soon();
+		bus.publish(["security"]);
+		return c.json({ ok: true });
 	});
 
 	/* ---------- settings ---------- */
@@ -1323,6 +1365,21 @@ export function createApp(d: AppDeps): Hono {
 		bus.publish(["settings", "health"]);
 		void engine.tick();
 		return c.json(store.settings().approvals);
+	});
+
+	app.put("/api/settings/security", async (c) => {
+		const days = z.number().int().min(0).max(365).nullable();
+		const next = await body(
+			c.req,
+			z.object({
+				deadlines: z.object(
+					Object.fromEntries(SEVERITIES.map((s) => [s, days])) as Record<Severity, typeof days>,
+				),
+			}),
+		);
+		store.saveSettings({ security: next });
+		bus.publish(["settings", "security", "queue", "shell", "projects"]);
+		return c.json(store.settings().security);
 	});
 
 	app.put("/api/settings/notifications", async (c) => {

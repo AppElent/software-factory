@@ -64,6 +64,7 @@ const SCENARIOS = [
 	"missing_folder",
 	"issues_inbox",
 	"no_issues",
+	"security",
 ];
 const PATHS = [
 	"/",
@@ -72,6 +73,9 @@ const PATHS = [
 	"/issues",
 	"/errors",
 	"/environments",
+	"/security",
+	"/security?select=gather",
+	"/floor?projects=fairway,gather",
 	"/automations",
 	"/improve",
 	"/projects/fairway/environments",
@@ -82,6 +86,7 @@ const PATHS = [
 	"/settings/notifications",
 	"/settings/projects",
 	"/settings/tools",
+	"/settings/security",
 	"/settings/notifications/samples",
 ];
 
@@ -138,7 +143,7 @@ for (const name of SCENARIOS) {
 	const ids = (seeded.ids ?? []).map((w) => `/work-orders/${w.id}`);
 	for (const path of [...PATHS, ...ids]) {
 		await checkState(name, path, 1440);
-		if (name === "full" || name === "long") await checkState(name, path, 390);
+		if (name === "full" || name === "long" || name === "security") await checkState(name, path, 390);
 	}
 }
 

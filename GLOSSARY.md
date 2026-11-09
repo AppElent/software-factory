@@ -25,3 +25,6 @@
 | Toolkit                 | The shared standards, CI, and agent setup from `developer-tools`                                                           |                                                       |
 | Baseline                | The typecheck, tests, and lint a new project must pass before it takes work                                                |                                                       |
 | Source                  | An outside service the factory reads, such as GitHub or Sentry                                                             |                                                       |
+| Security                | Open Dependabot alerts and the four setup items, per project. Red once an alert passes its deadline                        | "Vulnerabilities", "audit"                            |
+| Deadline                | How long an alert of one severity may stay open before its project turns red. Set in Settings                              | "SLA"                                                 |
+| Chosen projects         | The projects the lists show, picked in the header. Kept in the URL and this browser. None means all                        | "Filter"                                              |

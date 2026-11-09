@@ -35,12 +35,14 @@ describe("pull requests list", () => {
 
 	it("filter: nothing open in a project, with the way back, kept in the URL", async () => {
 		const user = userEvent.setup();
-		const h = await renderApp("/prs?project=fairway");
+		const h = await renderApp("/prs?projects=fairway");
 		expect(await screen.findByText("Nothing open in Fairway.")).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Show all projects" }));
 		await section("Ready to merge");
-		await user.selectOptions(screen.getByLabelText("Project"), "gather");
-		await waitFor(() => expect(h.router.state.location.search).toEqual({ project: "gather" }));
+		await user.click(screen.getByRole("button", { name: "Projects: All projects" }));
+		await user.click(await screen.findByRole("menuitemcheckbox", { name: "Gather" }));
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(h.router.state.location.search).toEqual({ projects: "gather" }));
 		expect(await section("Needs rebase")).toBeInTheDocument();
 		expect(screen.queryByRole("region", { name: "Ready to merge" })).toBeNull();
 	});
@@ -65,8 +67,8 @@ describe("pull requests list", () => {
 		const h = await renderApp("/floor");
 		await screen.findByText(/agents working/);
 		// The nav's badge already holds the unfiltered list, so a filtered view is what really fetches here.
-		h.failNext("/api/prs?project=gather", 500);
-		await h.router.navigate({ to: "/prs", search: { project: "gather" } });
+		h.failNext("/api/prs?projects=gather", 500);
+		await h.router.navigate({ to: "/prs", search: { projects: "gather" } });
 		expect(await screen.findByText("Couldn't load pull requests.")).toBeInTheDocument();
 		expect(screen.queryByText("No open pull requests")).toBeNull();
 	});

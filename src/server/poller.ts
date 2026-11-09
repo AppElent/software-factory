@@ -1,9 +1,15 @@
 import { awaitChecks, isRegression } from "../shared/rules.ts";
-import type { ErrorItem, Project, ToolkitState, WorkType } from "../shared/types.ts";
+import type { ErrorItem, Project, SecurityRead, ToolkitState, WorkType } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import { filterNeverTouch } from "./config.ts";
-import { GithubError, readRepos, readToolkit, TOOLKIT_REPO } from "./connectors/github.ts";
+import {
+	GithubError,
+	readRepos,
+	readSecurityUpdates,
+	readToolkit,
+	TOOLKIT_REPO,
+} from "./connectors/github.ts";
 import { readDetail, readIssues, readOrg, readProjects, SentryError } from "./connectors/sentry.ts";
 import { kvGet, kvSet } from "./db.ts";
 import type { Engine } from "./engine.ts";
@@ -15,6 +21,8 @@ const GITHUB_BUSY_MS = 20_000;
 const SENTRY_MS = 5 * 60_000;
 const MAX_BACKOFF_MS = 15 * 60_000;
 const LOW_RATE = 300;
+/** Security updates are a REST call per repo, and they rarely change. */
+const SECURITY_UPDATES_MS = 30 * 60_000;
 
 export interface PollerDeps {
 	store: Store;
@@ -32,6 +40,7 @@ export class Poller {
 	private githubFails = 0;
 	private sentryFails = 0;
 	private readonly toolkitCache = new Map<string, { state: ToolkitState; at: number }>();
+	private readonly securityUpdatesCache = new Map<string, { enabled: boolean | null; at: number }>();
 	private stopped = false;
 	private reading = false;
 
@@ -115,6 +124,11 @@ export class Poller {
 					const toolkit = filterNeverTouch(store.neverTouch(), [{ repo: TOOLKIT_REPO }]).kept.length
 						? await readToolkit(cli, r.repo, r.devtoolsCommit, this.toolkitCache, now.getTime())
 						: ({ status: "unknown", behindDays: 0, changed: 0 } as const);
+					r.security.setup.securityUpdates = await this.securityUpdates(
+						r.repo,
+						r.security.setup.alerts,
+						now.getTime(),
+					);
 					this.saveRepo(project, r, toolkit);
 				}
 				if (read.rate && read.rate.remaining < LOW_RATE) {
@@ -145,12 +159,36 @@ export class Poller {
 		} finally {
 			this.reading = false;
 		}
-		publish(["queue", "shell", "prs", "floor", "projects", "work-orders"]);
+		publish(["queue", "shell", "prs", "floor", "projects", "work-orders", "security"]);
 		await this.afterRead(async () => {
 			this.d.onRead();
 			await this.d.engine().tick();
 		});
 		return delay;
+	}
+
+	/** They need alerts, so with alerts off they're off without asking. Turning them on here clears the cache. */
+	private async securityUpdates(repo: string, alerts: boolean | null, now: number): Promise<boolean | null> {
+		if (alerts === false) return false;
+		const cached = this.securityUpdatesCache.get(repo);
+		if (cached && now - cached.at < SECURITY_UPDATES_MS) return cached.enabled;
+		const enabled = await readSecurityUpdates(this.d.cli, repo);
+		this.securityUpdatesCache.set(repo, { enabled, at: now });
+		return enabled;
+	}
+
+	forgetSecurityUpdates(repo: string) {
+		this.securityUpdatesCache.delete(repo);
+	}
+
+	/** The alerts from the last read, so one refused read doesn't clear a warning. */
+	private lastAlerts(slug: string): Pick<SecurityRead, "alerts" | "total"> | Record<string, never> {
+		const row = this.d.store.db.prepare("SELECT security FROM projects WHERE slug = ?").get(slug) as
+			| { security: string | null }
+			| undefined;
+		if (!row?.security) return {};
+		const last = JSON.parse(row.security) as SecurityRead;
+		return { alerts: last.alerts, total: last.total };
 	}
 
 	private saveRepo(
@@ -159,9 +197,10 @@ export class Poller {
 		toolkit: ToolkitState,
 	) {
 		const { store } = this.d;
+		const security = r.security.unread ? { ...r.security, ...this.lastAlerts(project.slug) } : r.security;
 		store.db
 			.prepare(
-				"UPDATE projects SET name = ?, url = ?, is_private = ?, default_branch = ?, toolkit = ?, main = ?, pushed_at = ?, read_at = ? WHERE slug = ?",
+				"UPDATE projects SET name = ?, url = ?, is_private = ?, default_branch = ?, toolkit = ?, main = ?, security = ?, pushed_at = ?, read_at = ? WHERE slug = ?",
 			)
 			.run(
 				r.name,
@@ -170,6 +209,7 @@ export class Poller {
 				r.defaultBranch,
 				JSON.stringify(toolkit),
 				r.main ? JSON.stringify(r.main) : null,
+				JSON.stringify(security),
 				r.pushedAt,
 				store.iso(),
 				project.slug,

@@ -7,6 +7,9 @@ import {
 	type NotificationEvent,
 	type NotificationSettings,
 	type ProjectSettings,
+	SEVERITIES,
+	type SecuritySettings,
+	type Severity,
 	type ToolStatus,
 	WORK_TYPES,
 	type WorkType,
@@ -45,6 +48,7 @@ const SECTIONS = [
 	{ id: "modes", label: "Modes" },
 	{ id: "notifications", label: "Notifications" },
 	{ id: "projects", label: "Projects" },
+	{ id: "security", label: "Security" },
 	{ id: "tools", label: "Tools" },
 ];
 
@@ -83,6 +87,7 @@ export function SettingsScreen() {
 						{section === "notifications" && <NotificationsSection />}
 						{section === "projects" && <ProjectsSection />}
 						{section === "add-projects" && <AddProjectsSection />}
+						{section === "security" && <SecuritySection />}
 						{section === "tools" && <ToolsSection />}
 					</div>
 				</div>
@@ -164,6 +169,82 @@ function useSection<T extends object>(path: string, server: T | undefined) {
 			return true;
 		},
 	};
+}
+
+/* ---------- security ---------- */
+
+const DEADLINE_CHOICES: Array<[string, number | null]> = [
+	["Right away", 0],
+	["After 7 days", 7],
+	["After 14 days", 14],
+	["After 30 days", 30],
+	["After 90 days", 90],
+	["Never", null],
+];
+
+const SEVERITY_LABEL: Record<Severity, string> = {
+	critical: "Critical",
+	high: "High",
+	moderate: "Moderate",
+	low: "Low",
+};
+
+function SecuritySection() {
+	const settings = useSettings();
+	const sec = useSection<SecuritySettings>("/api/settings/security", settings.data?.security);
+	const d = sec.draft?.deadlines;
+	return (
+		<>
+			<SectionHead
+				title="Security"
+				lead="How long an open Dependabot alert may stay open before its project turns red and it goes to Needs you. Alerts under the deadline show as needing attention."
+			/>
+			{settings.isError ? (
+				<LoadFailed what="settings" error={settings.error} />
+			) : !d ? (
+				<SectionLoading />
+			) : (
+				<div className="flex max-w-[480px] flex-col gap-4">
+					{SEVERITIES.map((sev) => {
+						const known = DEADLINE_CHOICES.some(([, v]) => v === d[sev]);
+						return (
+							<div key={sev} className="flex flex-col gap-1">
+								<Field label={`${SEVERITY_LABEL[sev]} alerts turn red`}>
+									{(p) => (
+										<select
+											{...p}
+											className="w-48"
+											value={d[sev] === null ? "never" : String(d[sev])}
+											onChange={(e) =>
+												sec.change(
+													{
+														deadlines: {
+															...d,
+															[sev]: e.target.value === "never" ? null : Number(e.target.value),
+														},
+													},
+													sev,
+												)
+											}
+										>
+											{!known && <option value={String(d[sev])}>After {plural(d[sev] ?? 0, "day")}</option>}
+											{DEADLINE_CHOICES.map(([label, v]) => (
+												<option key={label} value={v === null ? "never" : String(v)}>
+													{label}
+												</option>
+											))}
+										</select>
+									)}
+								</Field>
+								{sec.error(sev)}
+							</div>
+						);
+					})}
+					<Saved on={sec.saved} />
+				</div>
+			)}
+		</>
+	);
 }
 
 /* ---------- agents ---------- */

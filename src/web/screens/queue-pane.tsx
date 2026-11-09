@@ -48,6 +48,8 @@ const TRIAGES: QueueKind[] = [
 	"stale_pr",
 	"rebase_pr",
 	"toolkit",
+	"security",
+	"security_setup",
 	"tool",
 ];
 
@@ -367,6 +369,36 @@ function ToolkitPane({ item, actions }: { item: QueueItem; actions: PaneActions 
 	);
 }
 
+const SETUP_WORDS = {
+	alerts: "Dependabot alerts",
+	securityUpdates: "Security updates",
+	dependabotConfig: "dependabot.yml",
+	branchProtected: "Branch protection",
+} as const;
+
+function SecurityPane({ item, actions }: { item: QueueItem; actions: PaneActions }) {
+	const sec = item.security;
+	if (!sec) return null;
+	const counts = (["critical", "high", "moderate", "low"] as const)
+		.filter((s) => sec.counts[s])
+		.map((s) => `${sec.counts[s]} ${s}`)
+		.join(", ");
+	return (
+		<>
+			<Heading meta={`${item.projectName} · ${item.meta}`} title={item.title} />
+			<Body>
+				{item.kind === "security"
+					? `${plural(sec.total, "open alert")}: ${counts}. Dependabot may already have a PR for some of them.`
+					: `Off: ${sec.missing.map((c) => SETUP_WORDS[c]).join(", ")}.`}
+			</Body>
+			<ButtonLink variant="primary" to={item.href} grow>
+				Open Security
+			</ButtonLink>
+			<Triage actions={actions} />
+		</>
+	);
+}
+
 function ToolPane({ item, actions }: { item: QueueItem; actions: PaneActions }) {
 	return (
 		<>
@@ -522,6 +554,9 @@ function PaneBody({ item, actions }: { item: QueueItem; actions: PaneActions }) 
 			return <RebasePane item={item} actions={actions} />;
 		case "toolkit":
 			return <ToolkitPane item={item} actions={actions} />;
+		case "security":
+		case "security_setup":
+			return <SecurityPane item={item} actions={actions} />;
 		case "tool":
 			return <ToolPane item={item} actions={actions} />;
 		case "new_project":

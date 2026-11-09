@@ -1,4 +1,4 @@
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { GATE_NAMES, type Gates, STAGES, type Stage, type WorkOrder } from "../../shared/types.ts";
 import { api } from "../api.ts";
@@ -20,6 +20,7 @@ import {
 	Skeleton,
 	useTick,
 } from "../kit.tsx";
+import { ChosenNote, ProjectPicker, useChosenProjects } from "../project-picker.tsx";
 import { useAction, useFloor, useShell } from "../queries.ts";
 import { useOpenNewWorkOrder } from "../shell.tsx";
 
@@ -218,10 +219,9 @@ function LoadingBoard() {
 
 export function FloorScreen() {
 	useTick();
-	const { project } = useSearch({ from: "/shell/floor" });
-	const navigate = useNavigate({ from: "/floor" });
+	const [chosen] = useChosenProjects();
 	const openNew = useOpenNewWorkOrder();
-	const floor = useFloor(project);
+	const floor = useFloor(chosen);
 	const restart = useAction(() => api.post("/api/line", { stopped: false }));
 	const shell = useShell();
 	const data = floor.data;
@@ -232,8 +232,6 @@ export function FloorScreen() {
 		STAGES.every((s) => data.columns[s].length === 0) &&
 		(shell.isPending || !!shell.data?.checking);
 
-	const known = data?.projects.some((p) => p.slug === project);
-	const sorted = [...(data?.projects ?? [])].sort((a, b) => a.name.localeCompare(b.name));
 	const summary = data?.summary;
 	const stopped = data?.line.stopped ?? false;
 	// While the line is stopped, nothing waits on a slot, so nothing reads as full.
@@ -260,31 +258,15 @@ export function FloorScreen() {
 					)
 				}
 				actions={
-					<span className="flex flex-wrap items-center gap-2">
-						<label htmlFor="floor-project" className="text-meta text-text-muted">
-							Project
-						</label>
-						<select
-							id="floor-project"
-							value={project ?? ""}
-							onChange={(e) =>
-								void navigate({
-									search: (prev) => ({ ...prev, project: e.target.value || undefined }),
-								})
-							}
-						>
-							<option value="">All projects</option>
-							{project && data && !known && <option value={project}>{project}</option>}
-							{sorted.map((p) => (
-								<option key={p.slug} value={p.slug}>
-									{p.name}
-								</option>
-							))}
-						</select>
-						<Button onClick={() => openNew({ project })}>New work order</Button>
-					</span>
+					<>
+						<ProjectPicker />
+						<Button onClick={() => openNew({ project: chosen.length === 1 ? chosen[0] : undefined })}>
+							New work order
+						</Button>
+					</>
 				}
 			/>
+			<ChosenNote />
 
 			{stopped && data && (
 				<>

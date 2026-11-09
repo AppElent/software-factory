@@ -46,36 +46,66 @@ describe("floor", () => {
 		expect(within(observe).getByText("14 users")).toBeInTheDocument();
 	});
 
-	it("narrows cards by project, in the search params", async () => {
+	it("narrows cards to the chosen projects, in the search params and this browser", async () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/floor");
 		await screen.findByText("Guard the scorecard loader");
-		await user.selectOptions(screen.getByLabelText("Project"), "Foundry");
-		await waitFor(() => expect(h.router.state.location.search).toMatchObject({ project: "foundry" }));
+		await user.click(screen.getByRole("button", { name: "Projects: All projects" }));
+		await user.click(await screen.findByRole("menuitemcheckbox", { name: "Foundry" }));
+		await waitFor(() => expect(h.router.state.location.search).toMatchObject({ projects: "foundry" }));
+		expect(window.localStorage.getItem("sf:projects")).toBe("foundry");
 		await waitFor(() => expect(screen.queryByText("Guard the scorecard loader")).not.toBeInTheDocument());
 		expect(await screen.findByText("Add invoice export")).toBeInTheDocument();
+		// The menu stays open, so a second project is one more click.
+		await user.click(screen.getByRole("menuitemcheckbox", { name: "Fairway" }));
+		await waitFor(() =>
+			expect(h.router.state.location.search).toMatchObject({ projects: "foundry,fairway" }),
+		);
+		await user.keyboard("{Escape}");
+		expect(screen.getByRole("button", { name: "Projects: 2 projects" })).toBeInTheDocument();
 		// Slots are shared across projects, so the count doesn't narrow.
 		expect(within(column("Verify")).getByText("2/3")).toBeInTheDocument();
-		await user.selectOptions(screen.getByLabelText("Project"), "All projects");
+		await user.click(screen.getByRole("button", { name: "Show all" }));
 		await screen.findByText("Guard the scorecard loader");
+		expect(window.localStorage.getItem("sf:projects")).toBeNull();
 	});
 
-	it("reads the project filter from the URL on load, and lists projects A to Z", async () => {
-		await renderApp("/floor?project=foundry");
-		const select = await screen.findByLabelText("Project");
+	it("reads the chosen projects from the URL on load, and lists projects A to Z", async () => {
+		const user = userEvent.setup();
+		await renderApp("/floor?projects=foundry");
 		await screen.findByText("Add invoice export");
-		expect(select).toHaveValue("foundry");
 		expect(screen.queryByText("Guard the scorecard loader")).not.toBeInTheDocument();
-		const names = within(select)
-			.getAllByRole("option")
-			.map((o) => o.textContent);
-		expect(names.slice(0, 3)).toEqual(["All projects", "Arcade Club", "Fairway"]);
+		expect(screen.getByText(/Showing 1 of \d+ projects\./)).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Projects: Foundry" }));
+		const items = await screen.findAllByRole("menuitemcheckbox");
+		expect(items.slice(0, 3).map((o) => o.textContent?.replace("✓", ""))).toEqual([
+			"All projects",
+			"Arcade Club",
+			"Fairway",
+		]);
+		expect(screen.getByRole("menuitemcheckbox", { name: "Foundry" })).toHaveAttribute("aria-checked", "true");
 	});
 
-	it("keeps an unknown filter visible instead of claiming All projects", async () => {
-		await renderApp("/floor?project=gone");
-		await screen.findAllByText("Nothing here");
-		expect(screen.getByLabelText("Project")).toHaveValue("gone");
+	it("keeps the choice when moving to another page", async () => {
+		const h = await renderApp("/floor?projects=foundry");
+		await screen.findByText("Add invoice export");
+		await h.router.navigate({ to: "/prs" });
+		await waitFor(() => expect(h.router.state.location.search).toMatchObject({ projects: "foundry" }));
+		expect(await screen.findByRole("button", { name: "Projects: Foundry" })).toBeInTheDocument();
+	});
+
+	it("an explicit empty choice in a link shows every project and forgets the saved one", async () => {
+		window.localStorage.setItem("sf:projects", "foundry");
+		await renderApp("/floor?projects=");
+		await screen.findByText("Guard the scorecard loader");
+		expect(screen.getByRole("button", { name: "Projects: All projects" })).toBeInTheDocument();
+		await waitFor(() => expect(window.localStorage.getItem("sf:projects")).toBeNull());
+	});
+
+	it("drops a project that's no longer in the factory", async () => {
+		await renderApp("/floor?projects=gone");
+		await screen.findByText("Guard the scorecard loader");
+		expect(screen.getByRole("button", { name: "Projects: All projects" })).toBeInTheDocument();
 	});
 
 	it("FloorLimit: Build is full", async () => {

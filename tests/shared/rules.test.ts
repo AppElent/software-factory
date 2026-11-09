@@ -17,6 +17,7 @@ import {
 	qualifies,
 	REGRESSION_GRACE_MS,
 	rankQueue,
+	securityOf,
 	snoozeUntil,
 	startBlock,
 	suspectRanges,
@@ -379,5 +380,98 @@ describe("text from outside", () => {
 		const tag = String.fromCodePoint(0xe0069, 0xe0067);
 		const out = delimit("issue", `a${tag}\u00AD\u2066b\u001b[201~c\rd`);
 		expect(out).toContain("ab[201~c\nd");
+	});
+});
+
+describe("securityOf", () => {
+	const NOW = Date.parse("2026-11-09T12:00:00Z");
+	const DAY = 86_400_000;
+	const alert = (number: number, severity: "critical" | "high" | "moderate" | "low", daysOld: number) => ({
+		number,
+		severity,
+		package: `pkg-${number}`,
+		ecosystem: "npm",
+		summary: "",
+		ghsaId: `GHSA-${number}`,
+		patched: "1.0.1",
+		manifest: null,
+		createdAt: new Date(NOW - daysOld * DAY).toISOString(),
+	});
+	const setup = { alerts: true, securityUpdates: true, dependabotConfig: true, branchProtected: true };
+	const deadlines = { critical: 0, high: 7, moderate: null, low: null };
+	const url = "https://github.com/example-org/gather";
+
+	it("is unknown before a read, and green when clear and set up", () => {
+		expect(securityOf(null, deadlines, NOW, url).status).toBe("unknown");
+		expect(securityOf({ alerts: [], total: 0, setup }, deadlines, NOW, url).status).toBe("green");
+	});
+
+	it("turns red once an alert passes its deadline, and puts it first", () => {
+		const s = securityOf(
+			{ alerts: [alert(1, "low", 90), alert(2, "high", 3), alert(3, "high", 8)], total: 3, setup },
+			deadlines,
+			NOW,
+			url,
+		);
+		expect(s.status).toBe("red");
+		expect(s.overdue).toBe(1);
+		expect(s.alerts.map((a) => a.number)).toEqual([3, 2, 1]);
+		expect(s.alerts[0]?.url).toBe(`${url}/security/dependabot/3`);
+		expect(s.alerts[2]?.dueAt).toBeNull();
+		expect(s.counts).toEqual({ critical: 0, high: 2, moderate: 0, low: 1 });
+	});
+
+	it("is amber for alerts inside their deadline, or a missing setup item, and never counts unknown as missing", () => {
+		expect(securityOf({ alerts: [alert(1, "high", 1)], total: 1, setup }, deadlines, NOW, url).status).toBe(
+			"amber",
+		);
+		const gaps = securityOf(
+			{ alerts: [], total: 0, setup: { ...setup, dependabotConfig: false, branchProtected: null } },
+			deadlines,
+			NOW,
+			url,
+		);
+		expect(gaps.status).toBe("amber");
+		expect(gaps.missing).toEqual(["dependabotConfig"]);
+	});
+
+	it("is unknown, never green, when GitHub wouldn't list alerts", () => {
+		expect(securityOf({ alerts: [], total: 0, setup, unread: true }, deadlines, NOW, url).status).toBe(
+			"unknown",
+		);
+		const kept = securityOf(
+			{ alerts: [alert(1, "critical", 3)], total: 1, setup, unread: true },
+			deadlines,
+			NOW,
+			url,
+		);
+		expect(kept.status).toBe("red");
+	});
+
+	it("keeps GitHub's total past the alerts it read", () => {
+		expect(securityOf({ alerts: [alert(1, "low", 1)], total: 140, setup }, deadlines, NOW, url).total).toBe(
+			140,
+		);
+	});
+
+	it("ranks security after red main in Needs you, and setup after toolkit in Later", () => {
+		const item = (kind: QueueItem["kind"], id: string): QueueItem => ({
+			fingerprint: id,
+			kind,
+			project: null,
+			projectName: null,
+			title: id,
+			meta: "",
+			since: "2026-11-09T00:00:00Z",
+			users: 0,
+			href: "",
+		});
+		const ranked = rankQueue([
+			item("security_setup", "s"),
+			item("toolkit", "t"),
+			item("security", "x"),
+			item("red_main", "r"),
+		]);
+		expect(ranked.map((i) => i.fingerprint)).toEqual(["r", "x", "t", "s"]);
 	});
 });

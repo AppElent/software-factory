@@ -173,7 +173,7 @@ function ErrorPage({ e }: { e: ErrorDetail }) {
 				<Breadcrumb
 					crumbs={[
 						{ label: "Errors", link: { to: "/errors" } },
-						{ label: e.projectName, link: { to: "/errors", search: { project: e.project } } as never },
+						{ label: e.projectName, link: { to: "/errors", search: { projects: e.project } } as never },
 						{ label: <span className="[overflow-wrap:anywhere]">{e.title}</span> },
 					]}
 				/>

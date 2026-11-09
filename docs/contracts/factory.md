@@ -173,9 +173,9 @@ Open issues read from GitHub, in three groups. They stay out of the queue, becau
 
 ## Queue
 
-- **Needs you, in order:** production errors, then agent questions, plans, and requests waiting in T3, then failed runs, red CI on main, gates failed after retries, and PRs ready to merge.
+- **Needs you, in order:** production errors, then agent questions, plans, and requests waiting in T3, then failed runs, red CI on main, security alerts past their deadline, gates failed after retries, and PRs ready to merge.
 - A new project that failed or has a red baseline ranks with failed runs and opens its setup page.
-- **Later:** stale PRs, PRs needing a rebase, toolkit behind, tools and services you skipped.
+- **Later:** stale PRs, PRs needing a rebase, toolkit behind, security setup that's off, tools and services you skipped.
 - Within a group: most users affected first, then oldest.
 - **Snooze:** until tomorrow at 09:00. A snoozed error's release is read each time it gets a new event. Wakes early at 100 events or a new release with users.
 - **Dismiss:** returns only if it gets worse.
@@ -183,6 +183,29 @@ Open issues read from GitHub, in three groups. They stay out of the queue, becau
 - An error with an open work order doesn't show in the queue.
 - A PR failing without a work order shows only in the PR list.
 - Red main shows the failing check names and `Open the log`, with no log excerpt.
+
+## Security
+
+Open Dependabot alerts and a setup checklist, read from GitHub with everything else. Severities are GitHub's: critical, high, moderate, low.
+
+- **Deadlines.** Each severity has one, counted from when the alert opened. By default critical and high turn a project red right away, and moderate and low never do. Settings changes them, and a change applies on the next page load, without reading GitHub again.
+- **Status.** Red: an alert is past its deadline. Amber: open alerts, or a setup item that's off. Green: neither. Not read yet: GitHub hasn't answered for it.
+- **Setup:** Dependabot alerts, security updates, `.github/dependabot.yml`, and protection on the default branch, by a rule or an active ruleset. An item GitHub won't tell us about, often for lack of admin rights, is unknown and never counts as off. Security updates are read at most every 30 minutes, because they need one call per repo.
+- **Alerts read:** the first 100 open ones per repo. The total comes from GitHub, so a project with more says how many are left on GitHub. When GitHub won't list them, the alerts from the last read stay, and a project with none from before reads as unknown, never clear.
+- **Turn on** sets alerts, then security updates, on GitHub. It asks first, and is logged. The dependabot.yml and branch protection need a change in the repo, so they go through a work order.
+- **Fix in a work order** sends package names, versions and advisory IDs. Advisory text stays out, because anyone can write it.
+- **Queue.** A project past a deadline ranks after red main in Needs you. Setup that's off goes under Later, after toolkit. Dismissing holds until the overdue alerts or the missing items change.
+
+## Chosen projects
+
+The project picker in the header of Queue, Floor, Pull requests, Issues, Errors, Environments, Security and Health narrows them to the projects ticked. None ticked means every project.
+
+- The choice lives in `?projects=a,b` and in this browser, so it follows you between pages, survives reload and comes back on the next visit. A link with `?projects=` wins over what the browser remembers.
+- A project that's gone is dropped from the choice.
+- Queue items with no project, such as a skipped tool, always show.
+- Nav counts stay factory-wide.
+- **Health** narrows its tiles and days. By work type stays factory-wide, because merging without you is decided per work type, not per project.
+- Slots on the Floor are shared, so their counts don't narrow.
 
 ## Improve yourself
 
