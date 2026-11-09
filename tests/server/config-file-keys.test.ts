@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -16,7 +16,8 @@ describe("the config file on another version or Mac", () => {
 		expect(JSON.parse(readFileSync(file.path, "utf8")).fromNewerVersion).toEqual({ a: 1 });
 	});
 
-	it("keeps a shared folder that exists here", () => {
+	// Only a Mac has `/Users/Shared`, and only a path under `/Users/` can be another Mac's.
+	it.skipIf(!existsSync("/Users/Shared"))("keeps a shared folder that exists here", () => {
 		const shared = mkdtempSync("/Users/Shared/sf-cfg-");
 		const dir = mkdtempSync(join(tmpdir(), "sf-cfg-"));
 		const store = new Store(openDb(join(dir, "t.db")), dir, undefined, dir);
