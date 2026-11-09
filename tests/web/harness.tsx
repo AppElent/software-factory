@@ -6,11 +6,13 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach } from "vitest";
 import { createApp } from "../../src/server/app.ts";
+import { Automations } from "../../src/server/automations.ts";
 import { Bus } from "../../src/server/bus.ts";
 import type { Config } from "../../src/server/config.ts";
 import { openDb } from "../../src/server/db.ts";
 import { installDemo } from "../../src/server/demo.ts";
 import { Engine } from "../../src/server/engine.ts";
+import { Environments } from "../../src/server/environments.ts";
 import { Notifier } from "../../src/server/notify.ts";
 import { Poller } from "../../src/server/poller.ts";
 import { Store } from "../../src/server/store.ts";
@@ -33,6 +35,7 @@ export interface Harness {
 	failNext: (match: string, status?: number, error?: string) => void;
 	router: ReturnType<typeof makeRouter>;
 	client: QueryClient;
+	store: Store;
 }
 
 const makeRouter = (path: string) =>
@@ -75,11 +78,23 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		onRegression: () => {},
 		onRead: () => {},
 	});
+	const environments = new Environments({
+		store,
+		cli: demo.cli,
+		publish: bus.publish,
+		deployRunner: demo.deployRunner,
+		healthFetch: demo.healthFetch,
+	});
 	const app = createApp({
 		config,
 		store,
 		cli: demo.cli,
 		engine,
+		versions: demo.versions,
+		self: { repo: "me/software-factory", root: "/tmp" },
+		automations: new Automations({ store, cli: demo.cli, executor: demo.executor, publish: bus.publish }),
+		environments,
+		executor: demo.executor,
 		poller,
 		notifier,
 		bus,
@@ -141,6 +156,7 @@ export async function renderApp(path: string, scenarioName = "full"): Promise<Ha
 		failNext: (match, status = 500, error = "That failed.") => failures.push({ match, status, error }),
 		router,
 		client,
+		store,
 	};
 }
 

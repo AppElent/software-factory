@@ -36,11 +36,13 @@ import {
 	StatusLine,
 } from "../kit.tsx";
 import { useAction, useHealth, useProjects, useRepos, useSettings, useTools } from "../queries.ts";
+import { ModesSection } from "./modes.tsx";
 import { RepoChooser } from "./welcome.tsx";
 
 const SECTIONS = [
 	{ id: "agents", label: "Agents" },
 	{ id: "approvals", label: "Approvals" },
+	{ id: "modes", label: "Modes" },
 	{ id: "notifications", label: "Notifications" },
 	{ id: "projects", label: "Projects" },
 	{ id: "tools", label: "Tools" },
@@ -77,6 +79,7 @@ export function SettingsScreen() {
 					<div className="flex min-w-0 max-w-[820px] flex-[1_1_480px] flex-col gap-5">
 						{section === "agents" && <AgentsSection />}
 						{section === "approvals" && <ApprovalsSection />}
+						{section === "modes" && <ModesSection />}
 						{section === "notifications" && <NotificationsSection />}
 						{section === "projects" && <ProjectsSection />}
 						{section === "add-projects" && <AddProjectsSection />}
@@ -491,7 +494,7 @@ function ApprovalsSection() {
 				title={asked ? `Let ${asked.many} merge without you?` : ""}
 				description={
 					asked
-						? `When all 4 gates pass, ${asked.pr} merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If ${asked.one} causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.`
+						? `When all 4 gates pass, ${asked.pr} merges without you. You still see it on the floor, and any new error goes back to Intake. If ${asked.one} causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.`
 						: undefined
 				}
 				action="Turn on"
@@ -526,7 +529,7 @@ const JUST_SO: Array<{ id: NotificationEvent; title: string; body: string }> = [
 		title: "A PR merges without you",
 		body: "Only when you turned that on in Approvals.",
 	},
-	{ id: "shipped", title: "A work order ships", body: "Merged and deployed." },
+	{ id: "shipped", title: "A work order ships", body: "Merged, and main didn't go red after it." },
 	{ id: "slots_full", title: "All agent slots are full", body: "New work is waiting in Intake." },
 ];
 

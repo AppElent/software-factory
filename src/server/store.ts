@@ -1,13 +1,27 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { defaultModes } from "../shared/modes.ts";
 import type { TriageRecord } from "../shared/rules.ts";
-import { agentHoldsMerge, isRegression, noGates, triageHides } from "../shared/rules.ts";
+import {
+	agentHoldsMerge,
+	branchIsntOurs,
+	isRegression,
+	issueGroup,
+	issueLocked,
+	issueSignals,
+	noGates,
+	triageHides,
+} from "../shared/rules.ts";
 import type {
 	ActivityEntry,
 	AgentSettings,
 	ApprovalSettings,
+	EnvironmentView,
 	ErrorItem,
+	Issue,
+	IssueAdvice,
+	Mode,
 	NotificationSettings,
 	Project,
 	PullRequest,
@@ -21,8 +35,31 @@ import type {
 } from "../shared/types.ts";
 import { scrub } from "./cli.ts";
 import { filterNeverTouch, readNeverTouch } from "./config.ts";
+import { type ConfigData, ConfigFile } from "./config-file.ts";
+import type { IssueRead } from "./connectors/github.ts";
 import type { Db } from "./db.ts";
 import { kvGet, kvSet } from "./db.ts";
+
+interface IssueStateRow {
+	project: string;
+	number: number;
+	read_hash: string | null;
+	read_at: string | null;
+	hidden: string | null;
+	hidden_hash: string | null;
+	hidden_until: string | null;
+	advice: string | null;
+	advice_hash: string | null;
+}
+
+/** A folder in someone else's home came from another Mac's config file, and means nothing here. */
+const cloneFolderHere = (saved: string | null | undefined) => {
+	const home = homedir();
+	const elsewhere = saved?.startsWith("/Users/") && !saved.startsWith(`${home}/`) && !existsSync(saved);
+	return saved && !elsewhere ? saved : join(home, "Developer");
+};
+
+const REGRESSED = "regressed_while_broken";
 
 export const OPEN_FILTER = "state NOT IN ('done', 'closed')";
 
@@ -68,11 +105,15 @@ export const agentLabel = (agent: string) => (agent === "codex" ? "Codex in T3" 
 export class Store {
 	readonly db: Db;
 	readonly dataDir: string;
+	readonly configDir: string;
+	readonly file: ConfigFile;
 	readonly now: () => Date;
 
-	constructor(db: Db, dataDir: string, now: () => Date = () => new Date()) {
+	constructor(db: Db, dataDir: string, now: () => Date = () => new Date(), configDir: string = dataDir) {
 		this.db = db;
 		this.dataDir = dataDir;
+		this.configDir = configDir;
+		this.file = new ConfigFile(configDir);
 		this.now = now;
 	}
 
@@ -82,27 +123,137 @@ export class Store {
 
 	/* ---------- settings ---------- */
 
+	/** The config file wins. Values still in the database are from before it existed. */
 	settings(): Settings {
+		const saved = this.file.read().settings as {
+			agents?: Partial<AgentSettings>;
+			approvals?: Partial<ApprovalSettings>;
+			notifications?: Partial<NotificationSettings>;
+			cloneFolder?: string;
+		};
+		const notifications = kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications");
+		const approvals: ApprovalSettings = {
+			...DEFAULT_APPROVALS,
+			...kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals"),
+			...saved.approvals,
+		};
+		// A file that can't be read isn't a yes, and the old values in the database may not be what you want now.
+		if (this.file.error()) approvals.mergeWithoutMe = WORK_TYPE_MAP(false);
+		for (const type of kvGet<WorkType[]>(this.db, REGRESSED) ?? []) {
+			approvals.mergeWithoutMe = { ...approvals.mergeWithoutMe, [type]: false };
+			approvals.turnedOffByRegression = { ...approvals.turnedOffByRegression, [type]: true };
+		}
 		return {
-			agents: { ...DEFAULT_AGENTS, ...kvGet<Partial<AgentSettings>>(this.db, "settings:agents") },
-			approvals: { ...DEFAULT_APPROVALS, ...kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals") },
+			agents: {
+				...DEFAULT_AGENTS,
+				...kvGet<Partial<AgentSettings>>(this.db, "settings:agents"),
+				...saved.agents,
+			},
+			approvals,
 			notifications: {
 				...DEFAULT_NOTIFICATIONS,
-				...kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications"),
+				...notifications,
+				...saved.notifications,
+				// How the last test went is a fact about this Mac, so it isn't config.
+				lastTest: notifications?.lastTest ?? null,
 			},
 			projects: {
-				cloneFolder: kvGet<string>(this.db, "settings:cloneFolder") ?? join(homedir(), "Developer"),
-				neverTouch: readNeverTouch(this.dataDir),
+				cloneFolder: cloneFolderHere(saved.cloneFolder ?? kvGet<string>(this.db, "settings:cloneFolder")),
+				neverTouch: readNeverTouch(this.configDir),
 			},
 		};
 	}
 
+	saveSettings(change: {
+		agents?: AgentSettings;
+		approvals?: ApprovalSettings;
+		notifications?: Omit<NotificationSettings, "lastTest">;
+		cloneFolder?: string;
+	}): void {
+		this.file.update((data) => ({
+			...data,
+			settings: { ...data.settings, ...(change as ConfigData["settings"]) },
+		}));
+	}
+
 	saveApprovals(a: ApprovalSettings): void {
-		kvSet(this.db, "settings:approvals", a);
+		this.saveSettings({ approvals: a });
+	}
+
+	/**
+	 * Settings from before the config file only live in the database, where they'd be lost with it, and where
+	 * they'd come back if the file went. They move once. How the last notification test went stays: it's about this Mac.
+	 */
+	moveSettingsToFile(): void {
+		if (this.file.error()) return;
+		const agents = kvGet<Partial<AgentSettings>>(this.db, "settings:agents");
+		const approvals = kvGet<Partial<ApprovalSettings>>(this.db, "settings:approvals");
+		const cloneFolder = kvGet<string>(this.db, "settings:cloneFolder");
+		const { lastTest = null, ...notifications } =
+			kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications") ?? {};
+		const hasNotifications = Object.keys(notifications).length > 0;
+		if (!agents && !approvals && !cloneFolder && !hasNotifications) return;
+		this.file.update((data) => {
+			// What's in the file wins, as it did when both were read.
+			const saved = data.settings;
+			const moved = {
+				...(agents ? { agents: { ...agents, ...saved.agents } } : {}),
+				...(approvals ? { approvals: { ...approvals, ...saved.approvals } } : {}),
+				...(hasNotifications ? { notifications: { ...notifications, ...saved.notifications } } : {}),
+				...(cloneFolder ? { cloneFolder: saved.cloneFolder ?? cloneFolder } : {}),
+			};
+			return { ...data, settings: { ...saved, ...(moved as ConfigData["settings"]) } };
+		});
+		for (const key of ["settings:agents", "settings:approvals", "settings:cloneFolder"])
+			this.db.prepare("DELETE FROM kv WHERE key = ?").run(key);
+		if (hasNotifications) kvSet(this.db, "settings:notifications", { lastTest });
+	}
+
+	/** A regression always stops merging alone. When the file can't be written, that's held here until it can. */
+	stopMergingAfterRegression(type: WorkType): boolean {
+		if (this.file.error()) {
+			const held = kvGet<WorkType[]>(this.db, REGRESSED) ?? [];
+			if (!held.includes(type)) kvSet(this.db, REGRESSED, [...held, type]);
+			return true;
+		}
+		const approvals = this.settings().approvals;
+		if (!approvals.mergeWithoutMe[type]) return false;
+		this.saveApprovals({
+			...approvals,
+			mergeWithoutMe: { ...approvals.mergeWithoutMe, [type]: false },
+			turnedOffByRegression: { ...approvals.turnedOffByRegression, [type]: true },
+		});
+		return true;
+	}
+
+	/** Writes what stopMergingAfterRegression held, once the file is fixed. */
+	settleRegressions(): void {
+		if (this.file.error() || !kvGet<WorkType[]>(this.db, REGRESSED)?.length) return;
+		this.saveApprovals(this.settings().approvals);
+		kvSet(this.db, REGRESSED, []);
 	}
 
 	neverTouch(): string[] {
-		return readNeverTouch(this.dataDir);
+		return readNeverTouch(this.configDir);
+	}
+
+	/* ---------- modes ---------- */
+
+	/** Saved modes, or the defaults for the skills on this Mac until you save some. */
+	modes(skills: string[]): { modes: Mode[]; defaultMode: string } {
+		const data = this.file.read();
+		const modes = data.modes ?? defaultModes(skills);
+		const wanted = data.defaultMode;
+		const usable = modes.find((m) => m.id === wanted && m.merge !== "factory");
+		return { modes, defaultMode: usable?.id ?? modes.find((m) => m.merge !== "factory")?.id ?? "" };
+	}
+
+	saveModes(modes: Mode[], defaultMode: string): void {
+		this.file.update((data) => {
+			// A field from a newer version stays on its mode.
+			const before = new Map(data.modes?.map((m) => [m.id, m]));
+			return { ...data, modes: modes.map((m) => ({ ...before.get(m.id), ...m })), defaultMode };
+		});
 	}
 
 	line(): { stopped: boolean; stoppedAt: string | null } {
@@ -178,7 +329,7 @@ export class Store {
 		const names = new Map(visible.map((p) => [p.slug, p.name]));
 		const links = this.db
 			.prepare(
-				`SELECT id, project, pr_number, branch, type, state, failed_sha FROM work_orders WHERE (pr_number IS NOT NULL OR branch IS NOT NULL) AND ${OPEN_FILTER}`,
+				`SELECT id, project, pr_number, branch, type, state, failed_sha, source FROM work_orders WHERE (pr_number IS NOT NULL OR branch IS NOT NULL) AND ${OPEN_FILTER}`,
 			)
 			.all() as Array<{
 			id: number;
@@ -188,7 +339,11 @@ export class Store {
 			type: WorkType;
 			state: string;
 			failed_sha: string | null;
+			source: string;
 		}>;
+		// Picked-up work on a branch that isn't the factory's, even the default one, doesn't own what's on it.
+		const byBranch = (l: (typeof links)[number]) =>
+			!branchIsntOurs({ source: JSON.parse(l.source) as { kind: string }, branch: l.branch });
 		const rows = this.db.prepare("SELECT project, json FROM prs").all() as Array<{
 			project: string;
 			json: string;
@@ -202,7 +357,9 @@ export class Store {
 				>;
 				// The agent opens its PR mid-turn, before the factory knows the number. Its branch says whose it is.
 				const linked = links.filter(
-					(l) => l.project === r.project && (l.pr_number === pr.number || l.branch === pr.headRef),
+					(l) =>
+						l.project === r.project &&
+						(l.pr_number === pr.number || (l.branch === pr.headRef && !pr.fromFork && byBranch(l))),
 				);
 				const holds = (l: (typeof links)[number]) =>
 					agentHoldsMerge({ state: l.state, failedSha: l.failed_sha }, pr.headSha);
@@ -224,6 +381,107 @@ export class Store {
 
 	pr(project: string, number: number): PullRequest | null {
 		return this.prs(project).find((p) => p.number === number) ?? null;
+	}
+
+	/* ---------- issues ---------- */
+
+	/** GitHub's list replaces the old one. What you've read stays, pinned to the text you read. */
+	saveIssues(project: string, issues: IssueRead[]) {
+		this.db.prepare("DELETE FROM issues WHERE project = ?").run(project);
+		const insert = this.db.prepare("INSERT INTO issues (project, number, json) VALUES (?, ?, ?)");
+		for (const i of issues) insert.run(project, i.number, JSON.stringify(i));
+	}
+
+	/** Open issues, without those you've put away. An edit brings one back. */
+	issues(project?: string): Issue[] {
+		return this.allIssues(project).filter((i) => !i.hidden);
+	}
+
+	issue(project: string, number: number): Issue | null {
+		return this.allIssues(project).find((i) => i.number === number) ?? null;
+	}
+
+	private allIssues(project?: string): Array<Issue & { hidden: boolean }> {
+		const names = new Map(this.projects().map((p) => [p.slug, p.name]));
+		const now = this.now().getTime();
+		const states = new Map(
+			(this.db.prepare("SELECT * FROM issue_state").all() as unknown as IssueStateRow[]).map((s) => [
+				`${s.project}:${s.number}`,
+				s,
+			]),
+		);
+		const owners = new Map(
+			(
+				this.db
+					.prepare(
+						`SELECT id, fingerprint FROM work_orders WHERE fingerprint LIKE 'issue:%' AND ${OPEN_FILTER}`,
+					)
+					.all() as Array<{ id: number; fingerprint: string }>
+			).map((o) => [o.fingerprint, o.id]),
+		);
+		const rows = this.db.prepare("SELECT project, number, json FROM issues").all() as Array<{
+			project: string;
+			number: number;
+			json: string;
+		}>;
+		return rows
+			.filter((r) => names.has(r.project) && (!project || r.project === project))
+			.map((r) => {
+				const i = JSON.parse(r.json) as IssueRead;
+				const s = states.get(`${r.project}:${r.number}`);
+				const read = !!s && s.read_hash === i.bodyHash;
+				const signals = issueSignals(i, now);
+				const fp = `issue:${r.project}:${r.number}`;
+				const expired = !!s?.hidden_until && Date.parse(s.hidden_until) <= now;
+				return {
+					...i,
+					project: r.project,
+					projectName: names.get(r.project) ?? r.project,
+					signals,
+					group: issueGroup(signals, read),
+					readAt: read ? (s?.read_at ?? null) : null,
+					editedSinceRead: !!s?.read_hash && !read,
+					locked: issueLocked(signals, read),
+					advice: s?.advice && s.advice_hash === i.bodyHash ? (JSON.parse(s.advice) as IssueAdvice) : null,
+					asking: this.askingIssues.has(fp),
+					workOrderId: owners.get(fp) ?? null,
+					hidden: !!s?.hidden && s.hidden_hash === i.bodyHash && !expired,
+				};
+			})
+			.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+	}
+
+	/** Set by Environments, whose reads need more than the database. */
+	envViews: () => EnvironmentView[] = () => [];
+
+	/** Issues an agent is reading right now. Not saved: after a restart you can just ask again. */
+	readonly askingIssues = new Set<string>();
+
+	markIssueRead(project: string, number: number, hash: string) {
+		this.db
+			.prepare(
+				`INSERT INTO issue_state (project, number, read_hash, read_at) VALUES (?, ?, ?, ?)
+				ON CONFLICT(project, number) DO UPDATE SET read_hash = excluded.read_hash, read_at = excluded.read_at`,
+			)
+			.run(project, number, hash, this.iso());
+	}
+
+	hideIssue(project: string, number: number, how: string | null, hash: string | null, until: string | null) {
+		this.db
+			.prepare(
+				`INSERT INTO issue_state (project, number, hidden, hidden_hash, hidden_until) VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT(project, number) DO UPDATE SET hidden = excluded.hidden, hidden_hash = excluded.hidden_hash, hidden_until = excluded.hidden_until`,
+			)
+			.run(project, number, how, hash, until);
+	}
+
+	saveIssueAdvice(project: string, number: number, advice: IssueAdvice, hash: string) {
+		this.db
+			.prepare(
+				`INSERT INTO issue_state (project, number, advice, advice_hash) VALUES (?, ?, ?, ?)
+				ON CONFLICT(project, number) DO UPDATE SET advice = excluded.advice, advice_hash = excluded.advice_hash`,
+			)
+			.run(project, number, JSON.stringify(advice), hash);
 	}
 
 	/* ---------- errors ---------- */
@@ -348,6 +606,7 @@ export class Store {
 		const source = JSON.parse(r.source) as WorkOrderSource;
 		return {
 			id: r.id,
+			mode: r.mode ? (JSON.parse(r.mode) as Mode) : null,
 			project: r.project,
 			projectName: project?.name ?? r.project,
 			type: r.type,
@@ -400,12 +659,13 @@ export class Store {
 		agent: string;
 		prNumber?: number | null;
 		branch?: string | null;
+		mode?: Mode | null;
 	}): number {
 		const at = this.iso();
 		const res = this.db
 			.prepare(
-				`INSERT INTO work_orders (project, type, title, description, stage, state, source, fingerprint, gates, agent, pr_number, created_at, updated_at, stage_at)
-				VALUES (?, ?, ?, ?, 'Intake', 'waiting', ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO work_orders (project, type, title, description, stage, state, source, fingerprint, gates, agent, pr_number, mode, created_at, updated_at, stage_at)
+				VALUES (?, ?, ?, ?, 'Intake', 'waiting', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				input.project,
@@ -417,6 +677,7 @@ export class Store {
 				JSON.stringify(noGates()),
 				input.agent,
 				input.prNumber ?? null,
+				input.mode ? JSON.stringify(input.mode) : null,
 				at,
 				at,
 				at,
@@ -524,6 +785,7 @@ export interface WorkOrderRow {
 	regressed: number;
 	failed_sha: string | null;
 	state_at: string | null;
+	mode: string | null;
 }
 
 export type WorkOrderPatch = Pick<

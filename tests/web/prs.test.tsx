@@ -126,7 +126,7 @@ describe("pull requests list", () => {
 		const status = banner.closest('[role="status"]') as HTMLElement;
 		// Rows sort by age, and seeded PRs can share a millisecond.
 		expect(status).toHaveTextContent(
-			/(Foundry #168 and Arcade Club #62|Arcade Club #62 and Foundry #168) are shipping now\./,
+			/(Foundry #168 and Arcade Club #62|Arcade Club #62 and Foundry #168) are merged on GitHub\./,
 		);
 		expect(status).toHaveTextContent(/satisfactory moved on while #31 waited, so it needs a rebase\./);
 		const merge = h.mutations.find((m) => m.startsWith("POST /api/prs/merge"));
@@ -174,7 +174,7 @@ describe("PR review", () => {
 		expect(within(pane).getByRole("link", { name: /^WO-\d+$/ })).toBeInTheDocument();
 		await user.click(within(pane).getByRole("button", { name: "Merge" }));
 		await waitFor(() => expect(h.mutations).toContain("POST /api/prs/roadmaps/96/merge {}"));
-		expect(await within(pane).findByText(/Merged\. Shipping to production now\./)).toBeInTheDocument();
+		expect(await within(pane).findByText(/Merged on GitHub\./)).toBeInTheDocument();
 		expect(within(pane).getByRole("link", { name: "See the floor" })).toBeInTheDocument();
 		expect(within(pane).queryByRole("button", { name: "Merge" })).toBeNull();
 		expect(within(pane).queryByText(/ready to merge/)).toBeNull();

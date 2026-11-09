@@ -407,7 +407,7 @@ describe("Project page", () => {
 		const h = await renderApp("/projects/fairway", "projects");
 		await user.click(await screen.findByRole("button", { name: "Start work order" }));
 		const dialog = await screen.findByRole("dialog", { name: "New work order" });
-		expect(within(dialog).getByRole("combobox")).toHaveValue("fairway");
+		expect(within(dialog).getByRole("combobox", { name: "Project" })).toHaveValue("fairway");
 		expect(h.router.state.location.pathname).toBe("/projects/fairway");
 	});
 

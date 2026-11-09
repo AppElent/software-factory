@@ -1,9 +1,13 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { z } from "zod";
+import { AutomationsScreen } from "./screens/automations.tsx";
+import { EnvironmentsScreen, ProjectEnvironmentsScreen } from "./screens/environments.tsx";
 import { ErrorDetailScreen } from "./screens/error-detail.tsx";
 import { ErrorsScreen } from "./screens/errors.tsx";
 import { FloorScreen } from "./screens/floor.tsx";
 import { HealthScreen } from "./screens/health.tsx";
+import { ImproveScreen } from "./screens/improve.tsx";
+import { IssuesScreen } from "./screens/issues.tsx";
 import { NewProjectScreen } from "./screens/new-project.tsx";
 import { NotificationSamplesScreen } from "./screens/notification-samples.tsx";
 import { PrReviewScreen } from "./screens/pr-review.tsx";
@@ -52,6 +56,12 @@ const prReview = createRoute({
 	path: "/prs/$project/$number",
 	component: PrReviewScreen,
 });
+const issues = createRoute({
+	getParentRoute: () => shell,
+	path: "/issues",
+	component: IssuesScreen,
+	validateSearch: projectFilter.extend({ select: z.string().optional() }),
+});
 const errors = createRoute({
 	getParentRoute: () => shell,
 	path: "/errors",
@@ -62,6 +72,28 @@ const errorDetail = createRoute({
 	getParentRoute: () => shell,
 	path: "/errors/$id",
 	component: ErrorDetailScreen,
+});
+const improve = createRoute({
+	getParentRoute: () => shell,
+	path: "/improve",
+	component: ImproveScreen,
+});
+const automations = createRoute({
+	getParentRoute: () => shell,
+	path: "/automations",
+	component: AutomationsScreen,
+});
+const environments = createRoute({
+	getParentRoute: () => shell,
+	path: "/environments",
+	component: EnvironmentsScreen,
+	validateSearch: z.object({ select: z.string().optional() }),
+});
+const projectEnvironments = createRoute({
+	getParentRoute: () => shell,
+	path: "/projects/$slug/environments",
+	component: ProjectEnvironmentsScreen,
+	validateSearch: z.object({ edit: z.boolean().optional() }),
 });
 const workOrder = createRoute({
 	getParentRoute: () => shell,
@@ -111,8 +143,13 @@ export const routeTree = rootRoute.addChildren([
 		floor,
 		prs,
 		prReview,
+		issues,
 		errors,
 		errorDetail,
+		improve,
+		automations,
+		environments,
+		projectEnvironments,
 		workOrder,
 		projects,
 		projectDetail,

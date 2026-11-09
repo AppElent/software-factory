@@ -61,10 +61,10 @@ describe("errors list", () => {
 		await renderApp("/errors", "errors_list");
 		await user.click(await screen.findByRole("checkbox", { name: `Select ${HOLES}` }));
 		const bar = screen.getByRole("region", { name: "Bulk actions" });
-		expect(within(bar).getByRole("button", { name: "Start work order" })).toBeInTheDocument();
+		expect(await within(bar).findByRole("button", { name: "Fix with Standard" })).toBeInTheDocument();
 		await user.click(screen.getByRole("checkbox", { name: `Select ${NETWORK}` }));
-		expect(within(bar).getByRole("status")).toHaveTextContent("2 selected");
-		expect(within(bar).getByRole("button", { name: "Start 2 work orders" })).toBeInTheDocument();
+		expect(within(bar).getByText("2 selected")).toBeInTheDocument();
+		expect(await within(bar).findByRole("button", { name: "Fix 2 with Standard" })).toBeInTheDocument();
 		await user.click(within(bar).getByRole("button", { name: "Clear" }));
 		expect(screen.queryByRole("region", { name: "Bulk actions" })).toBeNull();
 	});
@@ -116,7 +116,7 @@ describe("errors list", () => {
 		const h = await renderApp("/errors", "errors_list");
 		await user.click(await screen.findByRole("checkbox", { name: `Select ${HOLES}` }));
 		await user.click(screen.getByRole("checkbox", { name: `Select ${NETWORK}` }));
-		await user.click(screen.getByRole("button", { name: "Start 2 work orders" }));
+		await user.click(screen.getByRole("button", { name: "Fix 2 with Standard" }));
 		await waitFor(() => expect(h.router.state.location.pathname).toBe("/floor"));
 		const started = h.mutations.filter((m) => m.startsWith("POST /api/work-orders"));
 		expect(started).toHaveLength(2);
@@ -129,7 +129,7 @@ describe("errors list", () => {
 		const h = await renderApp("/errors", "errors_list");
 		await user.click(await screen.findByRole("checkbox", { name: `Select ${HOLES}` }));
 		h.failNext("/api/work-orders");
-		await user.click(screen.getByRole("button", { name: "Start work order" }));
+		await user.click(screen.getByRole("button", { name: "Fix with Standard" }));
 		const bar = screen.getByRole("region", { name: "Bulk actions" });
 		expect(await within(bar).findByRole("alert")).toHaveTextContent("Couldn't start these. Try again.");
 		expect(screen.getByRole("checkbox", { name: `Select ${HOLES}` })).toBeChecked();
@@ -157,7 +157,9 @@ describe("error detail", () => {
 		const pane = screen.getByRole("complementary", { name: "Details" });
 		expect(within(pane).getByText("FAIRWAY-6001")).toBeInTheDocument();
 		expect(within(pane).getByRole("link", { name: "Fairway" })).toHaveAttribute("href", "/projects/fairway");
-		expect(within(pane).getByText(/Opens a PR after the gates pass\. It won't merge\./)).toBeInTheDocument();
+		expect(
+			within(pane).getByText(/Opens a PR after the gates pass\. The mode decides who merges\./),
+		).toBeInTheDocument();
 		expect(within(pane).getByRole("link", { name: "Open in Sentry" })).toHaveAttribute(
 			"href",
 			"https://sentry.example/issues/6001",
@@ -168,7 +170,7 @@ describe("error detail", () => {
 	it("Start work order: carries the source and opens the work order", async () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/errors/6001");
-		await user.click(await screen.findByRole("button", { name: "Start work order" }));
+		await user.click(await screen.findByRole("button", { name: "Fix with Standard" }));
 		await waitFor(() => expect(h.router.state.location.pathname).toMatch(/^\/work-orders\/\d+$/));
 		const started = h.mutations.find((m) => m.startsWith("POST /api/work-orders")) as string;
 		expect(started).toContain('"project":"fairway"');
@@ -181,9 +183,9 @@ describe("error detail", () => {
 		const h = await renderApp("/errors/6001");
 		const pane = await screen.findByRole("complementary", { name: "Details" });
 		h.failNext("/api/work-orders");
-		await user.click(within(pane).getByRole("button", { name: "Start work order" }));
+		await user.click(await within(pane).findByRole("button", { name: "Fix with Standard" }));
 		expect(await within(pane).findByRole("alert")).toHaveTextContent("Couldn't start this. Try again.");
-		expect(within(pane).getByRole("button", { name: "Start work order" })).toBeEnabled();
+		expect(await within(pane).findByRole("button", { name: "Fix with Standard" })).toBeEnabled();
 	});
 
 	it("ErrorRegression: says it came back, links the old PR, and tells what the agent gets", async () => {
@@ -220,7 +222,7 @@ describe("error detail", () => {
 			),
 		).toBeInTheDocument();
 		expect(within(pane).getByText("You can start a fix while it is snoozed.")).toBeInTheDocument();
-		expect(within(pane).getByRole("button", { name: "Start work order" })).toBeInTheDocument();
+		expect(await within(pane).findByRole("button", { name: "Fix with Standard" })).toBeInTheDocument();
 		expect(within(pane).queryByRole("button", { name: "Dismiss" })).toBeNull();
 		await user.click(within(pane).getByRole("button", { name: "Unsnooze" }));
 		expect(await screen.findByText("New · first seen 3h ago")).toBeInTheDocument();
@@ -251,7 +253,7 @@ describe("error detail", () => {
 
 	it("Agents at limit: Add to Intake, with the queue's words", async () => {
 		await renderApp("/errors/6001", "limit");
-		expect(await screen.findByRole("button", { name: "Add to Intake" })).toBeInTheDocument();
+		expect(await screen.findByRole("button", { name: "Add to Intake with Standard" })).toBeInTheDocument();
 		expect(
 			screen.getByText("All 3 agent slots are busy. This waits in Intake and starts when a slot opens."),
 		).toBeInTheDocument();
@@ -259,7 +261,7 @@ describe("error detail", () => {
 
 	it("Line stopped: waits in Intake until restart", async () => {
 		await renderApp("/errors/6001", "stopped");
-		expect(await screen.findByRole("button", { name: "Add to Intake" })).toBeInTheDocument();
+		expect(await screen.findByRole("button", { name: "Add to Intake with Standard" })).toBeInTheDocument();
 		expect(
 			screen.getByText("The line is stopped. This waits in Intake until you restart."),
 		).toBeInTheDocument();
@@ -268,11 +270,11 @@ describe("error detail", () => {
 	it("a running fix links the work order instead of starting another", async () => {
 		const user = userEvent.setup();
 		const h = await renderApp("/errors/6001");
-		await user.click(await screen.findByRole("button", { name: "Start work order" }));
+		await user.click(await screen.findByRole("button", { name: "Fix with Standard" }));
 		await waitFor(() => expect(h.router.state.location.pathname).toMatch(/^\/work-orders\/\d+$/));
 		await h.router.navigate({ to: "/errors/$id", params: { id: "6001" } });
 		expect(await screen.findByRole("link", { name: "Open work order" })).toBeInTheDocument();
-		expect(screen.queryByRole("button", { name: "Start work order" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Fix with Standard" })).toBeNull();
 	});
 
 	it("an unknown error says so", async () => {

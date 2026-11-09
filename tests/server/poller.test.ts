@@ -59,7 +59,7 @@ beforeEach(() => {
 		executor: new FakeExecutor(),
 		publish: () => {},
 		pollSoon: () => {},
-		git: async () => {},
+		git: async () => ({ ok: true, error: "" }),
 	});
 	poller = new Poller({
 		store,

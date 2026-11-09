@@ -8,8 +8,10 @@ import {
 	useState,
 	useSyncExternalStore,
 } from "react";
+import { parseFixCommand } from "../shared/command.ts";
 import type { ShellResponse, SourceHealth, WorkType } from "../shared/types.ts";
 import { api, connection } from "./api.ts";
+import { confirmOnProductionError, useCopyCommand } from "./fix.tsx";
 import { ago, clock, plural } from "./format.ts";
 import { typing } from "./keyboard.ts";
 import {
@@ -24,7 +26,20 @@ import {
 	Glyph,
 	InlineError,
 } from "./kit.tsx";
-import { useAction, useFloor, useProjects, usePrs, useQueue, useShell, useWorkOrders } from "./queries.ts";
+import {
+	useAction,
+	useErrors,
+	useFloor,
+	useIssues,
+	useModes,
+	useProjects,
+	usePrs,
+	useQueue,
+	useShell,
+	useWorkOrders,
+} from "./queries.ts";
+import { startFix } from "./screens/errors.tsx";
+import { startIssue } from "./screens/issues.tsx";
 
 /* ---------- shared overlays ---------- */
 
@@ -78,7 +93,7 @@ export function Root() {
 		return () => clearInterval(t);
 	}, [offline, shell.refetch]);
 
-	const firstRun = shell.data && !shell.data.hasProjects;
+	const firstRun = shell.data && (!shell.data.hasProjects || shell.data.newDevice);
 	const onSetup = location.pathname.startsWith("/welcome") || location.pathname.startsWith("/projects/new");
 	useEffect(() => {
 		if (firstRun && !onSetup) void navigate({ to: "/welcome/$step", params: { step: "tools" } });
@@ -118,8 +133,12 @@ const GO: Record<string, string> = {
 	q: "/",
 	f: "/floor",
 	p: "/prs",
+	i: "/issues",
 	e: "/errors",
+	v: "/environments",
 	o: "/projects",
+	u: "/automations",
+	y: "/improve",
 	h: "/health",
 	s: "/settings/agents",
 };
@@ -166,8 +185,11 @@ const NAV: Array<{ label: string; to: string; count?: keyof ShellResponse["count
 	{ label: "Queue", to: "/", count: "queue" },
 	{ label: "Floor", to: "/floor", count: "floor" },
 	{ label: "Pull requests", to: "/prs", count: "prs" },
+	{ label: "Issues", to: "/issues", count: "issues" },
 	{ label: "Errors", to: "/errors", count: "errors" },
+	{ label: "Environments", to: "/environments", count: "environments" },
 	{ label: "Projects", to: "/projects", count: "projects" },
+	{ label: "Automations", to: "/automations", count: "automations" },
 	{ label: "Health", to: "/health" },
 ];
 
@@ -252,6 +274,13 @@ export function ShellOutlet() {
 				})}
 				<div className="sf-foot mt-auto flex flex-col gap-2 pt-4">
 					<Link
+						to="/improve"
+						aria-current={location.pathname === "/improve" ? "page" : undefined}
+						className={`nav-item flex min-h-control items-center rounded-sm px-3 ${location.pathname === "/improve" ? "bg-bg-active font-semibold" : ""}`}
+					>
+						Improve yourself
+					</Link>
+					<Link
 						to="/settings/$section"
 						params={{ section: "agents" }}
 						aria-current={location.pathname.startsWith("/settings") ? "page" : undefined}
@@ -285,6 +314,16 @@ export function ShellOutlet() {
 							glyph="err"
 							title="This page is out of date."
 							actions={<Button onClick={() => window.location.reload()}>Reload</Button>}
+						/>
+					</div>
+				)}
+				{shell.data?.configError && (
+					<div className="px-6 pt-4">
+						<Banner
+							role="alert"
+							glyph="err"
+							title="Your config file can't be used."
+							body={`${shell.data.configError} Modes, environments and settings may show their defaults, because the file can't say what you set. Nothing merges on its own until it's fixed.`}
 						/>
 					</div>
 				)}
@@ -389,12 +428,22 @@ function NewWorkOrderForm({
 	const [project, setProject] = useState(initialProject ?? "");
 	const [text, setText] = useState(initialText ?? "");
 	const [type, setType] = useState<WorkType>("Bug fix");
+	const modes = useModes();
+	const [modeId, setModeId] = useState("");
+	const mode = modeId || modes.data?.defaultMode || "";
+	const { copy, view: copyView } = useCopyCommand();
 	const [invalid, setInvalid] = useState(false);
 	const textRef = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => textRef.current?.focus(), []);
 	const selected = project || projects.data?.[0]?.slug || "";
 	const create = useAction(
-		() => api.post<{ id: number }>("/api/work-orders", { project: selected, type, description: text.trim() }),
+		() =>
+			api.post<{ id: number }>("/api/work-orders", {
+				project: selected,
+				type,
+				description: text.trim(),
+				mode: mode || undefined,
+			}),
 		{
 			onSuccess: (r) => {
 				void navigate({ to: "/work-orders/$id", params: { id: String(r.id) } });
@@ -460,9 +509,38 @@ function NewWorkOrderForm({
 					</label>
 				))}
 			</fieldset>
+			<Field label="Mode" hint={modes.data?.modes.find((m) => m.id === mode)?.description}>
+				{(p) => (
+					<select {...p} value={mode} onChange={(e) => setModeId(e.target.value)}>
+						{modes.data?.modes.map((m) => (
+							<option key={m.id} value={m.id}>
+								{m.name}
+							</option>
+						))}
+					</select>
+				)}
+			</Field>
 			<InlineError>{create.error && `Couldn't start this. ${create.error}`}</InlineError>
+			{copyView}
 			<div className="flex flex-wrap justify-end gap-2">
 				<Button onClick={onClose}>Cancel</Button>
+				<Button
+					disabled={!text.trim()}
+					onClick={() =>
+						void copy(() =>
+							api
+								.post<{ command: string }>("/api/work-orders/command", {
+									project: selected,
+									type,
+									description: text.trim(),
+									mode: mode || undefined,
+								})
+								.then((r) => r.command),
+						)
+					}
+				>
+					Copy as command
+				</Button>
 				<Button type="submit" variant="primary" disabled={create.pending}>
 					{atLimit ? "Add to Intake" : "Start work order"}
 				</Button>
@@ -478,6 +556,146 @@ const ITEM =
 
 function Key({ children }: { children: string }) {
 	return <span className="ms-auto ps-3 font-mono text-data text-text-muted">{children}</span>;
+}
+
+/** `fix #12 full send` and its kin, resolved against what's open. These bypass the menu's search. */
+function FixCommands({ text, onDone }: { text: string; onDone: (to: string) => void }) {
+	const modes = useModes();
+	const isFix = /^fix\s/i.test(text.trim());
+	const issues = useIssues();
+	const errors = useErrors();
+	const queue = useQueue();
+	const [asking, setAsking] = useState<{
+		title: string;
+		description: string;
+		action: string;
+		go: () => void;
+	} | null>(null);
+	const run = useAction(async (work: () => Promise<string>) => onDone(await work()));
+	const all = modes.data?.modes ?? [];
+	const command = isFix ? parseFixCommand(text, all) : null;
+	if (!command) return null;
+	const mode = command.mode ?? all.find((m) => m.id === modes.data?.defaultMode) ?? null;
+	const merges = mode?.merge === "factory";
+	const named = mode ? ` with ${mode.name}` : "";
+	const item = (key: string, label: string, onSelect: () => void, disabled?: string | null) => (
+		<Command.Item
+			key={key}
+			forceMount
+			disabled={!!disabled}
+			className={ITEM}
+			value={`${text} ${key}`}
+			onSelect={onSelect}
+		>
+			<span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
+			{disabled && <span className="ms-auto flex-none text-meta text-text-muted">{disabled}</span>}
+		</Command.Item>
+	);
+
+	const rows: React.ReactNode[] = [];
+	if (command.unknownMode) {
+		rows.push(item("no-mode", `No mode called ‘${command.unknownMode}’`, () => {}, "Check Settings"));
+	} else if (command.target.kind === "issue") {
+		const { number, project } = command.target;
+		const found = (issues.data?.issues ?? []).filter(
+			(i) => i.number === number && (!project || i.project === project),
+		);
+		if (found.length === 0) rows.push(item("none", `No open issue #${number}`, () => {}, "Nothing to fix"));
+		for (const i of found) {
+			const why = i.workOrderId ? `WO-${i.workOrderId} has it` : merges && i.locked ? "Read it first" : null;
+			rows.push(
+				item(
+					`issue-${i.project}-${i.number}`,
+					`Fix ${i.projectName} #${i.number} ${i.title}${named}`,
+					() =>
+						void run.run(async () => {
+							const { id } = await startIssue(i, mode);
+							return `/work-orders/${id}`;
+						}),
+					why,
+				),
+			);
+		}
+	} else if (command.target.kind === "error") {
+		const { shortId } = command.target;
+		const e = (errors.data?.errors ?? []).find((x) => x.shortId.toUpperCase() === shortId);
+		if (!e) rows.push(item("none", `No open error ${shortId}`, () => {}, "Nothing to fix"));
+		else {
+			const go = (confirmed: boolean) =>
+				void run.run(async () => {
+					const { id } = await startFix(e, mode, confirmed);
+					return `/work-orders/${id}`;
+				});
+			const ask = mode ? confirmOnProductionError(1)(mode) : null;
+			rows.push(
+				item(
+					`error-${e.id}`,
+					`Fix ${e.projectName} ${e.shortId} ${e.title}${named}`,
+					() => (ask ? setAsking({ ...ask, go: () => go(true) }) : go(false)),
+					e.workOrderId ? `WO-${e.workOrderId} has it` : null,
+				),
+			);
+		}
+	} else {
+		const red = [...(queue.data?.needsYou ?? []), ...(queue.data?.later ?? [])].filter(
+			(q) => q.kind === "red_main" && q.project,
+		);
+		const go = () =>
+			void run.run(async () => {
+				for (const q of red)
+					await api.post("/api/work-orders", {
+						project: q.project,
+						type: "Bug fix",
+						title: q.title,
+						description: q.title,
+						source: { kind: "red_main", fingerprint: q.fingerprint },
+						mode: mode?.id,
+					});
+				return "/floor";
+			});
+		rows.push(
+			item(
+				"red",
+				`Fix everything red${named}: ${plural(red.length, "project")}`,
+				() =>
+					merges
+						? setAsking({
+								title: `${mode?.name} on ${plural(red.length, "red project")}?`,
+								description:
+									"The factory merges each fix as soon as its gates pass, without you reading it. Stopping the line still stops it.",
+								action: `Start with ${mode?.name}`,
+								go,
+							})
+						: go(),
+				red.length === 0 ? "Nothing is red" : null,
+			),
+		);
+	}
+	return (
+		<>
+			<Command.Group forceMount heading="Fix">
+				{rows}
+			</Command.Group>
+			{run.error && (
+				<p role="alert" className="m-0 p-3 text-status-fail">
+					{run.error}
+				</p>
+			)}
+			<ConfirmDialog
+				open={!!asking}
+				onOpenChange={(o) => !o && setAsking(null)}
+				title={asking?.title}
+				description={asking?.description}
+				action={asking?.action}
+				actionVariant="primary"
+				onAction={() => {
+					const go = asking?.go;
+					setAsking(null);
+					go?.();
+				}}
+			/>
+		</>
+	);
 }
 
 function CommandMenu() {
@@ -506,9 +724,13 @@ function CommandMenu() {
 		["Queue", "/", "g q"],
 		["Floor", "/floor", "g f"],
 		["Pull requests", "/prs", "g p"],
+		["Issues", "/issues", "g i"],
 		["Errors", "/errors", "g e"],
+		["Environments", "/environments", "g v"],
 		["Projects", "/projects", "g o"],
+		["Automations", "/automations", "g u"],
 		["Health", "/health", "g h"],
+		["Improve yourself", "/improve", "g y"],
 		["Settings", "/settings/agents", "g s"],
 	];
 
@@ -544,6 +766,7 @@ function CommandMenu() {
 						</div>
 					</div>
 				</Command.Empty>
+				<FixCommands text={q} onDone={go} />
 				<Command.Group heading="Go to">
 					{goItems.map(([label, to, key]) => (
 						<Command.Item key={to} className={ITEM} value={label} onSelect={() => go(to)}>

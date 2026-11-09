@@ -1,14 +1,20 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { mapGates, prGroup } from "../../shared/rules.ts";
 import type {
 	CheckBucket,
 	CheckRun,
+	Issue,
 	MainBranchState,
 	PullRequest,
 	ToolkitState,
 } from "../../shared/types.ts";
 import type { Cli } from "../cli.ts";
 import { scrub } from "../cli.ts";
+
+/** Covers what an agent would get, so an edit to either means reading it again. */
+export const issueHash = (title: string, body: string) =>
+	createHash("sha256").update(`${title}\0${body}`).digest("hex");
 
 export const TOOLKIT_REPO = "AppElent/developer-tools";
 
@@ -73,6 +79,7 @@ const RepoNode = z.object({
 				deletions: z.number(),
 				changedFiles: z.number(),
 				headRefName: z.string(),
+				isCrossRepository: z.boolean(),
 				baseRefName: z.string(),
 				createdAt: z.string(),
 				updatedAt: z.string(),
@@ -82,6 +89,31 @@ const RepoNode = z.object({
 			}),
 		),
 	}),
+	// Optional, so a repo with Issues turned off still reads. One bad row loses that row and not the repo.
+	issues: z
+		.object({
+			nodes: z.array(
+				z
+					.object({
+						number: z.number(),
+						title: z.string(),
+						url: z.string(),
+						body: z.string().nullable(),
+						authorAssociation: z.string().nullable().optional(),
+						author: z.object({ login: z.string(), createdAt: z.string().optional() }).nullable().optional(),
+						createdAt: z.string(),
+						updatedAt: z.string(),
+						labels: z
+							.object({ nodes: z.array(z.object({ name: z.string() }).nullable()) })
+							.nullable()
+							.optional(),
+						comments: z.object({ totalCount: z.number() }).optional(),
+					})
+					.nullable(),
+			),
+		})
+		.nullable()
+		.optional(),
 	devtools: Blob,
 	appJson: Blob,
 });
@@ -96,6 +128,23 @@ const Response = z.object({
 const CommitDate = z.object({ commit: z.object({ committer: z.object({ date: z.string() }) }) });
 const Compare = z.object({ ahead_by: z.number(), files: z.array(z.unknown()).optional() });
 
+/** An issue as GitHub has it. What the factory thinks of it is worked out when it's read back. */
+export type IssueRead = Pick<
+	Issue,
+	| "number"
+	| "title"
+	| "url"
+	| "body"
+	| "author"
+	| "authorAssociation"
+	| "authorCreatedAt"
+	| "createdAt"
+	| "updatedAt"
+	| "labels"
+	| "comments"
+	| "bodyHash"
+>;
+
 export interface RepoRead {
 	repo: string;
 	url: string;
@@ -105,6 +154,7 @@ export interface RepoRead {
 	defaultBranch: string;
 	main: MainBranchState | null;
 	prs: Array<Omit<PullRequest, "project" | "projectName" | "workOrderId" | "workType">>;
+	issues: IssueRead[];
 	devtoolsCommit: string | null;
 }
 
@@ -118,8 +168,14 @@ const FIELDS = `
 	nameWithOwner url isPrivate pushedAt
 	defaultBranchRef { name target { ... on Commit { oid messageHeadline committedDate statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
 	pullRequests(states: OPEN, first: 40, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
-		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName baseRefName createdAt updatedAt
+		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName isCrossRepository baseRefName createdAt updatedAt
 		commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
+	} }
+	issues(states: OPEN, first: 100, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
+		number title url body authorAssociation createdAt updatedAt
+		author { login ... on User { createdAt } }
+		labels(first: 10) { nodes { name } }
+		comments { totalCount }
 	} }
 	devtools: object(expression: "HEAD:.appelent/devtools.json") { ... on Blob { text } }
 	appJson: object(expression: "HEAD:app.json") { ... on Blob { text } }
@@ -245,6 +301,26 @@ function toRepoRead(node: z.infer<typeof RepoNode>, now: number): RepoRead {
 		defaultBranch: node.defaultBranchRef?.name ?? "main",
 		main: node.defaultBranchRef ? readMain(node.defaultBranchRef.target) : null,
 		devtoolsCommit: devtoolsCommit(node.devtools?.text),
+		issues: (node.issues?.nodes ?? []).flatMap((i) =>
+			i
+				? [
+						{
+							number: i.number,
+							title: i.title,
+							url: i.url,
+							body: i.body ?? "",
+							author: i.author?.login ?? null,
+							authorAssociation: i.authorAssociation ?? "NONE",
+							authorCreatedAt: i.author?.createdAt ?? null,
+							createdAt: i.createdAt,
+							updatedAt: i.updatedAt,
+							labels: (i.labels?.nodes ?? []).flatMap((l) => (l ? [l.name] : [])),
+							comments: i.comments?.totalCount ?? 0,
+							bodyHash: issueHash(i.title, i.body ?? ""),
+						},
+					]
+				: [],
+		),
 		prs: node.pullRequests.nodes.map((pr) => {
 			const checks = readChecks(pr.commits.nodes[0]?.commit.statusCheckRollup);
 			const gates = mapGates(checks);
@@ -262,6 +338,7 @@ function toRepoRead(node: z.infer<typeof RepoNode>, now: number): RepoRead {
 				deletions: pr.deletions,
 				changedFiles: pr.changedFiles,
 				headRef: pr.headRefName,
+				fromFork: pr.isCrossRepository,
 				headSha: pr.commits.nodes[0]?.commit.oid ?? "",
 				baseRef: pr.baseRefName,
 				createdAt: pr.createdAt,
@@ -351,11 +428,39 @@ const PrFiles = z.object({
 	files: z.array(z.object({ path: z.string(), additions: z.number(), deletions: z.number() })),
 });
 
-export async function readPrFiles(cli: Cli, repo: string, number: number) {
+/** The files a PR changes, or null when GitHub didn't say. Nothing that guards a merge may read null as "none". */
+export async function tryReadPrFiles(cli: Cli, repo: string, number: number) {
 	const res = await cli("gh", ["pr", "view", String(number), "-R", repo, "--json", "files"]);
-	if (res.code !== 0) return [];
-	const parsed = PrFiles.safeParse(JSON.parse(res.stdout));
-	return parsed.success ? parsed.data.files : [];
+	if (res.code !== 0) return null;
+	try {
+		const parsed = PrFiles.safeParse(JSON.parse(res.stdout));
+		return parsed.success ? parsed.data.files : null;
+	} catch {
+		return null;
+	}
+}
+
+export const MOST_FILES_GITHUB_LISTS = 3000;
+
+/**
+ * Every path a PR touches, including the old name of a moved file, or null when GitHub didn't say. GitHub stops
+ * listing at MOST_FILES_GITHUB_LISTS, so a list that long may not be all of it. This one guards merges, and
+ * `gh pr view` lists 100 files at most.
+ */
+export async function tryReadPrPaths(cli: Cli, repo: string, number: number): Promise<string[] | null> {
+	const res = await cli("gh", [
+		"api",
+		"--paginate",
+		`repos/${repo}/pulls/${number}/files?per_page=100`,
+		"--jq",
+		".[] | .filename, (.previous_filename // empty)",
+	]);
+	if (res.code !== 0) return null;
+	return res.stdout.split("\n").filter(Boolean);
+}
+
+export async function readPrFiles(cli: Cli, repo: string, number: number) {
+	return (await tryReadPrFiles(cli, repo, number)) ?? [];
 }
 
 /** Squash by default. Repos that forbid it get a merge commit. Returns GitHub's words on failure. */
@@ -386,7 +491,19 @@ export async function closePr(cli: Cli, repo: string, number: number) {
 	return cli("gh", ["pr", "close", String(number), "-R", repo]);
 }
 
-export async function prByBranch(cli: Cli, repo: string, branch: string): Promise<number | null> {
+export const PR_UNREADABLE = "unreadable";
+
+/**
+ * `--head` matches on the branch's name alone, and anyone can give a fork's branch the same name. So a fork's PR
+ * is never the one the agent opened.
+ */
+export async function prByBranch(
+	cli: Cli,
+	repo: string,
+	branch: string,
+	since: string,
+	opts: { openOnly?: boolean } = {},
+): Promise<number | null | typeof PR_UNREADABLE> {
 	const res = await cli("gh", [
 		"pr",
 		"list",
@@ -397,11 +514,29 @@ export async function prByBranch(cli: Cli, repo: string, branch: string): Promis
 		"--state",
 		"all",
 		"--json",
-		"number,state",
+		"number,state,isCrossRepository,createdAt",
 	]);
-	if (res.code !== 0) return null;
-	const parsed = z.array(z.object({ number: z.number() })).safeParse(JSON.parse(res.stdout));
-	return parsed.success ? (parsed.data[0]?.number ?? null) : null;
+	if (res.code !== 0) return PR_UNREADABLE;
+	try {
+		const parsed = z
+			.array(
+				z.object({
+					number: z.number(),
+					state: z.string().optional(),
+					isCrossRepository: z.boolean().optional(),
+					createdAt: z.string().optional(),
+				}),
+			)
+			.safeParse(JSON.parse(res.stdout));
+		if (!parsed.success) return PR_UNREADABLE;
+		// A new database can reuse a number, and so a branch name. A PR from before this run isn't this run's.
+		// Picked-up work is as old as its thread, so any open PR on its branch counts, and a finished one never does.
+		const fresh = (pr: { state?: string; createdAt?: string }) =>
+			opts.openOnly ? pr.state === "OPEN" : !pr.createdAt || Date.parse(pr.createdAt) >= Date.parse(since);
+		return parsed.data.find((pr) => !pr.isCrossRepository && fresh(pr))?.number ?? null;
+	} catch {
+		return PR_UNREADABLE;
+	}
 }
 
 export async function prState(

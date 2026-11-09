@@ -126,7 +126,7 @@ function resultBody({ merged, failed }: BulkResult) {
 	const parts: string[] = [];
 	if (merged.length > 0) {
 		const names = merged.map((p) => `${p.projectName} #${p.number}`);
-		parts.push(`${list(names)} ${merged.length === 1 ? "is" : "are"} shipping now.`);
+		parts.push(`${list(names)} ${merged.length === 1 ? "is" : "are"} merged on GitHub.`);
 	}
 	for (const { pr, reason } of failed) {
 		parts.push(
@@ -398,8 +398,8 @@ export function PullRequestsScreen() {
 							))}
 						</ul>
 						<p className="m-0">
-							{sentence} They merge one at a time and each ships to production as it merges. If one can't
-							merge, it stays open and the rest continue. You can't undo a merge from here.
+							{sentence} They merge one at a time. If one can't merge, it stays open and the rest continue.
+							You can't undo a merge from here.
 						</p>
 					</div>
 				}

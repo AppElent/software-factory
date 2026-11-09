@@ -253,7 +253,7 @@ Works for any open PR, including ones without a work order, where the Work order
 | --- | --- | --- | --- |
 | Ready | All gates passed, no conflict | `Merge`, no dialog: this page is the review | PRFix, PRPassed |
 | Merging | After click | Disabled `Merging…` | PRFix (`st`) |
-| Merged | GitHub confirms | `Merged. Shipping to production now.` `See the floor` | PRFix (`st`) |
+| Merged | GitHub confirms | `Merged on GitHub.` `See the floor` | PRFix (`st`) |
 | Gate failed | Any gate failed | Banner with cause, `Open the log`; `Send back to the agent`; Merge absent | PRFailed |
 | Needs rebase | Base moved or conflicts | Banner, gates `Out of date`, `Start rebase work order` | PRRebase |
 | Running | Gates in progress | Merge absent, `Checks running` | Not drawn |
@@ -359,7 +359,7 @@ with `node:sqlite`'s backup and reveals the file in Finder. Add projects reuses 
 | Reading | Progress per project in `role="status"`, warning for missing links, Open your queue once one project is read | FRReading |
 | Queue | First look | QueueFirst |
 
-Required: `gh`, and `t3` (not drawn missing; see below). Optional: `sentry`, `eas`, `wrangler`, `infisical`, `terminal-notifier`. Nothing outside the app changes during first run except clones you ask for.
+Required: `gh`, and `t3` (not drawn missing; see below). Optional: `sentry`, `eas`, `wrangler`, `infisical`, `terminal-notifier`. Nothing outside the app changes during first run except what you press: clones, `Install` and `Sign in`, per the contract's New device section. Projects restored from a config file get `/welcome/restore` in place of the project and reading steps.
 
 ### New project
 

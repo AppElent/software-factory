@@ -44,7 +44,9 @@ export function t3Executor(cli: Cli): Executor {
 					"--branch",
 					req.branch,
 					"--json",
-					...agentFlags(req.agent),
+					...(req.model
+						? [...(req.provider ? ["--provider", req.provider] : []), "--model", req.model]
+						: agentFlags(req.agent)),
 				],
 				{ stdin: req.prompt, timeoutMs: 60_000 },
 			);
@@ -54,6 +56,25 @@ export function t3Executor(cli: Cli): Executor {
 			// The thread exists now. Failing here would make Try again start a second one on the same branch.
 			const state = await this.status(parsed.data.threadId).catch(() => null);
 			return { threadId: parsed.data.threadId, link: state?.link ?? null };
+		},
+		async ask(req) {
+			await cli("t3", ["project", "add", req.projectPath]);
+			const res = await cli(
+				"t3",
+				["thread", "start", req.projectPath, "-", "--title", req.title, "--wait", "--json"],
+				{ stdin: req.prompt, timeoutMs: 5 * 60_000 },
+			);
+			if (res.code !== 0) throw new ExecutorError(res.stderr.trim() || `t3 exited with ${res.code}`);
+			let threadId: string | undefined;
+			try {
+				threadId = StartOut.safeParse(JSON.parse(res.stdout)).data?.threadId;
+			} catch {
+				// Handled below.
+			}
+			if (!threadId) throw new ExecutorError("t3 returned an unexpected response.");
+			const { lastReply, link } = await this.status(threadId);
+			if (!lastReply) throw new ExecutorError("The agent finished without a reply.");
+			return { reply: lastReply, link };
 		},
 		async status(threadId) {
 			const res = await cli("t3", ["thread", "show", threadId, "--messages", "12", "--json"], {

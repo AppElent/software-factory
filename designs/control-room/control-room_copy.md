@@ -83,7 +83,7 @@ if pane.r1:
   In that release
   2 merged PRs
   Bug fix
-  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
   [Start work order] → WOPlan
   [Snooze] on snooze
   [Dismiss] on dismiss
@@ -213,7 +213,7 @@ Changes from Queue (`-` removed, `+` added):
 +(shell: 3 of 3 agents working · Synced 1m ago; footer Stop the line)
 -2/3
 +3/3
--  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+-  Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 -  [Start work order] → WOPlan
 +  All 3 agent slots are busy. This waits in Intake and starts when a slot opens.
 +  [Add to Intake] → FloorLimit
@@ -298,7 +298,7 @@ src/rounds/score.ts:42
 Sentry issue
 FAIRWAY-W3
 Bug fix
-Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 [Start work order] → WOPlan
 [Snooze] → ErrorSnoozed
 [Dismiss] → ErrorsList
@@ -316,7 +316,7 @@ Changes from ErrorNew (`-` removed, `+` added):
 +Regression · came back 3h ago
 +This came back after a fix | WO-198 fixed it on 28 October in PR #88. It returned in release a1b2c3d.
 +[Open PR #88] → https://github.com/AppElent/golf-app/pulls
--Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+-Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 +The new work order gets the old fix and its PR as context, so the agent starts from what already failed.
 ```
 
@@ -330,7 +330,7 @@ Changes from ErrorNew (`-` removed, `+` added):
 -New · first seen 3h ago
 +Snoozed until tomorrow at 09:00
 +Snoozed until tomorrow at 09:00 | It returns to the queue sooner if it reaches 100 events or reaches users in a new release.
--Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge.
+-Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges.
 +You can start a fix while it is snoozed.
 -[Snooze] → ErrorSnoozed
 -[Dismiss] → ErrorsList
@@ -807,7 +807,7 @@ if notMerged:
     [Merging…] (inert) disabled when busy
 if merged:
   (role: status)
-  Merged. Shipping to production now.
+  Merged on GitHub.
   [See the floor] → FloorBoard
 if notMerged:
   [Request changes] on toggle
@@ -906,7 +906,7 @@ if notMerged:
   [Send back to the agent] → FloorBoard
 if merged:
   (role: status)
-  Merged. Shipping to production now.
+  Merged on GitHub.
   [See the floor] → FloorBoard
 if notMerged:
   [Request changes] on toggle
@@ -964,7 +964,7 @@ if notMerged:
   [Start rebase work order] → FloorBoard
 if merged:
   (role: status)
-  Merged. Shipping to production now.
+  Merged on GitHub.
   [See the floor] → FloorBoard
 if notMerged:
   [Request changes] on toggle
@@ -1265,7 +1265,7 @@ A work type qualifies after 10 runs with at least 80% passing every gate on the 
 if ask:
   (role: dialog)
   Let bug fixes merge without you?
-  When all 4 gates pass, a bug-fix PR merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
+  When all 4 gates pass, a bug-fix PR merges without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
   [Cancel] on keep
   [Turn on] on turnOn
 ```
@@ -1949,7 +1949,7 @@ Changes from PullRequests (`-` removed, `+` added):
 +  for x in chosen:
 +    (aria-label: Typecheck passed, Tests passed, Lint passed, Preview passed)
 +    {{x.label}}
-+  All 4 gates passed on each one. They merge one at a time and each ships to production as it merges. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
++  All 4 gates passed on each one. They merge one at a time. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
 +  [Cancel] on keep
 +  [{{mergeLabel}}] → PullRequestsBulkDone
 ```
@@ -1976,7 +1976,7 @@ Changes from PullRequests (`-` removed, `+` added):
 
 ```diff
 +(role: status)
-+2 merged. #31 couldn't merge. | Foundry #168 and Arcade Club #62 are shipping now. satisfactory moved on while #31 waited, so it needs a rebase.
++2 merged. #31 couldn't merge. | Foundry #168 and Arcade Club #62 are merged on GitHub. satisfactory moved on while #31 waited, so it needs a rebase.
 +[Start rebase work order] → PRRebase
 +[See the floor] → FloorBoard
 -  if vis.a:
@@ -2004,7 +2004,7 @@ Changes from PullRequests (`-` removed, `+` added):
 +  for x in chosen:
 +    (aria-label: Typecheck passed, Tests passed, Lint passed, Preview passed)
 +    {{x.label}}
-+  All 4 gates passed on each one. They merge one at a time and each ships to production as it merges. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
++  All 4 gates passed on each one. They merge one at a time. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
 +  [Cancel] on keep
 +  [{{mergeLabel}}] → PullRequestsBulkDone
 ```
@@ -2229,7 +2229,7 @@ if saved:
 if ask:
   (role: dialog)
   Let bug fixes merge without you?
-  When all 4 gates pass, a bug-fix PR merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
+  When all 4 gates pass, a bug-fix PR merges without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
   [Cancel] on keep
   [Turn on] on turnOn
 ```
@@ -2369,7 +2369,7 @@ Just so you know
 <checkbox checked={{chk.alone}} on tog.alone>
 A PR merges without you | Only when you turned that on in Approvals. |
 <checkbox checked={{chk.ship}} on tog.ship>
-A work order ships | Merged and deployed. |
+A work order ships | Merged, and main didn't go red after it. |
 <checkbox checked={{chk.full}} on tog.full>
 All agent slots are full | New work is waiting in Intake. |
 <checkbox checked={{front}} on flipFront>
@@ -2417,7 +2417,7 @@ Opens the Queue, on that row
 Opens Pull requests
 (aria-label: Just so you know)
 Just so you know
-[SF | Software Factory | Fairway: merged without you | #96 Fix TypeError reading 'holes'. Shipping now. |] → PRFix
+[SF | Software Factory | Fairway: merged without you | #96 Fix TypeError reading 'holes' |] → PRFix
 Opens the PR
 [SF | Software Factory | Foundry: shipped | WO-208: Faster workout list |] → FloorBoard
 Opens the floor
@@ -2525,7 +2525,7 @@ Choose projects
 Read projects
 Open your queue
 Check your tools
-Software Factory runs on the tools you already use. Nothing has been changed on this Mac.
+Software Factory runs on the tools you already use. Nothing changes on this Mac until you press a button.
 gh | Pull requests and repos | Signed in as AppElent
 t3 | Runs the agents | Ready
 sentry | Production errors | Signed in
@@ -2557,7 +2557,7 @@ Choose projects
 Read projects
 Open your queue
 Check your tools
-Software Factory runs on the tools you already use. Nothing has been changed on this Mac.
+Software Factory runs on the tools you already use. Nothing changes on this Mac until you press a button.
 gh | Pull requests and repos | Not signed in
 gh auth login
 Required. Projects and PRs come from GitHub.
@@ -2704,6 +2704,42 @@ Changes from Queue (`-` removed, `+` added):
 -3
 +1
 ```
+
+### Tools: fixing one
+
+| Where | Copy |
+| --- | --- |
+| Missing tool | `Install gh`, while running `Installing gh…` |
+| Signed-out tool | `Sign in to gh`, then `Finish in Terminal, then check again.` |
+| No Homebrew | `Homebrew isn't installed. Get it from brew.sh, then try again.` |
+| Terminal won't open | `Couldn't open Terminal. Run gh auth login yourself, then check again.` |
+
+### Restore projects
+
+Shown after Tools when projects came back from the config file.
+
+| Where | Copy |
+| --- | --- |
+| Title | `Restore projects` |
+| Lead | `These came from your config file. Reading them doesn't change anything, and cloning only adds folders.` |
+| Row | `On this Mac`, `Not on this Mac`, or the clone's error |
+| Buttons | `Clone 2 projects`, while running `Cloning…`. `Open your queue` |
+| With folders missing | `Work on a project without a folder waits until you clone it.` |
+
+## Improve yourself
+
+| Where | Copy |
+| --- | --- |
+| Lead | `Starts a work order on Software Factory's own repo, me/software-factory.` |
+| Notice | `This repo may be public, and this text can end up in commits and PRs. It's checked for your private names before it's sent.` |
+| Footer | `Changes to security files always wait for you, in every mode.` |
+| Private match | Title `This mentions something private`. `It mentions quiet-thing. This repo may be public, so this could end up in commits and PRs.` Action `Start anyway` or `Copy anyway` |
+| Merging mode | Title `Full send on the factory itself?`. `The factory merges this as soon as its gates pass. Changes to security files still wait for you.` Action `Start with Full send` |
+| Ready | `c3d4e5f is ready`, `Started on a spare port, and passed its smoke test`, `Update to c3d4e5f`, `Your settings and work orders stay. If c3d4e5f doesn't start or fails its check, the factory goes back to b2c3d4e on its own.` |
+| History | `Building: <title>`, `Running now, since 3d`, `Getting ready: <commit>`, `Replaced 3d ago`, or why it failed |
+| Roll back | Title `Roll back to a1b2c3d?`. `The factory restarts on that version. Your settings and work orders stay. A newer version's database changes stay too, and older versions ignore them.` |
+| Checkout | `This copy runs from a checkout, so there's nothing to switch. Run pnpm service:install to get versions with a way back.` |
+| Went back | `It didn't start or failed its check, so the factory went back.` |
 
 ## New project
 
@@ -2973,3 +3009,18 @@ Sentry, EAS
 Skipped
 Infisical. Reminder under Later.
 ```
+
+## Config file that can't be used
+
+Shown on every page while the config file can't be read.
+
+| Element | Copy |
+| --- | --- |
+| Banner title | `Your config file can't be used.` |
+| Banner body | `{why} Modes, environments and settings may show their defaults, because the file can't say what you set. Nothing merges on its own until it's fixed.` |
+
+## Closing picked-up work on someone else's branch
+
+| Element | Copy |
+| --- | --- |
+| Close dialog body | `This only closes the work order. The branch, its folder and any PR stay, because they aren't the factory's.` |

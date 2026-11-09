@@ -34,6 +34,7 @@ import {
 } from "../kit.tsx";
 import { useAction, useProject } from "../queries.ts";
 import { useOpenNewWorkOrder } from "../shell.tsx";
+import { ProjectTabs } from "./environments.tsx";
 import { behindWords, failed, openSync, toolkitWords } from "./projects.tsx";
 
 /* ---------- words ---------- */
@@ -56,7 +57,7 @@ const WORK_ORDER_WORDS: Record<WorkOrderState, [GlyphKind, string]> = {
 	failed: ["fail", "Verify · gates failed"],
 	ready: ["ask", "Review · waiting on you"],
 	rebasing: ["run", "Review · agent rebasing"],
-	shipping: ["run", "Ship · deploying"],
+	shipping: ["run", "Ship · checking main"],
 	observing: ["pass", "Observe · watching for errors"],
 	done: ["pass", "Done"],
 	closed: ["idle", "Closed"],
@@ -498,6 +499,7 @@ function ProjectPage({ project: p }: { project: ProjectDetail }) {
 					</Button>
 				</div>
 			</header>
+			<ProjectTabs slug={p.slug} current="overview" />
 
 			<StatusLine className="contents">
 				{p.paused && (

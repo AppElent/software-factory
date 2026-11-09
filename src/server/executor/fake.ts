@@ -1,4 +1,4 @@
-import type { Executor, StartRequest, ThreadState } from "./types.ts";
+import type { AskReply, AskRequest, Executor, StartRequest, ThreadState } from "./types.ts";
 import { ExecutorError } from "./types.ts";
 
 export interface FakeThread {
@@ -52,6 +52,15 @@ export class FakeExecutor implements Executor {
 		t.sent.push(prompt);
 		t.state = { ...t.state, status: "running", lastReply: null };
 		if (this.autoReply) this.finish(threadId, this.autoReply(prompt, t));
+	}
+
+	asked: AskRequest[] = [];
+	askReply: string | Error = "```json\n{}\n```";
+
+	async ask(req: AskRequest): Promise<AskReply> {
+		this.asked.push(req);
+		if (this.askReply instanceof Error) throw this.askReply;
+		return { reply: this.askReply, link: "https://t3.example/threads/asked" };
 	}
 
 	/** Ends the current turn. */

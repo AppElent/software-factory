@@ -174,6 +174,17 @@ describe("work order", () => {
 		).toEqual(["Close work order"]);
 	});
 
+	it("says closing picked-up work on someone else's branch only closes the work order", async () => {
+		const user = userEvent.setup();
+		const { h } = await openOrder("Guard the scorecard loader");
+		h.store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'fix/theirs' WHERE title = ?")
+			.run(JSON.stringify({ kind: "restored" }), "Guard the scorecard loader");
+		await h.client.invalidateQueries();
+		await user.click(within(pane()).getByRole("button", { name: "Close work order" }));
+		expect(await screen.findByText(/This only closes the work order/)).toBeInTheDocument();
+	});
+
 	it("WORunning: closing is on offer when the agent never finishes", async () => {
 		await openOrder("Guard the scorecard loader");
 		expect(within(pane()).getByRole("button", { name: "Stop this work order" })).toBeInTheDocument();
@@ -410,7 +421,7 @@ describe("work order", () => {
 
 	it("shipping and observing say the change is out, with no actions to take", async () => {
 		await openOrder("Remove the old export");
-		expect(paneStatus()).toHaveTextContent("Merged. Shipping to production now.");
+		expect(paneStatus()).toHaveTextContent("Merged on GitHub.");
 		expect(within(pane()).queryByRole("button")).not.toBeInTheDocument();
 	});
 

@@ -1,15 +1,19 @@
 /** Pure rules from docs/contracts/factory.md. No I/O, so each is a table test. */
 import type {
+	AutomationSchedule,
 	CheckRun,
 	GateName,
 	GateState,
 	Gates,
+	IssueGroup,
+	IssueSignals,
 	Limits,
 	PrGroup,
 	PullRequest,
 	QueueItem,
 	QueueKind,
 	StartBlock,
+	WorkType,
 } from "./types.ts";
 import { GATE_NAMES } from "./types.ts";
 
@@ -312,10 +316,61 @@ export function qualifies(rec: Record_, t: { runs: number; firstTryPct: number }
 }
 
 /** Work orders on a PR the factory didn't open. Its branch and its merge belong to whoever opened it. */
+const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+const WEEK = [1, 2, 3, 4, 5];
+
+export function scheduleWords(s: AutomationSchedule): string {
+	switch (s.type) {
+		case "interval": {
+			const minutes = Math.round(s.everyMs / 60_000);
+			if (minutes % 1440 === 0) return minutes === 1440 ? "Every day" : `Every ${minutes / 1440}d`;
+			return minutes % 60 === 0 ? `Every ${minutes / 60}h` : `Every ${minutes}m`;
+		}
+		case "fixed_time": {
+			const days = [...(s.weekdays ?? [])].sort();
+			if (days.length === 0 || days.length === 7) return `Every day ${s.timeOfDay}`;
+			if (days.join() === WEEK.join()) return `Weekdays ${s.timeOfDay}`;
+			return `${days.map((d) => DAYS[d]).join(", ")} ${s.timeOfDay}`;
+		}
+		case "once":
+			return `Once, ${s.runAt.replace("T", " ").slice(0, 16)}`;
+		case "webhook":
+			return "Webhook";
+	}
+}
+
 export const ownsNoPr = (kind: string) => kind === "rebase_pr" || kind === "pr_changes";
+
+/**
+ * A mode's merge is chosen for one run, so a missing Preview doesn't block it, as it does Merge without me.
+ * The other three have to have run: a repo that only tests hasn't been type checked or linted.
+ */
+export const MODE_NEEDS = ["Typecheck", "Tests", "Lint"] as const;
+export const modeGatesPassed = (g: Gates) =>
+	MODE_NEEDS.every((n) => g[n] === "passed") && (g.Preview === "passed" || g.Preview === "not_set_up");
+
+/** The files an agent could use to loosen the rules around itself. They always wait for you. */
+const OWNER_ONLY_EVERYWHERE = [/^\.github\/workflows\//];
+/** What runs on this Mac when a new version gets ready, before you press Update, belongs here too. */
+const OWNER_ONLY_HERE = [
+	/^src\/server\/security\.ts$/,
+	/^src\/shared\/rules\.ts$/,
+	/^docs\/adr\//,
+	/^package\.json$/,
+	/^pnpm-(lock|workspace)\.yaml$/,
+	/^\.npmrc$/,
+	/^scripts\//,
+];
+
+export function ownerOnlyFiles(paths: string[], isThisApp: boolean): string[] {
+	const rules = isThisApp ? [...OWNER_ONLY_EVERYWHERE, ...OWNER_ONLY_HERE] : OWNER_ONLY_EVERYWHERE;
+	return paths.filter((p) => rules.some((r) => r.test(p)));
+}
 
 export function mayMergeAlone(input: {
 	on: boolean;
+	/** The run's mode merges, rather than the Merge without me setting. */
+	byMode?: boolean;
 	projectMerging: "follow" | "ask";
 	gates: Gates;
 	mergeable: string;
@@ -323,10 +378,14 @@ export function mayMergeAlone(input: {
 	isDraft: boolean;
 	hold: boolean;
 	sourceKind: string;
+	/** An issue that's waiting to be read, or changed since it was. */
+	unreadIssue?: boolean;
 }): boolean {
 	if (!input.on || input.projectMerging === "ask") return false;
 	if (input.hold || ownsNoPr(input.sourceKind)) return false;
-	if (!allFourPassed(input.gates)) return false;
+	// Work picked up from T3 may have started in any mode, so assuming one that merges would be a guess.
+	if (input.sourceKind === "restored" || input.unreadIssue) return false;
+	if (!(input.byMode ? modeGatesPassed(input.gates) : allFourPassed(input.gates))) return false;
 	if (input.mergeState !== "CLEAN") return false;
 	return mergeBlockers(input).length === 0;
 }
@@ -393,6 +452,7 @@ export function triageHides(
 /* ---------- ranking ---------- */
 
 const NEEDS_YOU_ORDER: QueueKind[] = [
+	"env_down",
 	"error",
 	"question",
 	"plan",
@@ -403,7 +463,7 @@ const NEEDS_YOU_ORDER: QueueKind[] = [
 	"failed_gates",
 	"ready_pr",
 ];
-const LATER_ORDER: QueueKind[] = ["stale_pr", "rebase_pr", "toolkit", "tool"];
+const LATER_ORDER: QueueKind[] = ["env_down_later", "stale_pr", "rebase_pr", "toolkit", "tool"];
 
 export const isNeedsYou = (k: QueueKind) => NEEDS_YOU_ORDER.includes(k);
 
@@ -452,11 +512,110 @@ export function parseReply(reply: string): ParsedReply {
 	return out;
 }
 
+/** Characters that show as nothing, so a person reading the text can't see what they carry. */
+export const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+/** The same, leaving what normal emoji are made of. One joiner between emoji, or one selector after one. */
+const LOOKS_HIDDEN =
+	/(?!(?<=[\p{Extended_Pictographic}\p{Emoji_Modifier}]\uFE0F?)\u200D(?=\p{Extended_Pictographic}))(?!(?<=[\p{Extended_Pictographic}0-9#*])\uFE0F)[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+
+/** Leaves lines and tabs. A lone carriage return can end a heredoc once it's pasted, and escapes can end a paste. */
+export function stripControls(text: string): string {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this removes.
+	return text.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, "");
+}
+
 /** Wraps outside text so an agent reads it as data. A closing tag inside it can't end the block. */
 export function delimit(source: string, text: string): string {
-	const safe = text.replace(/<\/?untrusted-data/gi, (m) => m.replace("<", "&lt;"));
+	const safe = stripControls(text)
+		.replace(INVISIBLE, "")
+		.replace(/<\/?untrusted-data/gi, (m) => m.replace("<", "&lt;"));
 	return `<untrusted-data source="${source}">\n${safe}\n</untrusted-data>`;
 }
+
+/* ---------- issues ---------- */
+
+const TRUSTED_AUTHORS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
+/** Written for an agent, not for a person fixing a bug. A hit is a reason to read closely, not a verdict. */
+const AGENT_PATTERNS = [
+	/\b(?:ignore|disregard|forget)\b[^.\n]{0,40}\b(?:previous|prior|above|earlier|instructions|rules)\b/gi,
+	/\bsystem prompt\b/gi,
+	/\byou are now\b[^.\n]{0,60}/gi,
+	/\b(?:print|send|post|upload|share|reveal|paste|exfiltrate)\b[^.\n]{0,40}(?:\b(?:secrets?|tokens?|api keys?|credentials|passwords?)\b|\.env\b)/gi,
+];
+/** Asks whoever reads it to run something. Real reports do this too, so alone it only asks for a closer read. */
+const RUN_PATTERNS = [
+	/\b(?:curl|wget)\b[^\n|]{0,120}\|\s*(?:ba|z)?sh\b/gi,
+	/\b(?:please |first |must )?(?:run|execute)\b[^.\n]{0,40}\b(?:script|\.sh|\.ps1|installer)\b[^\n]{0,60}/gi,
+];
+const LINK = /https?:\/\/[^\s)>\]"']+/gi;
+
+export interface SuspectRange {
+	start: number;
+	end: number;
+	why: "agent" | "run" | "hidden";
+}
+
+/** The parts of an issue to underline, in order and never overlapping. */
+export function suspectRanges(text: string): SuspectRange[] {
+	const found: SuspectRange[] = [];
+	const scan = (patterns: RegExp[], why: SuspectRange["why"]) => {
+		for (const re of patterns)
+			for (const m of text.matchAll(re)) found.push({ start: m.index, end: m.index + m[0].length, why });
+	};
+	scan([LOOKS_HIDDEN], "hidden");
+	// Not a regex, because a body of nothing but `<!--` would take one quadratic time. Unclosed hides the rest.
+	for (let open = text.indexOf("<!--"); open >= 0; ) {
+		const close = text.indexOf("-->", open + 4);
+		found.push({ start: open, end: close < 0 ? text.length : close + 3, why: "hidden" });
+		open = close < 0 ? -1 : text.indexOf("<!--", close + 3);
+	}
+	scan(AGENT_PATTERNS, "agent");
+	scan(RUN_PATTERNS, "run");
+	const out: SuspectRange[] = [];
+	for (const r of found.sort((a, b) => a.start - b.start || b.end - a.end)) {
+		const last = out.at(-1);
+		if (last && r.start < last.end) last.end = Math.max(last.end, r.end);
+		else out.push({ ...r });
+	}
+	return out;
+}
+
+export function issueSignals(
+	issue: { title: string; body: string; authorAssociation: string; authorCreatedAt: string | null },
+	now: number,
+): IssueSignals {
+	const text = `${issue.title}\n${issue.body}`;
+	const links = [...text.matchAll(LINK)].map((m) => m[0]);
+	const ranges = suspectRanges(text);
+	return {
+		trusted: TRUSTED_AUTHORS.has(issue.authorAssociation),
+		association: issue.authorAssociation,
+		accountAgeDays: issue.authorCreatedAt
+			? Math.floor((now - Date.parse(issue.authorCreatedAt)) / 86_400_000)
+			: null,
+		links: links.length,
+		outsideLinks: links.filter((l) => !/^https?:\/\/([a-z0-9-]+\.)*github\.com\//i.test(l)).length,
+		instructions: ranges.filter((r) => r.why === "run").length,
+		aimedAtAgents: ranges.filter((r) => r.why === "agent").length,
+		hidden: ranges.filter((r) => r.why === "hidden").length,
+	};
+}
+
+/** Your read wins, then the author, then the text. An agent's opinion never moves an issue. */
+export function issueGroup(signals: IssueSignals, read: boolean): IssueGroup {
+	if (read || signals.trusted) return "looks_legit";
+	return signals.aimedAtAgents > 0 || signals.hidden > 0 ? "looks_off" : "needs_read";
+}
+
+/** Text from outside reaches a mode that merges on its own only after a person read this exact version. */
+export const issueLocked = (signals: IssueSignals, read: boolean) => !signals.trusted && !read;
+
+export const issueWorkType = (labels: string[]): WorkType =>
+	labels.some((l) => /^(enhancement|feature|feat)\b/i.test(l)) ? "Feature" : "Bug fix";
+
+/** The most of an issue an agent gets. GitHub allows 65,536 characters. */
+export const ISSUE_DATA_MAX = 20_000;
 
 /* ---------- formatting shared by screens and notifications ---------- */
 
@@ -474,3 +633,10 @@ export const slugify = (text: string, max = 40) =>
 		.replace(/^-+|-+$/g, "")
 		.slice(0, max)
 		.replace(/-+$/, "");
+
+/**
+ * Picked-up work forgot what it started as, and T3 can report any branch for its thread, even `main`. Only a branch
+ * of the factory's own, with its folder, can be the factory's to delete.
+ */
+export const branchIsntOurs = (wo: { source: { kind: string }; branch: string | null }) =>
+	wo.source.kind === "restored" && !wo.branch?.startsWith("factory/wo-");

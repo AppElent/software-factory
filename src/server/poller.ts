@@ -183,6 +183,7 @@ export class Poller {
 			).map((row) => [row.number, JSON.parse(row.json)]),
 		);
 		store.db.prepare("DELETE FROM prs WHERE project = ?").run(project.slug);
+		store.saveIssues(project.slug, r.issues);
 		const insert = store.db.prepare("INSERT INTO prs (project, number, json) VALUES (?, ?, ?)");
 		const now = store.now().getTime();
 		for (const pr of r.prs)

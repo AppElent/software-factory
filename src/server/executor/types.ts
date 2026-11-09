@@ -17,6 +17,21 @@ export interface StartRequest {
 	baseBranch: string;
 	branch: string;
 	agent: string;
+	/** From the work order's mode. Leaves the choice to T3 when empty. */
+	provider?: string | null;
+	model?: string | null;
+}
+
+export interface AskRequest {
+	projectPath: string;
+	title: string;
+	prompt: string;
+}
+
+export interface AskReply {
+	reply: string;
+	/** The thread in T3, which stays there for you to read. */
+	link: string | null;
 }
 
 /** The seam for running agents. T3 is the default adapter. See docs/adr/0002-t3-runner.md. */
@@ -26,6 +41,8 @@ export interface Executor {
 	status(threadId: string): Promise<ThreadState>;
 	/** Sends the next turn. Nothing is interrupted. */
 	send(threadId: string, prompt: string): Promise<void>;
+	/** Runs one turn outside any work order and returns the reply. Throws ExecutorError when it can't. */
+	ask(req: AskRequest): Promise<AskReply>;
 }
 
 export class ExecutorError extends Error {

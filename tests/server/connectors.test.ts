@@ -41,6 +41,17 @@ describe("GitHub responses", () => {
 		expect(read.repos).toEqual([]);
 	});
 
+	it("says when a PR comes from a fork", async () => {
+		const fixtureText = fixture("gh/repo-read.json").replaceAll(
+			'"isCrossRepository": false',
+			'"isCrossRepository": true',
+		);
+		const read = await readRepos(async () => ok(fixtureText), ["example-org/gather"], NOW);
+		const prs = read.repos.flatMap((r) => r.prs);
+		expect(prs.length).toBeGreaterThan(0);
+		expect(prs.every((p) => p.fromFork)).toBe(true);
+	});
+
 	it("reports an unreadable response instead of treating it as no PRs", async () => {
 		const broken: Cli = async () => ok("not json", 1, "HTTP 502");
 		await expect(readRepos(broken, ["example-org/gather"], NOW)).rejects.toThrow(GithubError);

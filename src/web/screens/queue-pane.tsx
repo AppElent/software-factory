@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import type { Gates, Limits, QueueItem, QueueKind, StartBlock, WorkOrder } from "../../shared/types.ts";
+import type { Gates, Limits, Mode, QueueItem, QueueKind, WorkOrder } from "../../shared/types.ts";
 import { GATE_NAMES } from "../../shared/types.ts";
 import { api } from "../api.ts";
+import { confirmOnProductionError, FixButton, fixLabel } from "../fix.tsx";
 import { ago, plural, span } from "../format.ts";
 import {
 	Button,
@@ -19,6 +20,7 @@ import {
 	Pane,
 } from "../kit.tsx";
 import { useAction, useError, useProjects } from "../queries.ts";
+import { CheckNow, DeployActions, FixEnvironment } from "./environments.tsx";
 
 /* The right-hand pane, one body per queue item kind. Everything from outside the factory renders as text. */
 
@@ -26,7 +28,7 @@ export type TriageAction = "snooze" | "dismiss";
 
 export interface PaneActions {
 	limits: Limits;
-	start: () => void;
+	start: (mode?: Mode | null, confirmed?: boolean) => void;
 	startPending: boolean;
 	startError: string | null;
 	/** Set when a sync couldn't start because the project's folder is missing. */
@@ -37,7 +39,17 @@ export interface PaneActions {
 }
 
 const STARTS: QueueKind[] = ["error", "red_main", "stale_pr", "rebase_pr", "toolkit"];
-const TRIAGES: QueueKind[] = ["error", "red_main", "ready_pr", "stale_pr", "rebase_pr", "toolkit", "tool"];
+const TRIAGES: QueueKind[] = [
+	"env_down",
+	"env_down_later",
+	"error",
+	"red_main",
+	"ready_pr",
+	"stale_pr",
+	"rebase_pr",
+	"toolkit",
+	"tool",
+];
 
 /** Kinds that begin a new work order. The rest already have one, or a PR to review. */
 export const canStart = (kind: QueueKind) => STARTS.includes(kind);
@@ -88,7 +100,7 @@ function Triage({ actions }: { actions: PaneActions }) {
 function StartButton({ actions, label }: { actions: PaneActions; label: ReactNode }) {
 	return (
 		<>
-			<Button variant="primary" grow disabled={actions.startPending} onClick={actions.start}>
+			<Button variant="primary" grow disabled={actions.startPending} onClick={() => actions.start()}>
 				{label}
 			</Button>
 			<InlineError>{actions.startError}</InlineError>
@@ -103,8 +115,29 @@ function StartButton({ actions, label }: { actions: PaneActions; label: ReactNod
 	);
 }
 
-/** The word on a button that starts work, which changes when nothing can start right now. */
-const startLabel = (block: StartBlock, label = "Start work order") => (block ? "Add to Intake" : label);
+/** Starting a fix, with a choice of how. */
+function FixStart({ actions, item }: { actions: PaneActions; item: QueueItem }) {
+	const body = {
+		project: item.project,
+		type: "Bug fix",
+		title: item.title,
+		description: item.title,
+		source: { kind: item.kind === "error" ? "error" : "red_main", fingerprint: item.fingerprint },
+	};
+	return (
+		<>
+			<FixButton
+				grow
+				label={(mode) => fixLabel(1, mode, !!actions.limits.startBlock)}
+				pending={actions.startPending}
+				run={(mode, confirmed) => actions.start(mode, confirmed)}
+				confirm={item.kind === "error" ? confirmOnProductionError(1) : undefined}
+				commands={() => [body]}
+			/>
+			<InlineError>{actions.startError}</InlineError>
+		</>
+	);
+}
 
 function waitHint(limits: Limits): string {
 	if (limits.startBlock === "stopped") return "The line is stopped. This waits in Intake until you restart.";
@@ -177,9 +210,9 @@ function ErrorPane({ item, actions }: { item: QueueItem; actions: PaneActions })
 				<p className="m-0 text-meta text-text-muted">
 					{actions.limits.startBlock
 						? waitHint(actions.limits)
-						: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. It won't merge."}
+						: "Runs in a T3 thread on a new worktree. Opens a PR after the gates pass. The mode decides who merges."}
 				</p>
-				<StartButton actions={actions} label={startLabel(actions.limits.startBlock)} />
+				<FixStart actions={actions} item={item} />
 				<Triage actions={actions} />
 				<ButtonLink to={item.href} grow>
 					Open full error
@@ -212,13 +245,44 @@ function RedMainPane({ item, actions }: { item: QueueItem; actions: PaneActions 
 					["Blocks", plural(main.blocks, "open PR")],
 				]}
 			/>
-			<StartButton actions={actions} label={startLabel(actions.limits.startBlock)} />
+			<FixStart actions={actions} item={item} />
 			<Triage actions={actions} />
 			{log && (
 				<ButtonOut href={log} grow>
 					Open the log
 				</ButtonOut>
 			)}
+		</>
+	);
+}
+
+function EnvDownPane({ item, actions }: { item: QueueItem; actions: PaneActions }) {
+	const e = item.environment;
+	if (!e) return null;
+	const after =
+		e.deployedAt && e.health.downSince
+			? Math.round((Date.parse(e.health.downSince) - Date.parse(e.deployedAt)) / 60_000)
+			: null;
+	return (
+		<>
+			<Heading meta={`${item.projectName} · ${e.name} · ${item.meta}`} title={item.title} />
+			<Facts
+				rows={[
+					["Down for", spanWords(e.health.downSince ?? item.since)],
+					["Commit", e.deployedSha ? e.deployedSha.slice(0, 7) : "–", true],
+					["Errors", plural(e.errors, "error")],
+				]}
+			/>
+			{after !== null && after >= 0 && (
+				<p className="m-0 text-text-muted">It went down {after}m after the last deploy.</p>
+			)}
+			<FixEnvironment e={e} />
+			<DeployActions e={e} folder={e.folder} again />
+			<CheckNow e={e} grow />
+			<Triage actions={actions} />
+			<ButtonLink to="/projects/$slug/environments" params={{ slug: e.project }} grow>
+				Open project page
+			</ButtonLink>
 		</>
 	);
 }
@@ -443,6 +507,9 @@ function RunFailedPane({ item, w }: { item: QueueItem; w: WorkOrder }) {
 function PaneBody({ item, actions }: { item: QueueItem; actions: PaneActions }) {
 	const w = item.workOrder;
 	switch (item.kind) {
+		case "env_down":
+		case "env_down_later":
+			return <EnvDownPane item={item} actions={actions} />;
 		case "error":
 			return <ErrorPane item={item} actions={actions} />;
 		case "red_main":

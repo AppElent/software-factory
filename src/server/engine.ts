@@ -4,14 +4,17 @@ import {
 	agentHoldsMerge,
 	allFourPassed,
 	anyGate,
+	branchIsntOurs,
 	failedGate,
 	gatesClear,
 	gatesPassed,
 	gateValues,
+	MODE_NEEDS,
 	mayMergeAlone,
 	mergeBlockers,
 	NO_CHECKS_MS,
 	noGates,
+	ownerOnlyFiles,
 	ownsNoPr,
 	parseReply,
 	slugify,
@@ -22,7 +25,9 @@ import type {
 	AgentQuestion,
 	GateName,
 	Limits,
+	Mode,
 	Plan,
+	Project,
 	PullRequest,
 	StartBlock,
 	WorkOrder,
@@ -32,7 +37,16 @@ import type {
 import type { Cli } from "./cli.ts";
 import { scrub } from "./cli.ts";
 import { NeverTouchError } from "./config.ts";
-import { closePr, failedLog, mergePr, prByBranch, prState } from "./connectors/github.ts";
+import {
+	closePr,
+	failedLog,
+	MOST_FILES_GITHUB_LISTS,
+	mergePr,
+	PR_UNREADABLE,
+	prByBranch,
+	prState,
+	tryReadPrPaths,
+} from "./connectors/github.ts";
 import { audit, kvGet, kvSet } from "./db.ts";
 import type { Executor, ThreadState } from "./executor/types.ts";
 import { ExecutorError } from "./executor/types.ts";
@@ -91,7 +105,9 @@ export interface EngineDeps {
 	publish: (keys: string[]) => void;
 	/** Asks for a GitHub read soon. */
 	pollSoon: () => void;
-	git?: (cwd: string, args: string[]) => Promise<void>;
+	git?: GitRunner;
+	/** This app's own repo, where more files wait for you. */
+	selfRepo?: string | null;
 	/** Events the queue can't show, for notifications. */
 	onEvent?: (event: EngineEvent) => void;
 }
@@ -106,10 +122,17 @@ const nextBranch = (branch: string) => {
 	return tried ? `${tried[1]}-try${Number(tried[2]) + 1}` : `${branch}-try2`;
 };
 
-const realGit = (cwd: string, args: string[]) =>
-	new Promise<void>((resolve) => {
-		execFile("git", args, { cwd, timeout: 60_000 }, () => resolve());
+export type GitRunner = (cwd: string, args: string[]) => Promise<{ ok: boolean; error: string }>;
+
+const realGit: GitRunner = (cwd, args) =>
+	new Promise((resolve) => {
+		execFile("git", args, { cwd, timeout: 60_000 }, (err, _stdout, stderr) => {
+			resolve({ ok: !err, error: err ? scrub(String(stderr).trim() || err.message) : "" });
+		});
 	});
+
+/** Something already gone is what the step wanted, so it isn't a failure. */
+const ALREADY_GONE = /is not a working tree|branch '.*' not found|remote ref does not exist/i;
 
 export class Engine {
 	private readonly store: Store;
@@ -117,7 +140,8 @@ export class Engine {
 	private readonly executor: Executor;
 	private readonly publish: (keys: string[]) => void;
 	private readonly pollSoon: () => void;
-	private readonly git: (cwd: string, args: string[]) => Promise<void>;
+	private readonly git: GitRunner;
+	private readonly selfRepo: string | null;
 	private readonly onEvent: (event: EngineEvent) => void;
 	private ticking = false;
 	private tickAgain = false;
@@ -131,6 +155,7 @@ export class Engine {
 		this.publish = deps.publish;
 		this.pollSoon = deps.pollSoon;
 		this.git = deps.git ?? realGit;
+		this.selfRepo = deps.selfRepo ?? null;
 		this.onEvent = deps.onEvent ?? (() => {});
 	}
 
@@ -264,7 +289,8 @@ export class Engine {
 
 	private async startFromIntake(wo: WorkOrder, localPath: string, base: string) {
 		const review = this.store.settings().approvals.planReview[wo.type];
-		const needsPlan = review === "always" && !ownsNoPr(wo.source.kind) && wo.source.kind !== "toolkit";
+		const wantsPlan = wo.mode?.plan === "always" || (wo.mode?.plan !== "skip" && review === "always");
+		const needsPlan = wantsPlan && !ownsNoPr(wo.source.kind) && wo.source.kind !== "toolkit";
 		const stage = needsPlan ? "Plan" : "Build";
 		const prompt = needsPlan ? planPrompt(wo) : this.directPrompt(wo);
 		// T3 can't start on a branch that already exists, so starting over after a lost thread takes a new one.
@@ -286,6 +312,8 @@ export class Engine {
 				baseBranch: latest.stdout.trim() || base,
 				branch,
 				agent: this.store.settings().agents.agent,
+				provider: wo.mode?.provider,
+				model: wo.mode?.model,
 			});
 			const state = await this.executor.status(threadId).catch(() => null);
 			this.store.addActivity(wo.id, "Created worktree and branch");
@@ -446,8 +474,18 @@ export class Engine {
 		}
 		if (wo.stage === "Build") {
 			const project = this.store.project(wo.project);
+			// A picked-up run is as old as its thread, not as the moment it was picked up. On a factory branch, an open
+			// PR is its PR, however old. Any other branch T3 reports could be anything, even `main`.
+			const openOnly = wo.source.kind === "restored" && !branchIsntOurs(wo);
+			// Until GitHub has been read, the default branch is a guess, and so is whether this is it.
+			if (!wo.prNumber && branchIsntOurs(wo) && !project?.readAt) return;
 			const number =
-				wo.prNumber ?? (project && wo.branch ? await prByBranch(this.cli, project.repo, wo.branch) : null);
+				wo.prNumber ??
+				(project && wo.branch && wo.branch !== project.defaultBranch
+					? await prByBranch(this.cli, project.repo, wo.branch, wo.createdAt, { openOnly })
+					: null);
+			// GitHub didn't answer, which says nothing about the agent. The next pass asks again.
+			if (number === PR_UNREADABLE) return;
 			if (!number) {
 				const message = "The agent finished without opening a PR.";
 				this.store.addActivity(wo.id, message, parsed.text || null);
@@ -488,11 +526,13 @@ export class Engine {
 		if (!project || !wo.prNumber) return false;
 		const state = await prState(this.cli, project.repo, wo.prNumber);
 		if (state === "MERGED") {
-			this.markMerged(wo, "Merged on GitHub");
+			// Only a mode's own prompt tells an agent anything about merging, and "don't" isn't always what it says.
+			this.markMerged(wo, wo.mode?.prompt ? "Merged on GitHub, not by the factory" : "Merged on GitHub");
 			return true;
 		}
 		if (state === "CLOSED") {
 			this.store.addActivity(wo.id, `PR #${wo.prNumber} was closed`);
+			await this.cleanUp(wo, { merged: false });
 			this.patch(wo.id, { state: "closed", finished_at: this.store.iso() });
 			return true;
 		}
@@ -627,41 +667,49 @@ export class Engine {
 			return;
 		}
 		const project = this.store.project(wo.project);
-		const approvals = this.store.settings().approvals;
-		if (
-			!project ||
-			project.paused ||
-			pr.group === "stale" ||
-			// Another work order can be busy on this PR, such as a rebase.
-			pr.heldBy ||
-			this.staleRead(project) ||
-			this.store.line().stopped ||
-			!mayMergeAlone({
-				on: approvals.mergeWithoutMe[wo.type],
-				projectMerging: project.merging,
-				gates: pr.gates,
-				mergeable: pr.mergeable,
-				mergeState: pr.mergeState,
-				isDraft: pr.isDraft,
-				hold: wo.hold,
-				sourceKind: wo.source.kind,
-			})
-		)
-			return;
+		if (project && wo.mode?.merge === "factory") this.sayWhyModeWaits(wo, pr, project);
+		if (!project || !this.mergeAllowed(wo, pr)) return;
 		// GitHub said no to this commit. Asking again every pass won't change that; a new commit might.
 		const refusedKey = `merge_refused:${wo.id}`;
 		if (kvGet<string>(this.store.db, refusedKey) === pr.headSha) return;
+		// Both settings decide who merges, and neither gets to skip this. The list is read for this commit.
+		const paths = await tryReadPrPaths(this.cli, project.repo, pr.number);
+		// Not knowing what it changes is a reason to wait. The next pass reads it again.
+		if (paths === null) return;
+		// That took a moment. You can have pressed Stop, a gate can have failed, or a new commit can have come in.
+		const current = this.store.workOrder(wo.id);
+		const latest = this.store.prs(wo.project).find((p) => p.number === pr.number);
+		if (
+			!current ||
+			current.state !== wo.state ||
+			latest?.headSha !== pr.headSha ||
+			!this.mergeAllowed(current, latest)
+		)
+			return;
+		if (paths.length >= MOST_FILES_GITHUB_LISTS) {
+			kvSet(this.store.db, refusedKey, pr.headSha);
+			this.store.addActivity(wo.id, "This changes too many files to check, so it waits for you");
+			this.publish([`work-order:${wo.id}`]);
+			return;
+		}
+		const held = ownerOnlyFiles(paths, project.repo.toLowerCase() === this.selfRepo?.toLowerCase());
+		if (held.length > 0) {
+			kvSet(this.store.db, refusedKey, pr.headSha);
+			this.store.addActivity(wo.id, "This changes files that always wait for you", held.join("\n"));
+			this.publish([`work-order:${wo.id}`]);
+			return;
+		}
 		const res = await mergePr(this.cli, project.repo, pr.number, pr.headSha);
 		audit(
 			this.store.db,
 			"merge PR",
 			`${project.repo}#${pr.number}`,
-			"factory",
+			wo.mode?.merge === "factory" ? `factory (${wo.mode.name})` : "factory",
 			res.reason || null,
 			this.store.now(),
 		);
 		if (res.ok) {
-			this.markMerged(wo, "Merged without you");
+			this.markMerged(wo, wo.mode?.merge === "factory" ? `Merged by ${wo.mode.name}` : "Merged without you");
 			this.onEvent({ kind: "merged_alone", workOrder: wo, prTitle: pr.title });
 		} else {
 			kvSet(this.store.db, refusedKey, pr.headSha);
@@ -669,6 +717,71 @@ export class Engine {
 			this.publish([`work-order:${wo.id}`]);
 		}
 		this.pollSoon();
+	}
+
+	/** An issue that left the list can't be vouched for any more, so it counts the same as one that changed. */
+	private issueHolds(wo: WorkOrder) {
+		if (wo.source.kind !== "issue") return false;
+		const issue = wo.source.issueNumber ? this.store.issue(wo.project, wo.source.issueNumber) : undefined;
+		return !issue || issue.locked;
+	}
+
+	/** Every reason the factory may not merge this, read fresh, so it can be asked again after waiting on GitHub. */
+	private mergeAllowed(wo: WorkOrder, pr: PullRequest) {
+		const project = this.store.project(wo.project);
+		const byMode = wo.mode?.merge === "factory";
+		if (
+			!project ||
+			project.paused ||
+			pr.group === "stale" ||
+			// Not false also covers a row saved before this was read. The next read fills it in.
+			pr.fromFork !== false ||
+			// Another work order can be busy on this PR, such as a rebase.
+			pr.heldBy ||
+			this.staleRead(project) ||
+			this.store.line().stopped ||
+			// A config file that can't be read can't say what you wanted.
+			this.store.file.error()
+		)
+			return false;
+		return mayMergeAlone({
+			on: this.store.settings().approvals.mergeWithoutMe[wo.type] || byMode,
+			byMode,
+			projectMerging: project.merging,
+			gates: pr.gates,
+			mergeable: pr.mergeable,
+			mergeState: pr.mergeState,
+			isDraft: pr.isDraft,
+			hold: wo.hold,
+			sourceKind: wo.source.kind,
+			unreadIssue: this.issueHolds(wo),
+		});
+	}
+
+	/** A run you chose to send can stop at Review for reasons of its own. Says so once, so it doesn't look stuck. */
+	private sayWhyModeWaits(wo: WorkOrder, pr: PullRequest, project: Project) {
+		const missing = MODE_NEEDS.filter((n) => pr.gates[n] !== "passed");
+		const reason = this.store.file.error()
+			? "The config file can't be read, so fix it first."
+			: project.merging === "ask"
+				? `${project.name} is set to ask you before merging.`
+				: this.issueHolds(wo)
+					? this.store.issue(wo.project, wo.source.issueNumber ?? 0)
+						? `#${wo.source.issueNumber} changed since you read it, so read it again or merge this yourself.`
+						: `#${wo.source.issueNumber} isn't in the open issues any more, so merge this yourself.`
+					: !gatesClear(pr.gates)
+						? null
+						: missing.length === 0
+							? ["CLEAN", "UNKNOWN"].includes(pr.mergeState) && pr.mergeable !== "CONFLICTING"
+								? null
+								: "GitHub won't merge this yet. It goes ahead once GitHub will, or you can merge it yourself."
+							: `${missing.join(" and ")} ${missing.length === 1 && missing[0] !== "Tests" ? "isn't" : "aren't"} set up on this project, so a merge is yours to make.`;
+		if (!reason) return;
+		const key = `mode_waits:${wo.id}`;
+		if (kvGet<string>(this.store.db, key) === reason) return;
+		kvSet(this.store.db, key, reason);
+		this.store.addActivity(wo.id, `${wo.mode?.name} is waiting for you. ${reason}`);
+		this.publish([`work-order:${wo.id}`]);
 	}
 
 	private async ship(wo: WorkOrder) {
@@ -695,6 +808,7 @@ export class Engine {
 				? "No errors traced to this change"
 				: `${caused} new ${caused === 1 ? "error" : "errors"} since this shipped`,
 		);
+		await this.cleanUp(wo, { merged: true });
 		this.patch(wo.id, { state: "done", finished_at: this.store.iso() });
 	}
 
@@ -720,6 +834,7 @@ export class Engine {
 		description: string;
 		source: WorkOrderSource;
 		prNumber?: number | null;
+		mode?: Mode | null;
 	}): number {
 		const project = this.store.project(input.project);
 		if (!project) throw new ActionError("That project isn't in the factory.", 404);
@@ -744,7 +859,9 @@ export class Engine {
 				? "Added by you"
 				: input.source.kind === "pr_changes"
 					? "You asked for changes on the PR"
-					: "Started from the queue",
+					: input.source.kind === "issue"
+						? `Started from issue #${input.source.issueNumber}`
+						: "Started from the queue",
 			input.source.kind === "pr_changes" ? input.description : null,
 		);
 		// The PR's gates describe its current commit. Verify waits for the agent's push before reading them.
@@ -877,23 +994,69 @@ export class Engine {
 		if (wo.state === "done" || wo.state === "closed") return;
 		const project = this.store.project(wo.project);
 		// A rebase or a requested change works on someone else's PR. Closing the work order leaves that PR alone.
-		const closesRemote = !opts.keepRemoteBranch && !ownsNoPr(wo.source.kind);
+		const notOurs = branchIsntOurs(wo);
+		const closesRemote = !opts.keepRemoteBranch && !ownsNoPr(wo.source.kind) && !notOurs;
 		if (project && closesRemote && wo.prNumber) {
 			const res = await closePr(this.cli, project.repo, wo.prNumber);
 			if (res.code !== 0 && !/already (been )?(closed|merged)/i.test(res.stderr))
 				throw new ActionError(res.stderr.trim() || "GitHub refused to close the PR.", 502);
 		}
-		if (project?.localPath && wo.branch) {
-			if (wo.worktree) await this.git(project.localPath, ["worktree", "remove", "--force", wo.worktree]);
-			await this.git(project.localPath, ["branch", "-D", wo.branch]);
+		const left: string[] = [];
+		if (project?.localPath && wo.branch && !notOurs) {
+			if (wo.worktree) {
+				const res = await this.gitStep(project.localPath, ["worktree", "remove", "--force", wo.worktree]);
+				if (!res.ok) left.push(`the worktree ${wo.worktree} (${res.error})`);
+			}
+			const branch = await this.gitStep(project.localPath, ["branch", "-D", wo.branch]);
+			if (!branch.ok) left.push(`the local branch ${wo.branch} (${branch.error})`);
 			if (closesRemote) {
-				await this.git(project.localPath, ["push", "origin", "--delete", wo.branch]);
-				audit(this.store.db, "delete branch", `${project.repo}:${wo.branch}`, "you", null, this.store.now());
+				const remote = await this.gitStep(project.localPath, ["push", "origin", "--delete", wo.branch]);
+				if (remote.ok)
+					audit(
+						this.store.db,
+						"delete branch",
+						`${project.repo}:${wo.branch}`,
+						"you",
+						null,
+						this.store.now(),
+					);
+				else left.push(`the branch ${wo.branch} on GitHub (${remote.error})`);
 			}
 		}
 		this.store.addActivity(id, text);
+		if (notOurs && wo.branch)
+			this.store.addActivity(
+				id,
+				`Left the branch ${wo.branch} and its folder alone, because they aren't the factory's.`,
+			);
+		if (left.length > 0)
+			this.store.addActivity(id, `Couldn't delete ${left.join(", and ")}. Delete it by hand.`);
 		this.patch(id, { state: "closed", finished_at: this.store.iso() });
 		this.pollSoon();
+	}
+
+	private async gitStep(cwd: string, args: string[]) {
+		const res = await this.git(cwd, args);
+		return res.ok || ALREADY_GONE.test(res.error) ? { ok: true, error: "" } : res;
+	}
+
+	/**
+	 * A finished work order's worktree is the factory's own scratch space, so it goes without asking. Uncommitted
+	 * changes keep it, because nothing else has a copy of them. A branch goes only once its work is merged.
+	 */
+	private async cleanUp(wo: WorkOrder, opts: { merged: boolean }) {
+		const project = this.store.project(wo.project);
+		if (!project?.localPath || branchIsntOurs(wo)) return;
+		if (wo.worktree) {
+			const res = await this.gitStep(project.localPath, ["worktree", "remove", wo.worktree]);
+			if (!res.ok) {
+				this.store.addActivity(wo.id, `Kept the worktree ${wo.worktree}: ${res.error}`);
+				return;
+			}
+		}
+		if (!opts.merged || !wo.branch || ownsNoPr(wo.source.kind)) return;
+		const branch = await this.gitStep(project.localPath, ["branch", "-D", wo.branch]);
+		if (!branch.ok) this.store.addActivity(wo.id, `Kept the local branch ${wo.branch}: ${branch.error}`);
 	}
 
 	/** A rebase that finished and fell behind again goes back to the agent that has the branch checked out. */

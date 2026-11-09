@@ -48,11 +48,16 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 	const limits = engine.limits();
 	return {
 		hasProjects: projects.length > 0,
+		newDevice: kvGet(store.db, "new_device") === true,
+		configError: store.file.error(),
 		counts: {
 			queue: queue.length,
 			floor,
 			prs: store.prs().length,
+			issues: store.issues().length,
 			errors: store.errors().filter((e) => e.triage?.action !== "dismiss").length,
+			environments: store.envViews().filter((e) => e.health.state === "down").length,
+			automations: kvGet<{ items: unknown[] }>(store.db, "automations")?.items.length ?? 0,
 			projects: projects.length,
 		},
 		agents: { working: limits.build, limit: limits.agents },
@@ -253,7 +258,27 @@ function readItems(store: Store): QueueItem[] {
 		}
 	}
 
+	items.push(...downEnvironments(store));
+
 	return rankQueue(items).filter((item) => !isTriaged(store, item, now));
+}
+
+function downEnvironments(store: Store): QueueItem[] {
+	return store
+		.envViews()
+		.filter((e) => e.health.state === "down")
+		.map((e) => ({
+			fingerprint: `env:${e.project}:${e.name}`,
+			kind: e.production ? ("env_down" as const) : ("env_down_later" as const),
+			project: e.project,
+			projectName: e.projectName,
+			title: `${e.name} is down`,
+			meta: e.health.error ?? "Health check failed",
+			since: e.health.downSince ?? store.iso(),
+			users: 0,
+			href: `/environments?select=${encodeURIComponent(`${e.project}:${e.name}`)}`,
+			environment: e,
+		}));
 }
 
 function isTriaged(store: Store, item: QueueItem, now: number) {
@@ -261,6 +286,8 @@ function isTriaged(store: Store, item: QueueItem, now: number) {
 	if (!rec) return false;
 	// Dismissing a red main is about that commit. A later commit going red is news.
 	if (item.main && rec.action === "dismiss" && rec.baselineRelease !== item.main.sha) return false;
+	// Dismissing an outage is about that outage. Going down again is news.
+	if (item.environment && rec.action === "dismiss" && rec.baselineRelease !== item.since) return false;
 	const current = {
 		events: item.error?.events ?? 0,
 		users: item.error?.users ?? 0,
@@ -277,7 +304,12 @@ export function triageBaseline(store: Store, fingerprint: string) {
 	return {
 		events: item?.error?.events ?? 0,
 		users: item?.error?.users ?? 0,
-		release: item?.error?.latestRelease ?? item?.error?.firstRelease ?? item?.main?.sha ?? null,
+		release:
+			item?.error?.latestRelease ??
+			item?.error?.firstRelease ??
+			item?.main?.sha ??
+			item?.environment?.health.downSince ??
+			null,
 	};
 }
 
@@ -314,7 +346,7 @@ function readAllUntriaged(store: Store): QueueItem[] {
 			},
 		];
 	});
-	return [...errors, ...mains];
+	return [...errors, ...mains, ...downEnvironments(store)];
 }
 
 export function readQueue(store: Store, engine: Engine): QueueResponse {

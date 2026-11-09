@@ -43,6 +43,12 @@ const scenario = async (name) => {
 
 const SCENARIOS = [
 	"full",
+	"environments",
+	"no_environments",
+	"automations",
+	"no_automations",
+	"version_ready",
+	"version_failed",
 	"back",
 	"first_look",
 	"empty",
@@ -56,12 +62,19 @@ const SCENARIOS = [
 	"regression",
 	"merge_ready",
 	"missing_folder",
+	"issues_inbox",
+	"no_issues",
 ];
 const PATHS = [
 	"/",
 	"/floor",
 	"/prs",
+	"/issues",
 	"/errors",
+	"/environments",
+	"/automations",
+	"/improve",
+	"/projects/fairway/environments",
 	"/projects",
 	"/health",
 	"/settings/agents",
@@ -129,6 +142,10 @@ for (const name of SCENARIOS) {
 	}
 }
 
+await scenario("config_broken");
+await checkState("config_broken", "/", 1440);
+await scenario("new_device");
+for (const path of ["/welcome/tools", "/welcome/restore"]) await checkState("new_device", path, 1440);
 await scenario("first_run");
 for (const path of ["/welcome/tools", "/welcome/repos", "/projects/new/describe"])
 	await checkState("first_run", path, 1440);

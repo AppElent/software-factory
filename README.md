@@ -16,11 +16,18 @@ More in the [build companion](designs/control-room/control-room_final.md), the [
 
 ```sh
 pnpm install
-pnpm build
 pnpm service:install
 ```
 
-This installs a launchd agent on `http://127.0.0.1:4310`. It starts at login and restarts if it stops. `pnpm service:uninstall` removes the agent and leaves your data alone.
+This builds a copy of the app in its own folder, and installs a launchd agent that runs it on `http://127.0.0.1:4310`. It starts at login and restarts if it stops. `pnpm service:uninstall` removes the agent and that copy, and leaves your data alone.
+
+## A new Mac
+
+Copy `~/.config/software-factory/config.json` over, then run the commands above. The first page checks your tools and installs what's missing, then offers to clone your projects. Automations are already in T3, and PRs and issues on GitHub.
+
+## Versions
+
+Improve yourself starts a work order on this repo. When a change reaches the default branch and its checks pass, the factory builds it in a new folder and tries it on a spare port with sample data. `Update` then restarts on that version. If it doesn't answer within 90 seconds the factory goes back on its own. Database changes stay additive, so an older version can run on a newer database.
 
 To look around with sample data, run `pnpm demo` after `pnpm build`. It serves on port 4311, keeps its data in `.scratch/demo`, and calls no real service.
 
@@ -32,6 +39,10 @@ To look around with sample data, run `pnpm demo` after `pnpm build`. It serves o
 | `pnpm typecheck` | TypeScript                                                                             |
 | `pnpm test`      | Vitest                                                                                 |
 | `pnpm test:e2e`  | Browser checks against the demo. Needs `pnpm build` and Playwright's headless Chromium |
+
+## Stop using it
+
+`pnpm service:uninstall`, then delete the data folder. Threads stay in T3, PRs and issues on GitHub, and your settings, modes, environments and project list in the config file. Start it again later and it restores projects from that file and picks up running work from T3. The contract's Leaving section has the details.
 
 ## Private config
 

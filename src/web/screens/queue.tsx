@@ -2,6 +2,7 @@ import { Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router"
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
 	BackSummary,
+	Mode,
 	QueueItem,
 	QueueResponse,
 	SourceHealth,
@@ -60,6 +61,8 @@ function StageStrip({ data }: { data: QueueResponse }) {
 /* ---------- rows ---------- */
 
 const GLYPHS: Partial<Record<QueueItem["kind"], GlyphKind>> = {
+	env_down: "fail",
+	env_down_later: "fail",
 	error: "err",
 	question: "ask",
 	plan: "ask",
@@ -350,7 +353,7 @@ const NOTE: Record<TriageAction, string> = {
 
 type Started = { to: "floor" } | { id: number } | { blocked: string };
 
-async function startWork(item: QueueItem): Promise<Started> {
+async function startWork(item: QueueItem, mode?: Mode | null, confirmed?: boolean): Promise<Started> {
 	if (item.kind === "toolkit") {
 		const res = await api.post<SyncResult>("/api/projects/sync", { slugs: [item.project] });
 		const blocked = res.blocked[0];
@@ -369,6 +372,8 @@ async function startWork(item: QueueItem): Promise<Started> {
 		title: item.title,
 		description: item.title,
 		source: { kind: item.kind === "error" ? "error" : "red_main", fingerprint: item.fingerprint },
+		mode: mode?.id,
+		confirmed,
 	});
 }
 
@@ -402,22 +407,26 @@ function QueueList({ data }: { data: QueueResponse }) {
 		[navigate],
 	);
 
-	const start = useAction((item: QueueItem) => startWork(item), {
-		onSuccess: (res, item) => {
-			if ("blocked" in res) {
-				setBlocked({
-					fingerprint: item.fingerprint,
-					slug: res.blocked,
-					name: item.projectName ?? res.blocked,
-				});
-			} else if ("to" in res || data.limits.startBlock) {
-				// It waits in Intake, or it's a sync, whose board goes to the floor.
-				void navigate({ to: "/floor" });
-			} else {
-				void navigate({ to: "/work-orders/$id", params: { id: String(res.id) } });
-			}
+	const start = useAction(
+		({ item, mode, confirmed }: { item: QueueItem; mode?: Mode | null; confirmed?: boolean }) =>
+			startWork(item, mode, confirmed),
+		{
+			onSuccess: (res, { item }) => {
+				if ("blocked" in res) {
+					setBlocked({
+						fingerprint: item.fingerprint,
+						slug: res.blocked,
+						name: item.projectName ?? res.blocked,
+					});
+				} else if ("to" in res || data.limits.startBlock) {
+					// It waits in Intake, or it's a sync, whose board goes to the floor.
+					void navigate({ to: "/floor" });
+				} else {
+					void navigate({ to: "/work-orders/$id", params: { id: String(res.id) } });
+				}
+			},
 		},
-	});
+	);
 
 	const triage = useAction(
 		({ item, action }: { item: QueueItem; action: TriageAction }) =>
@@ -524,7 +533,7 @@ function QueueList({ data }: { data: QueueResponse }) {
 		j: key(() => move(1)),
 		k: key(() => move(-1)),
 		w: key(() => {
-			if (selected && canStart(selected.kind) && !start.pending) void start.run(selected);
+			if (selected && canStart(selected.kind) && !start.pending) void start.run({ item: selected });
 		}),
 		s: key(() => {
 			if (selected && canTriage(selected.kind) && !triage.pending) runTriage(selected, "snooze");
@@ -569,7 +578,7 @@ function QueueList({ data }: { data: QueueResponse }) {
 			item={selected}
 			actions={{
 				limits: data.limits,
-				start: () => void start.run(selected),
+				start: (mode, confirmed) => void start.run({ item: selected, mode, confirmed }),
 				startPending: start.pending,
 				startError: start.error && "Couldn't start this. Try again.",
 				blocked: blocked?.fingerprint === selected.fingerprint ? blocked : null,

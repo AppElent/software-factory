@@ -32,11 +32,23 @@ export type WorkOrderState =
 	| "closed";
 
 export interface WorkOrderSource {
-	kind: "person" | "error" | "red_main" | "stale_pr" | "rebase_pr" | "pr_changes" | "toolkit" | "new_project";
+	kind:
+		| "person"
+		| "error"
+		| "issue"
+		| "environment"
+		| "restored"
+		| "red_main"
+		| "stale_pr"
+		| "rebase_pr"
+		| "pr_changes"
+		| "toolkit"
+		| "new_project";
 	fingerprint?: string;
 	/** Text from outside the factory. Reaches the agent only as delimited data. */
 	data?: string;
 	prNumber?: number;
+	issueNumber?: number;
 	regressionOf?: { workOrderId: number; prNumber: number | null };
 }
 
@@ -69,8 +81,37 @@ export interface ActivityEntry {
 	detail?: string;
 }
 
+export type ModePlan = "follow" | "always" | "skip";
+export type ModeMerge = "you" | "factory";
+
+/** How one run goes. Chosen per run, and saved in the plain config file. */
+export interface Mode {
+	id: string;
+	name: string;
+	description: string;
+	/** Added before the work order's own instructions. */
+	prompt: string;
+	plan: ModePlan;
+	merge: ModeMerge;
+	provider: string | null;
+	model: string | null;
+	/** One of the modes a new install starts with, so Reset to default has something to go back to. */
+	builtin: boolean;
+}
+
+export interface ModesResponse {
+	modes: Mode[];
+	defaultMode: string;
+	defaults: Mode[];
+	/** Skills found on this Mac. Offered, never assumed. */
+	skills: string[];
+	configPath: string;
+}
+
 export interface WorkOrder {
 	id: number;
+	/** The mode as it was when this started, so editing a mode doesn't change running work. */
+	mode: Mode | null;
 	project: string;
 	projectName: string;
 	type: WorkType;
@@ -165,6 +206,8 @@ export interface PullRequest {
 	deletions: number;
 	changedFiles: number;
 	headRef: string;
+	/** Someone's fork, so the branch name says nothing about whose it is. */
+	fromFork: boolean;
 	headSha: string;
 	baseRef: string;
 	createdAt: string;
@@ -242,6 +285,8 @@ export interface SourceHealth {
 }
 
 export type QueueKind =
+	| "env_down"
+	| "env_down_later"
 	| "error"
 	| "question"
 	| "plan"
@@ -273,6 +318,7 @@ export interface QueueItem {
 	toolkit?: ToolkitState;
 	tool?: { name: string; fix: string | null };
 	newProject?: { id: number; step: NewProjectStep };
+	environment?: EnvironmentView;
 }
 
 export type StartBlock = "limit" | "review" | "stopped" | null;
@@ -317,9 +363,199 @@ export interface QueueResponse {
 	nextCheckAt: string | null;
 }
 
+/* ---------- automations ---------- */
+
+/** T3's own trigger shapes. A webhook needs T3 Connect, so it can be read here but not made. */
+export type AutomationSchedule =
+	| { type: "interval"; everyMs: number }
+	| { type: "fixed_time"; timeOfDay: string; weekdays?: number[] }
+	| { type: "once"; runAt: string }
+	| { type: "webhook" };
+
+export interface Automation {
+	id: string;
+	title: string;
+	project: string;
+	projectName: string;
+	schedule: AutomationSchedule;
+	enabled: boolean;
+	nextRunAt: string | null;
+	lastRunStatus: string | null;
+	/** The thread that created it, when this app did. T3 has no link to a schedule itself. */
+	link: string | null;
+}
+
+export interface AutomationJob {
+	id: number;
+	name: string;
+	projectName: string;
+	/** Why it didn't work. Null while it's still going. */
+	error: string | null;
+	link: string | null;
+}
+
+export interface AutomationsResponse {
+	items: Automation[];
+	readAt: string | null;
+	reading: boolean;
+	readError: string | null;
+	jobs: AutomationJob[];
+}
+
+/* ---------- environments ---------- */
+
+/** One target a project deploys to. Lives in your config file, not the database. */
+export interface EnvironmentConfig {
+	name: string;
+	url: string | null;
+	healthUrl: string | null;
+	deployCommand: string | null;
+	sentryEnvironment: string | null;
+	issueLabel: string | null;
+	production: boolean;
+}
+
+export interface EnvHealth {
+	state: "up" | "slow" | "down" | "not_checked";
+	status: number | null;
+	ms: number | null;
+	checkedAt: string | null;
+	downSince: string | null;
+	error: string | null;
+}
+
+export interface DeployRun {
+	id: number;
+	project: string;
+	env: string;
+	command: string;
+	state: "running" | "passed" | "failed" | "stopped";
+	startedAt: string;
+	finishedAt: string | null;
+	exitCode: number | null;
+	sha: string | null;
+	message: string | null;
+	log: string;
+}
+
+export interface EnvironmentView extends EnvironmentConfig {
+	project: string;
+	projectName: string;
+	health: EnvHealth;
+	/** The newest deploy started from here, running or not. */
+	deploy: DeployRun | null;
+	deployedSha: string | null;
+	deployedAt: string | null;
+	/** Commits on main that aren't out there yet. */
+	behind: number | null;
+	errors: number;
+	issues: number;
+	/** The project's folder, to show where a deploy runs. */
+	folder: string | null;
+	workOrderId: number | null;
+}
+
+export interface EnvironmentsResponse {
+	projects: Array<{ slug: string; name: string; environments: EnvironmentView[] }>;
+	/** Column order for the fleet: production last. */
+	names: string[];
+	down: number;
+	behind: number;
+	checkedAt: string | null;
+}
+
+export interface ProjectEnvironmentsResponse {
+	environments: EnvironmentView[];
+	deploys: DeployRun[];
+	configPath: string;
+	folder: string | null;
+}
+
+export interface EnvSuggestion {
+	name: string;
+	deployCommand: string | null;
+	production: boolean;
+	from: string;
+}
+
+export type IssueGroup = "needs_read" | "looks_legit" | "looks_off";
+
+/** What can be told about an issue without running a model. */
+export interface IssueSignals {
+	/** The owner, or someone GitHub lists as working on the repo. */
+	trusted: boolean;
+	association: string;
+	accountAgeDays: number | null;
+	links: number;
+	outsideLinks: number;
+	/** Passages asking the reader to run something. */
+	instructions: number;
+	/** Passages written to steer an agent. */
+	aimedAtAgents: number;
+	hidden: number;
+}
+
+export interface IssueAdvice {
+	verdict: "legit" | "off" | "unsure";
+	why: string;
+	at: string;
+	/** The agent never answered, so asking again is worth it. */
+	failed?: boolean;
+}
+
+export interface Issue {
+	project: string;
+	projectName: string;
+	number: number;
+	title: string;
+	url: string;
+	body: string;
+	author: string | null;
+	authorAssociation: string;
+	authorCreatedAt: string | null;
+	createdAt: string;
+	updatedAt: string;
+	labels: string[];
+	comments: number;
+	/** Pins a read to this text. An edit on GitHub changes it. */
+	bodyHash: string;
+	signals: IssueSignals;
+	group: IssueGroup;
+	/** When you read this version. */
+	readAt: string | null;
+	/** You read an earlier version, and it has changed since. */
+	editedSinceRead: boolean;
+	/** A mode that merges on its own can't start until you've read it. */
+	locked: boolean;
+	advice: IssueAdvice | null;
+	/** An agent is reading it now. */
+	asking: boolean;
+	workOrderId: number | null;
+}
+
+export interface IssuesResponse {
+	issues: Issue[];
+	checkedAt: string | null;
+	/** Projects read, including those with nothing open. */
+	projects: number;
+}
+
 export interface ShellResponse {
 	hasProjects: boolean;
-	counts: { queue: number; floor: number; prs: number; errors: number; projects: number };
+	/** Projects came back from the config file, so this Mac still needs setting up. */
+	newDevice: boolean;
+	/** Why the config file can't be used. While it's set, nothing merges alone and nothing saves to it. */
+	configError: string | null;
+	counts: {
+		queue: number;
+		floor: number;
+		prs: number;
+		issues: number;
+		errors: number;
+		environments: number;
+		automations: number;
+		projects: number;
+	};
 	agents: { working: number; limit: number };
 	line: { stopped: boolean; stoppedAt: string | null };
 	sources: SourceHealth[];
@@ -530,4 +766,32 @@ export interface NewProjectRun {
 	failedAt?: string;
 	/** Checked as free, then started. After a restart mid-step, what's there may be this run's own. */
 	claimed?: string[];
+}
+
+/* ---------- versions ---------- */
+
+export interface VersionInfo {
+	/** When this copy first saw the commit. Checks that never showed up get a few minutes from here. */
+	seenAt?: string;
+	sha: string;
+	label: string;
+	message: string;
+	state: "preparing" | "ready" | "failed" | "running" | "replaced";
+	error: string | null;
+	/** When it was prepared, or for one that ran, when it was replaced. */
+	at: string;
+	canRollBack: boolean;
+}
+
+export interface VersionsResponse {
+	/** A checkout has no versions to switch between. Installing the service makes them. */
+	mode: "release" | "checkout";
+	running: { sha: string; label: string; message: string; since: string | null } | null;
+	history: VersionInfo[];
+	checkedAt: string | null;
+	checkError: string | null;
+	/** The repo that Improve yourself works on. */
+	repo: string | null;
+	/** Open work on that repo. */
+	building: Array<{ id: number; title: string }>;
 }

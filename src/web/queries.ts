@@ -1,14 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import type {
+	AutomationsResponse,
+	EnvironmentsResponse,
 	ErrorDetail,
 	ErrorItem,
 	FloorResponse,
 	HealthResponse,
+	IssuesResponse,
+	ModesResponse,
 	NewProjectRun,
 	PrDetail,
 	Project,
 	ProjectDetail,
+	ProjectEnvironmentsResponse,
 	PullRequest,
 	QueueResponse,
 	ReadingResponse,
@@ -16,6 +21,7 @@ import type {
 	Settings,
 	ShellResponse,
 	ToolStatus,
+	VersionsResponse,
 	WorkOrder,
 } from "../shared/types.ts";
 import { ApiFailure, api } from "./api.ts";
@@ -59,6 +65,37 @@ export interface ErrorsResponse {
 	withoutSentry: number;
 	quiet: number;
 }
+export const useVersions = () =>
+	useQuery({
+		queryKey: ["versions"],
+		queryFn: () => api.get<VersionsResponse>("/api/versions"),
+		refetchInterval: 30_000,
+	});
+export const useAutomations = () =>
+	useQuery({
+		queryKey: ["automations"],
+		queryFn: () => api.get<AutomationsResponse>("/api/automations"),
+	});
+export const useEnvironments = () =>
+	useQuery({
+		queryKey: ["environments"],
+		queryFn: () => api.get<EnvironmentsResponse>("/api/environments"),
+		// A quiet deploy command sends nothing, and the clock still moves.
+		refetchInterval: 15_000,
+	});
+export const useProjectEnvironments = (slug: string) =>
+	useQuery({
+		queryKey: ["project-environments", slug],
+		queryFn: () =>
+			api.get<ProjectEnvironmentsResponse>(`/api/projects/${encodeURIComponent(slug)}/environments`),
+		refetchInterval: 15_000,
+	});
+export const useIssues = (project?: string) =>
+	useQuery({
+		queryKey: ["issues", project ?? ""],
+		queryFn: () =>
+			api.get<IssuesResponse>(`/api/issues${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+	});
 export const useErrors = (project?: string) =>
 	useQuery({
 		queryKey: ["errors", project ?? ""],
@@ -81,6 +118,8 @@ export const useHealth = () =>
 	useQuery({ queryKey: ["health"], queryFn: () => api.get<HealthResponse>("/api/health?window=14d") });
 export const useSettings = () =>
 	useQuery({ queryKey: ["settings"], queryFn: () => api.get<Settings>("/api/settings") });
+export const useModes = () =>
+	useQuery({ queryKey: ["modes"], queryFn: () => api.get<ModesResponse>("/api/modes") });
 export const useTools = () =>
 	useQuery({ queryKey: ["tools"], queryFn: () => api.get<ToolStatus[]>("/api/tools") });
 export const useRepos = (enabled = true) =>

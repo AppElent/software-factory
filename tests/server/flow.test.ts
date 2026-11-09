@@ -11,7 +11,7 @@ import { planPrompt } from "../../src/server/playbooks/index.ts";
 import { findRegressions, readItemsForNotify, readQueue, triageBaseline } from "../../src/server/read.ts";
 import { Store } from "../../src/server/store.ts";
 import { awaitChecks, NO_CHECKS_MS, noGates, REGRESSION_GRACE_MS } from "../../src/shared/rules.ts";
-import type { CheckRun, PullRequest, WorkOrder } from "../../src/shared/types.ts";
+import type { CheckRun, Mode, PullRequest, WorkOrder } from "../../src/shared/types.ts";
 
 type Calls = string[];
 
@@ -22,10 +22,14 @@ let clock: number;
 let writeNeverTouchBroken: () => void;
 let calls: Calls;
 let cliResult: Record<string, { code: number; stdout?: string; stderr?: string }>;
+let gitCalls: string[];
+let gitFails: Record<string, string>;
+let whileReadingFiles: (() => void) | null = null;
 
 const cli: Cli = async (cmd, args) => {
 	const line = `${cmd} ${args.join(" ")}`;
 	calls.push(line);
+	if (line.includes("/files")) whileReadingFiles?.();
 	for (const [k, v] of Object.entries(cliResult)) {
 		if (line.includes(k))
 			return {
@@ -55,6 +59,7 @@ const putPr = (number: number, over: Partial<PullRequest> = {}, project = "fairw
 		deletions: 1,
 		changedFiles: 1,
 		headRef: "b",
+		fromFork: false,
 		headSha: "sha1",
 		baseRef: "main",
 		createdAt: new Date(clock).toISOString(),
@@ -96,19 +101,101 @@ beforeEach(() => {
 	store = new Store(openDb(join(dir, "t.db")), dir, () => new Date(clock));
 	exec = new FakeExecutor();
 	calls = [];
-	cliResult = { "pr view": { code: 0, stdout: '{"state":"OPEN"}' } };
+	cliResult = { "pr view": { code: 0, stdout: '{"state":"OPEN","files":[]}' } };
 	engine = new Engine({
 		store,
 		cli,
 		executor: exec,
 		publish: () => {},
 		pollSoon: () => {},
-		git: async () => {},
+		git: async (_cwd, args) => {
+			const line = args.join(" ");
+			gitCalls.push(line);
+			const fail = Object.entries(gitFails).find(([k]) => line.includes(k));
+			return fail ? { ok: false, error: fail[1] } : { ok: true, error: "" };
+		},
 	});
+	gitCalls = [];
+	gitFails = {};
+	whileReadingFiles = null;
 	addProject();
 });
 
 const planBlock = '```factory-plan\n{"summary":"Do it","steps":["one"]}\n```';
+
+describe("cleaning up after a work order", () => {
+	const merged = async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		expect((await engine.merge("fairway", 7)).ok).toBe(true);
+		clock += 2 * 60_000;
+		await settle();
+		return id;
+	};
+	const log = (id: number) => wo(id).activity.map((a) => a.text);
+
+	it("leaves a picked-up branch that isn't the factory's when its work order finishes", async () => {
+		const id = await merged();
+		store.db
+			.prepare("UPDATE projects SET read_at = ? WHERE slug = 'fairway'")
+			.run(new Date(clock).toISOString());
+		store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'main' WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		clock += OBSERVE_MS + 1;
+		await settle();
+		expect(wo(id).state).toBe("done");
+		expect(gitCalls).toEqual([]);
+	});
+
+	it("removes the worktree and local branch when a merged work order finishes", async () => {
+		const id = await merged();
+		expect(gitCalls).toEqual([]);
+		clock += OBSERVE_MS + 1;
+		await settle();
+		expect(wo(id).state).toBe("done");
+		expect(gitCalls[0]).toMatch(/^worktree remove \/tmp\/worktrees\//);
+		expect(gitCalls[0]).not.toContain("--force");
+		expect(gitCalls[1]).toMatch(/^branch -D factory\/wo-/);
+		expect(gitCalls.some((c) => c.startsWith("push"))).toBe(false);
+	});
+
+	it("keeps a worktree with uncommitted changes, its branch, and says why", async () => {
+		const id = await merged();
+		gitFails = { "worktree remove": "contains modified or untracked files" };
+		clock += OBSERVE_MS + 1;
+		await settle();
+		expect(wo(id).state).toBe("done");
+		expect(gitCalls.some((c) => c.startsWith("branch -D"))).toBe(false);
+		expect(log(id).join()).toContain("contains modified or untracked files");
+	});
+
+	it("names what it couldn't delete on Close, and audits only what it did", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		gitFails = { "push origin --delete": "could not read from remote" };
+		await engine.close(id);
+		expect(wo(id).state).toBe("closed");
+		expect(log(id).join()).toContain("could not read from remote");
+		const audited = store.db.prepare("SELECT 1 FROM audit_log WHERE action = 'delete branch'").all();
+		expect(audited).toEqual([]);
+	});
+
+	it("audits a delete that happened, and treats one already gone as done", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		gitFails = { "push origin --delete": "remote ref does not exist" };
+		await engine.close(id);
+		expect(log(id).join()).not.toContain("Couldn't delete");
+		const audited = store.db.prepare("SELECT 1 FROM audit_log WHERE action = 'delete branch'").all();
+		expect(audited).toHaveLength(1);
+	});
+});
 
 describe("a work order's path", () => {
 	it("goes from Intake to Observe with approvals at each gate", async () => {
@@ -1465,5 +1552,619 @@ describe("a broken Never touch file", () => {
 	it("doesn't reject the tick that reads it", async () => {
 		writeNeverTouchBroken();
 		await expect(engine.tick()).resolves.toBeUndefined();
+	});
+});
+
+describe("modes", () => {
+	const mode = (over: Partial<Mode> = {}): Mode => ({
+		id: "m",
+		name: "Full send",
+		description: "",
+		prompt: "",
+		plan: "follow",
+		merge: "you",
+		provider: null,
+		model: null,
+		builtin: false,
+		...over,
+	});
+	const toReview = async (m: Mode) => {
+		const id = start({ type: "Chore", mode: m });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		return id;
+	};
+	const send = mode({ merge: "factory", plan: "skip" });
+
+	it("skips the plan, or asks for one, whatever the work type says", async () => {
+		const skip = start({ mode: mode({ plan: "skip" }) });
+		await settle();
+		expect(wo(skip).stage).toBe("Build");
+		const always = start({ type: "Chore", title: "Other", mode: mode({ plan: "always" }) });
+		await settle();
+		expect(wo(always).stage).toBe("Plan");
+	});
+
+	it("puts the mode's prompt before the instructions, and passes its model on", async () => {
+		const id = start({ type: "Chore", mode: mode({ prompt: "full stop", provider: "codex", model: "x-1" }) });
+		await settle();
+		const req = exec.threads.get(threadOf(id))?.req;
+		expect(req?.prompt.startsWith("full stop\n\n")).toBe(true);
+		expect(req?.prompt).toContain("Don't merge.");
+		expect(req).toMatchObject({ provider: "codex", model: "x-1" });
+	});
+
+	it("keeps the mode as it was when the work started", async () => {
+		const id = start({ type: "Chore", mode: mode({ name: "Then" }) });
+		expect(wo(id).mode?.name).toBe("Then");
+	});
+
+	it("merges when the mode says so and every real gate passed", async () => {
+		const id = await toReview(send);
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+		expect(wo(id).activity.map((a) => a.text)).toContain("Merged by Full send");
+		const row = store.db.prepare("SELECT started_by FROM audit_log WHERE action = 'merge PR'").get() as {
+			started_by: string;
+		};
+		expect(row.started_by).toBe("factory (Full send)");
+	});
+
+	it("doesn't merge when the mode leaves it to you", async () => {
+		const id = await toReview(mode());
+		await settle();
+		expect(wo(id)).toMatchObject({ stage: "Review", mergedAt: null });
+	});
+
+	it("doesn't merge while the line is stopped", async () => {
+		const id = await toReview(send);
+		// It merged on reaching Review if the line was running, so start this one with it stopped.
+		expect(wo(id).mergedAt).not.toBeNull();
+		const other = start({ type: "Chore", title: "Other", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":8}]' };
+		putPr(8);
+		await engine.setLine(true);
+		exec.finish(threadOf(other), "Opened the PR.");
+		await settle();
+		await settle();
+		expect(wo(other).mergedAt).toBeNull();
+	});
+
+	it("waits for you when Tests aren't set up, and says why once", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("passed"), Tests: "not_set_up" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id)).toMatchObject({ stage: "Review", mergedAt: null });
+		const said = wo(id).activity.filter((a) => a.text.includes("Tests aren't set up"));
+		expect(said).toHaveLength(1);
+	});
+
+	it("merges with Preview not set up even when Merge without me is on too", async () => {
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, Chore: true } });
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("passed"), Preview: "not_set_up" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+	});
+
+	it("waits, and says why, when the issue changed after you read it", async () => {
+		const issue = {
+			number: 9,
+			title: "A title",
+			body: "Words",
+			bodyHash: "h1",
+			url: "https://github.com/me/fairway/issues/9",
+			author: "someone",
+			authorAssociation: "NONE",
+			labels: [],
+			comments: 0,
+			createdAt: new Date(clock).toISOString(),
+			updatedAt: new Date(clock).toISOString(),
+		};
+		store.saveIssues("fairway", [issue] as never);
+		store.markIssueRead("fairway", 9, "h1");
+		const id = start({ type: "Chore", mode: send, source: { kind: "issue", issueNumber: 9 } });
+		await settle();
+		store.saveIssues("fairway", [{ ...issue, bodyHash: "h2", body: "Other words" }] as never);
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("#9 changed since you read it");
+	});
+
+	it("waits, and says why, when the issue left the list", async () => {
+		const issue = {
+			number: 9,
+			title: "A title",
+			body: "Words",
+			bodyHash: "h1",
+			url: "https://github.com/me/fairway/issues/9",
+			author: "OUTSIDER",
+			authorAssociation: "NONE",
+			labels: [],
+			comments: 0,
+			createdAt: new Date(clock).toISOString(),
+			updatedAt: new Date(clock).toISOString(),
+		};
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, Chore: true } });
+		store.saveIssues("fairway", [issue] as never);
+		const id = start({ type: "Chore", mode: send, source: { kind: "issue", issueNumber: 9 } });
+		await settle();
+		store.saveIssues("fairway", []);
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.join("\n")).not.toContain("pr merge");
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("#9 isn't in the open issues any more");
+	});
+
+	it.each([
+		["Merge without me", false],
+		["a mode that merges", true],
+	])("doesn't merge with %s while the config file is broken", async (_, byMode) => {
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, Chore: !byMode } });
+		const id = start({ type: "Chore", ...(byMode ? { mode: send } : {}) });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		writeFileSync(store.file.path, "{ nope");
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.join("\n")).not.toContain("pr merge");
+	});
+
+	describe("a fork's PR on a branch with the same name", () => {
+		const FORK = { number: 99, isCrossRepository: true };
+
+		it("isn't taken for the agent's, and isn't merged", async () => {
+			const id = start({ type: "Chore", mode: send });
+			await settle();
+			cliResult["pr list"] = {
+				code: 0,
+				stdout: JSON.stringify([FORK, { number: 7, isCrossRepository: false }]),
+			};
+			putPr(7);
+			putPr(99, { headSha: "attacker", fromFork: true });
+			exec.finish(threadOf(id), "Opened the PR.");
+			await settle();
+			await settle();
+			await settle();
+			expect(wo(id).prNumber).toBe(7);
+			expect(calls.join("\n")).not.toContain("pr merge 99");
+		});
+
+		it("counts as no PR when the agent opened none", async () => {
+			const id = start({ type: "Chore", mode: send });
+			await settle();
+			cliResult["pr list"] = { code: 0, stdout: JSON.stringify([FORK]) };
+			exec.finish(threadOf(id), "Done.");
+			await settle();
+			expect(wo(id).prNumber).toBeNull();
+			expect(
+				wo(id)
+					.activity.map((a) => a.text)
+					.join(" "),
+			).toContain("finished without opening a PR");
+		});
+
+		it("doesn't show up as the work order's on the PR list", async () => {
+			const id = start({ type: "Chore" });
+			await settle();
+			store.patchWorkOrder(id, { branch: "factory/wo-1-x" });
+			putPr(99, { headRef: "factory/wo-1-x", fromFork: true });
+			putPr(7, { headRef: "factory/wo-1-x" });
+			const of = (n: number) => store.prs().find((p) => p.number === n)?.workOrderId;
+			expect(of(99)).toBeNull();
+			expect(of(7)).toBe(id);
+		});
+
+		it("isn't picked-up work's by branch on a branch that isn't the factory's, so merging it doesn't ship that work", async () => {
+			const id = start({ type: "Chore" });
+			await settle();
+			store.db
+				.prepare("UPDATE work_orders SET source = ?, branch = 'main', state = 'run_failed' WHERE id = ?")
+				.run(JSON.stringify({ kind: "restored" }), id);
+			putPr(41, { headRef: "main" });
+			expect(store.prs().find((p) => p.number === 41)?.workOrderId).toBeNull();
+			store.patchWorkOrder(id, { branch: "factory/wo-1-x" });
+			putPr(42, { headRef: "factory/wo-1-x" });
+			expect(store.prs().find((p) => p.number === 42)?.workOrderId).toBe(id);
+		});
+
+		it.each([[true], [undefined]])(
+			"isn't merged even as the work order's PR: fromFork %s",
+			async (fromFork) => {
+				const id = start({ type: "Chore", mode: send });
+				await settle();
+				cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+				putPr(7, { fromFork } as never);
+				exec.finish(threadOf(id), "Opened the PR.");
+				await settle();
+				await settle();
+				await settle();
+				expect(calls.join("\n")).not.toContain("pr merge");
+			},
+		);
+	});
+
+	it("doesn't take a PR from before this run for this run's, even one that merged", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{ number: 4, state: "MERGED", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).toBe("run_failed");
+		expect(wo(id).failure).toBe("The agent finished without opening a PR.");
+		expect(gitCalls.join("\n")).not.toContain("branch -D");
+	});
+
+	it("takes the PR on a picked-up run's branch, however long before the pickup it opened", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		store.db
+			.prepare("UPDATE work_orders SET source = ? WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{ number: 41, state: "OPEN", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBe(41);
+		expect(wo(id).state).not.toBe("run_failed");
+	});
+
+	it("doesn't take a finished PR for a picked-up run's, or any old PR on a branch that isn't the factory's", async () => {
+		const merged = JSON.stringify([
+			{ number: 3, state: "MERGED", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+		]);
+		const open = JSON.stringify([
+			{ number: 5, state: "OPEN", isCrossRepository: false, createdAt: "2020-01-01T00:00:00Z" },
+		]);
+		for (const [branch, prs] of [
+			[null, merged],
+			["main", open],
+			["main", merged],
+		] as const) {
+			const id = start({ type: "Chore" });
+			await settle();
+			store.db
+				.prepare("UPDATE projects SET read_at = ? WHERE slug = 'fairway'")
+				.run(new Date(clock).toISOString());
+			store.db
+				.prepare("UPDATE work_orders SET source = ?, branch = COALESCE(?, branch) WHERE id = ?")
+				.run(JSON.stringify({ kind: "restored" }), branch, id);
+			cliResult["pr list"] = { code: 0, stdout: prs };
+			exec.finish(threadOf(id), "Done.");
+			await settle();
+			expect(wo(id).prNumber).toBeNull();
+			expect(wo(id).state).toBe("run_failed");
+		}
+		expect(gitCalls.join("\n")).not.toContain("branch -D");
+	});
+
+	it("doesn't take a new PR from the default branch for a picked-up run's", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		store.db
+			.prepare("UPDATE projects SET read_at = ? WHERE slug = 'fairway'")
+			.run(new Date(clock).toISOString());
+		store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'main' WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{
+					number: 6,
+					state: "OPEN",
+					isCrossRepository: false,
+					createdAt: new Date(clock + 1000).toISOString(),
+				},
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).toBe("run_failed");
+	});
+
+	it("waits to know the default branch before looking for a picked-up run's PR off a factory branch", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		store.db
+			.prepare("UPDATE projects SET read_at = NULL, default_branch = 'main' WHERE slug = 'fairway'")
+			.run();
+		store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'master' WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{
+					number: 6,
+					state: "OPEN",
+					isCrossRepository: false,
+					createdAt: new Date(clock + 1000).toISOString(),
+				},
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).not.toBe("run_failed");
+		store.db
+			.prepare("UPDATE projects SET read_at = ?, default_branch = 'master' WHERE slug = 'fairway'")
+			.run(new Date(clock).toISOString());
+		await settle();
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).toBe("run_failed");
+	});
+
+	it("takes a PR this run opened, even if the agent merged it already", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{
+					number: 8,
+					state: "MERGED",
+					isCrossRepository: false,
+					createdAt: new Date(clock + 1000).toISOString(),
+				},
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBe(8);
+	});
+
+	it("says which gates aren't set up, and waits", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("not_set_up"), Tests: "passed" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.join("\n")).not.toContain("pr merge");
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("Typecheck and Lint aren't set up");
+	});
+
+	it.each([
+		["BEHIND", "MERGEABLE", true],
+		["BLOCKED", "MERGEABLE", true],
+		["DIRTY", "CONFLICTING", true],
+		["UNKNOWN", "UNKNOWN", false],
+	])(
+		"when GitHub says %s, it says why only if GitHub really won't merge",
+		async (mergeState, mergeable, says) => {
+			const id = start({ type: "Chore", mode: send });
+			await settle();
+			cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+			putPr(7, { mergeState, mergeable } as never);
+			exec.finish(threadOf(id), "Opened the PR.");
+			await settle();
+			await settle();
+			await settle();
+			expect(calls.join("\n")).not.toContain("pr merge");
+			const words = wo(id)
+				.activity.map((a) => a.text)
+				.join(" ");
+			expect(words.includes("GitHub won't merge this yet")).toBe(says);
+		},
+	);
+
+	it("says the config file is why it waits", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		writeFileSync(store.file.path, "{ nope");
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("config file can't be read");
+	});
+
+	it.each([
+		["Stop", (id: number) => engine.stop(id)],
+		["Stop the line", () => engine.setLine(true)],
+		["pausing the project", () => store.db.prepare("UPDATE projects SET paused = 1").run()],
+	])("doesn't merge when you press %s while it reads which files changed", async (_, press) => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		whileReadingFiles = () => {
+			whileReadingFiles = null;
+			press(id);
+		};
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(calls.join("\n")).toContain("/files");
+		expect(calls.join("\n")).not.toContain("pr merge");
+		expect(wo(id).mergedAt).toBeNull();
+	});
+
+	it.each([
+		["a gate failed", { gates: { ...noGates("passed"), Tests: "failed" as const } }],
+		["a new commit came in", { headSha: "sha2" }],
+	])("doesn't merge when %s while it read which files changed", async (_, over) => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		whileReadingFiles = () => {
+			whileReadingFiles = null;
+			putPr(7, over);
+		};
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(calls.join("\n")).toContain("/files");
+		expect(calls.join("\n")).not.toContain("--match-head-commit sha1");
+	});
+
+	it("closing picked-up work leaves a branch that isn't the factory's, and its folder", async () => {
+		const id = start({ source: { kind: "restored" } });
+		await settle();
+		store.patchWorkOrder(id, { branch: "main", worktree: "/tmp/owner-work", pr_number: 12 });
+		await engine.close(id);
+		expect(calls.join("\n")).not.toContain("pr close");
+		expect(gitCalls.join("\n")).not.toContain("push origin --delete");
+		expect(gitCalls.join("\n")).not.toContain("worktree remove");
+		expect(gitCalls.join("\n")).not.toContain("branch -D");
+		expect(wo(id).state).toBe("closed");
+		expect(
+			wo(id)
+				.activity.map((a) => a.text)
+				.join(" "),
+		).toContain("Left the branch main and its folder alone");
+	});
+
+	it("closing picked-up work still cleans up the factory's own branch", async () => {
+		const id = start({ source: { kind: "restored" } });
+		await settle();
+		store.patchWorkOrder(id, { branch: "factory/wo-7-mine", pr_number: 12 });
+		await engine.close(id);
+		expect(calls.join("\n")).toContain("pr close");
+		expect(gitCalls.some((c) => c.startsWith("push origin --delete"))).toBe(true);
+	});
+
+	it("waits, and says so once, when a PR has more files than GitHub lists", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		cliResult["/files"] = { code: 0, stdout: `${"a.ts\n".repeat(3000)}` };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(calls.filter((c) => c.includes("/files"))).toHaveLength(1);
+		expect(calls.find((c) => c.includes("/files"))).toContain("per_page=100");
+		expect(wo(id).activity.filter((a) => a.text.includes("too many files"))).toHaveLength(1);
+	});
+
+	it("never merges picked-up work on its own, even with Merge without me on", async () => {
+		const approvals = store.settings().approvals;
+		store.saveApprovals({ ...approvals, mergeWithoutMe: { ...approvals.mergeWithoutMe, "Bug fix": true } });
+		const id = start({ source: { kind: "restored" } });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+	});
+
+	it("merges with Preview not set up, which Merge without me wouldn't", async () => {
+		const id = start({ type: "Chore", mode: send });
+		await settle();
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7, { gates: { ...noGates("passed"), Preview: "not_set_up" } });
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		await settle();
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+	});
+
+	it("leaves workflow changes to you, in every mode", async () => {
+		cliResult["/files"] = { code: 0, stdout: ".github/workflows/ci.yml\n" };
+		const id = await toReview(send);
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		expect(wo(id).activity.map((a) => a.text)).toContain("This changes files that always wait for you");
+	});
+
+	it("doesn't merge when it can't read which files changed", async () => {
+		cliResult["/files"] = { code: 1, stdout: "" };
+		const id = await toReview(send);
+		await settle();
+		expect(wo(id).mergedAt).toBeNull();
+		cliResult["/files"] = { code: 0, stdout: "" };
+		await settle();
+		expect(wo(id).mergedAt).not.toBeNull();
+	});
+
+	it("doesn't call a failed PR lookup a run that opened no PR", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		cliResult["pr list"] = { code: 1, stderr: "HTTP 502" };
+		exec.finish(threadOf(id), "Opened the PR.");
+		await settle();
+		expect(wo(id).state).not.toBe("run_failed");
+		cliResult["pr list"] = { code: 0, stdout: '[{"number":7}]' };
+		putPr(7);
+		await settle();
+		expect(wo(id).prNumber).toBe(7);
 	});
 });

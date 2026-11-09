@@ -459,3 +459,66 @@ describe("the wizard's URL", () => {
 		expect(await screen.findByRole("link", { name: "Start again" })).toBeInTheDocument();
 	});
 });
+
+describe("a new Mac", () => {
+	it("goes to the tools first, even though projects exist", async () => {
+		await renderApp("/", "new_device");
+		expect(await screen.findByRole("heading", { name: "Check your tools" })).toBeInTheDocument();
+		expect(screen.getByText("Restore projects")).toBeInTheDocument();
+	});
+
+	it("installs a missing tool when you press it", async () => {
+		const user = userEvent.setup();
+		const h = await renderApp("/welcome/tools", "new_device");
+		await user.click(await screen.findByRole("button", { name: "Install sentry" }));
+		await waitFor(() => expect(h.mutations).toContain('POST /api/tools/install {"name":"sentry"}'));
+		await waitFor(() => expect(screen.queryByRole("button", { name: "Install sentry" })).toBeNull());
+	});
+
+	it("says what to do after opening Terminal", async () => {
+		const user = userEvent.setup();
+		const h = await renderApp("/welcome/tools", "first_run_blocked");
+		await user.click(await screen.findByRole("button", { name: "Sign in to gh" }));
+		expect(await screen.findByText("Finish in Terminal, then check again.")).toBeInTheDocument();
+		expect(h.mutations).toContain('POST /api/tools/sign-in {"name":"gh"}');
+	});
+
+	it("shows why an install failed, and keeps the row", async () => {
+		const user = userEvent.setup();
+		const h = await renderApp("/welcome/tools", "new_device");
+		const install = await screen.findByRole("button", { name: "Install sentry" });
+		h.failNext("/api/tools/install", 502, "Homebrew isn't installed. Get it from brew.sh, then try again.");
+		await user.click(install);
+		expect(await screen.findByText(/Get it from brew\.sh/)).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Install sentry" })).toBeEnabled();
+	});
+
+	it("continues to restoring, and clones what's missing", async () => {
+		const user = userEvent.setup();
+		const h = await renderApp("/welcome/tools", "new_device");
+		await user.click(await screen.findByRole("link", { name: "Continue" }));
+		expect(await screen.findByRole("heading", { name: "Restore projects" })).toBeInTheDocument();
+		expect(screen.getAllByText("Not on this Mac").length).toBeGreaterThan(0);
+		await user.click(screen.getByRole("button", { name: /^Clone \d+ projects?$/ }));
+		await waitFor(() => expect(h.mutations.some((m) => /\/api\/projects\/.*\/clone/.test(m))).toBe(true));
+	});
+
+	it("can be skipped, and doesn't come back", async () => {
+		const user = userEvent.setup();
+		const h = await renderApp("/welcome/restore", "new_device");
+		await user.click(await screen.findByRole("button", { name: "Open your queue" }));
+		await waitFor(() => expect(h.mutations).toContain("POST /api/new-device/done {}"));
+		await waitFor(() => expect(h.router.state.location.pathname).toBe("/"));
+		await screen.findAllByRole("heading", { name: /Queue|needs you/i });
+		expect(h.router.state.location.pathname).toBe("/");
+	});
+});
+
+describe("a config file that can't be used", () => {
+	it("says so on every page, and what it means", async () => {
+		await renderApp("/", "config_broken");
+		const alert = await screen.findByRole("alert");
+		expect(alert).toHaveTextContent("Your config file can't be used.");
+		expect(alert).toHaveTextContent("Nothing merges on its own until it's fixed");
+	});
+});

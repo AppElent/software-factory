@@ -11,6 +11,27 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS prs (
 	project TEXT NOT NULL, number INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (project, number)
 );
+CREATE TABLE IF NOT EXISTS issues (
+	project TEXT NOT NULL, number INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (project, number)
+);
+CREATE TABLE IF NOT EXISTS issue_state (
+	project TEXT NOT NULL, number INTEGER NOT NULL,
+	read_hash TEXT, read_at TEXT,
+	hidden TEXT, hidden_hash TEXT, hidden_until TEXT,
+	advice TEXT, advice_hash TEXT,
+	PRIMARY KEY (project, number)
+);
+CREATE TABLE IF NOT EXISTS deploys (
+	id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, env TEXT NOT NULL, command TEXT NOT NULL,
+	state TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, exit_code INTEGER,
+	sha TEXT, message TEXT, log TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS env_health (
+	project TEXT NOT NULL, env TEXT NOT NULL, ok INTEGER, status INTEGER, ms INTEGER, error TEXT,
+	checked_at TEXT, down_since TEXT, fails INTEGER NOT NULL DEFAULT 0,
+	deployed_sha TEXT, deployed_at TEXT, deployed_read_at TEXT, behind INTEGER, behind_of TEXT,
+	PRIMARY KEY (project, env)
+);
 CREATE TABLE IF NOT EXISTS errors (
 	id TEXT PRIMARY KEY, project TEXT NOT NULL, json TEXT NOT NULL, detail TEXT
 );
@@ -43,10 +64,17 @@ CREATE TABLE IF NOT EXISTS notified (key TEXT PRIMARY KEY, at TEXT NOT NULL);
 
 export type Db = DatabaseSync;
 
+/** `CREATE TABLE IF NOT EXISTS` doesn't reach a table an older version made. */
+function addColumn(db: Db, table: string, column: string, type: string) {
+	const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+	if (!columns.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+
 export function openDb(path: string): Db {
 	const db = new DatabaseSync(path);
 	db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;");
 	db.exec(SCHEMA);
+	addColumn(db, "work_orders", "mode", "TEXT");
 	return db;
 }
 
@@ -69,7 +97,7 @@ export function audit(
 	db: Db,
 	action: string,
 	target: string,
-	startedBy: "you" | "factory" = "you",
+	startedBy = "you",
 	detail: string | null = null,
 	now: Date = new Date(),
 ): void {

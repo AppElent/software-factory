@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { NewProjectLogLine, NewProjectRun, ToolStatus } from "../shared/types.ts";
 import type { Cli } from "./cli.ts";
 import { cliEnv, scrub } from "./cli.ts";
@@ -34,7 +34,7 @@ export type ScaffoldRunner = (
 	cli: Cli,
 ) => Promise<{ ok: boolean; detail?: string }>;
 
-const ROOT = new URL("../../", import.meta.url).pathname;
+const ROOT = resolve(import.meta.dirname, "../..");
 
 /** Each step is one call to scripts/new-project.mjs, which is resumable and has a dry run. */
 export const scriptRunner: ScaffoldRunner = (run, step) =>
