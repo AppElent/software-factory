@@ -2369,7 +2369,7 @@ Just so you know
 <checkbox checked={{chk.alone}} on tog.alone>
 A PR merges without you | Only when you turned that on in Approvals. |
 <checkbox checked={{chk.ship}} on tog.ship>
-A work order ships | Merged and deployed. |
+A work order ships | Merged, and main didn't go red after it. |
 <checkbox checked={{chk.full}} on tog.full>
 All agent slots are full | New work is waiting in Intake. |
 <checkbox checked={{front}} on flipFront>

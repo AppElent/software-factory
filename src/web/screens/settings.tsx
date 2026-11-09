@@ -529,7 +529,7 @@ const JUST_SO: Array<{ id: NotificationEvent; title: string; body: string }> = [
 		title: "A PR merges without you",
 		body: "Only when you turned that on in Approvals.",
 	},
-	{ id: "shipped", title: "A work order ships", body: "Merged and deployed." },
+	{ id: "shipped", title: "A work order ships", body: "Merged, and main didn't go red after it." },
 	{ id: "slots_full", title: "All agent slots are full", body: "New work is waiting in Intake." },
 ];
 
