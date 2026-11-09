@@ -63,7 +63,7 @@ describe("Health", () => {
 		});
 		await user.click(opener);
 		const dialog = await screen.findByRole("alertdialog", { name: "Let toolkit syncs merge without you?" });
-		expect(within(dialog).getByText(/a toolkit-sync PR merges and ships without you/)).toBeInTheDocument();
+		expect(within(dialog).getByText(/a toolkit-sync PR merges without you/)).toBeInTheDocument();
 		await waitFor(() => expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus());
 		await user.click(within(dialog).getByRole("button", { name: "Turn on" }));
 		expect(await screen.findByText("Merges without you")).toBeInTheDocument();

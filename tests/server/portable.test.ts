@@ -384,6 +384,15 @@ describe("picking work up from T3", () => {
 		expect(store.workOrder(40)?.prNumber).toBe(41);
 	});
 
+	it("doesn't take a PR from the default branch for a thread working there", async () => {
+		const store = setup();
+		thread("t1", "main", "running");
+		threads = [{ threadId: "t1", title: "WO-70 X", settled: false }];
+		openPrs.main = 41;
+		expect(await rebuildWorkOrders(store, cli, exec)).toBe(1);
+		expect(store.workOrder(70)?.prNumber).toBeNull();
+	});
+
 	it("doesn't make a second work order for a run still waiting to hear its thread", async () => {
 		const store = setup();
 		const starting = store.insertWorkOrder({

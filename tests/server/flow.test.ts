@@ -1870,6 +1870,29 @@ describe("modes", () => {
 		expect(gitCalls.join("\n")).not.toContain("branch -D");
 	});
 
+	it("doesn't take a new PR from the default branch for a picked-up run's", async () => {
+		const id = start({ type: "Chore" });
+		await settle();
+		store.db
+			.prepare("UPDATE work_orders SET source = ?, branch = 'main' WHERE id = ?")
+			.run(JSON.stringify({ kind: "restored" }), id);
+		cliResult["pr list"] = {
+			code: 0,
+			stdout: JSON.stringify([
+				{
+					number: 6,
+					state: "OPEN",
+					isCrossRepository: false,
+					createdAt: new Date(clock + 1000).toISOString(),
+				},
+			]),
+		};
+		exec.finish(threadOf(id), "Done.");
+		await settle();
+		expect(wo(id).prNumber).toBeNull();
+		expect(wo(id).state).toBe("run_failed");
+	});
+
 	it("takes a PR this run opened, even if the agent merged it already", async () => {
 		const id = start({ type: "Chore" });
 		await settle();

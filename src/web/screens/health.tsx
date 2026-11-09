@@ -255,7 +255,7 @@ function ByWorkType({ health, settings }: { health: HealthResponse; settings: Se
 				title={words ? `Let ${words.many} merge without you?` : ""}
 				description={
 					words
-						? `When all 4 gates pass, ${/^[aeiou]/.test(words.adjective) ? "an" : "a"} ${words.adjective} PR merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If ${words.one} causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.`
+						? `When all 4 gates pass, ${/^[aeiou]/.test(words.adjective) ? "an" : "a"} ${words.adjective} PR merges without you. You still see it on the floor, and any new error goes back to Intake. If ${words.one} causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.`
 						: ""
 				}
 				action="Turn on"

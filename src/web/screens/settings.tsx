@@ -494,7 +494,7 @@ function ApprovalsSection() {
 				title={asked ? `Let ${asked.many} merge without you?` : ""}
 				description={
 					asked
-						? `When all 4 gates pass, ${asked.pr} merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If ${asked.one} causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.`
+						? `When all 4 gates pass, ${asked.pr} merges without you. You still see it on the floor, and any new error goes back to Intake. If ${asked.one} causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.`
 						: undefined
 				}
 				action="Turn on"

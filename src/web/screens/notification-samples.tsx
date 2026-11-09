@@ -137,7 +137,7 @@ export function NotificationSamplesScreen() {
 					<div className={GRID}>
 						<Sample
 							title="Fairway: merged without you"
-							message="#96 Fix TypeError reading 'holes'. Shipping now."
+							message="#96 Fix TypeError reading 'holes'"
 							opens="Opens the PR"
 							link={pr}
 						/>

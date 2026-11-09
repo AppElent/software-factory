@@ -57,7 +57,7 @@ const WORK_ORDER_WORDS: Record<WorkOrderState, [GlyphKind, string]> = {
 	failed: ["fail", "Verify · gates failed"],
 	ready: ["ask", "Review · waiting on you"],
 	rebasing: ["run", "Review · agent rebasing"],
-	shipping: ["run", "Ship · deploying"],
+	shipping: ["run", "Ship · checking main"],
 	observing: ["pass", "Observe · watching for errors"],
 	done: ["pass", "Done"],
 	closed: ["idle", "Closed"],

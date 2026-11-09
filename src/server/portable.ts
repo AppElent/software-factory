@@ -178,7 +178,8 @@ export async function rebuildWorkOrders(store: Store, cli: Cli, executor: Execut
 			const alive = ["running", "queued", "waiting_native"].includes(state.status);
 			let prNumber: number | null = null;
 			let prKnown = true;
-			if (state.branch) {
+			// A thread working on the default branch has no PR of its own, so any PR from there is someone else's.
+			if (state.branch && state.branch !== project.defaultBranch) {
 				const prs = await cli("gh", [
 					"pr",
 					"list",

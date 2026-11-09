@@ -126,7 +126,7 @@ describe("pull requests list", () => {
 		const status = banner.closest('[role="status"]') as HTMLElement;
 		// Rows sort by age, and seeded PRs can share a millisecond.
 		expect(status).toHaveTextContent(
-			/(Foundry #168 and Arcade Club #62|Arcade Club #62 and Foundry #168) are shipping now\./,
+			/(Foundry #168 and Arcade Club #62|Arcade Club #62 and Foundry #168) are merged on GitHub\./,
 		);
 		expect(status).toHaveTextContent(/satisfactory moved on while #31 waited, so it needs a rebase\./);
 		const merge = h.mutations.find((m) => m.startsWith("POST /api/prs/merge"));

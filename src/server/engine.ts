@@ -479,7 +479,7 @@ export class Engine {
 			const openOnly = wo.source.kind === "restored" && !branchIsntOurs(wo);
 			const number =
 				wo.prNumber ??
-				(project && wo.branch
+				(project && wo.branch && wo.branch !== project.defaultBranch
 					? await prByBranch(this.cli, project.repo, wo.branch, wo.createdAt, { openOnly })
 					: null);
 			// GitHub didn't answer, which says nothing about the agent. The next pass asks again.

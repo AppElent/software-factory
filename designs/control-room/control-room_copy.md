@@ -1265,7 +1265,7 @@ A work type qualifies after 10 runs with at least 80% passing every gate on the 
 if ask:
   (role: dialog)
   Let bug fixes merge without you?
-  When all 4 gates pass, a bug-fix PR merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
+  When all 4 gates pass, a bug-fix PR merges without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
   [Cancel] on keep
   [Turn on] on turnOn
 ```
@@ -1949,7 +1949,7 @@ Changes from PullRequests (`-` removed, `+` added):
 +  for x in chosen:
 +    (aria-label: Typecheck passed, Tests passed, Lint passed, Preview passed)
 +    {{x.label}}
-+  All 4 gates passed on each one. They merge one at a time and each ships to production as it merges. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
++  All 4 gates passed on each one. They merge one at a time. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
 +  [Cancel] on keep
 +  [{{mergeLabel}}] → PullRequestsBulkDone
 ```
@@ -1976,7 +1976,7 @@ Changes from PullRequests (`-` removed, `+` added):
 
 ```diff
 +(role: status)
-+2 merged. #31 couldn't merge. | Foundry #168 and Arcade Club #62 are shipping now. satisfactory moved on while #31 waited, so it needs a rebase.
++2 merged. #31 couldn't merge. | Foundry #168 and Arcade Club #62 are merged on GitHub. satisfactory moved on while #31 waited, so it needs a rebase.
 +[Start rebase work order] → PRRebase
 +[See the floor] → FloorBoard
 -  if vis.a:
@@ -2004,7 +2004,7 @@ Changes from PullRequests (`-` removed, `+` added):
 +  for x in chosen:
 +    (aria-label: Typecheck passed, Tests passed, Lint passed, Preview passed)
 +    {{x.label}}
-+  All 4 gates passed on each one. They merge one at a time and each ships to production as it merges. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
++  All 4 gates passed on each one. They merge one at a time. If one can't merge, it stays open and the rest continue. You can't undo a merge from here.
 +  [Cancel] on keep
 +  [{{mergeLabel}}] → PullRequestsBulkDone
 ```
@@ -2229,7 +2229,7 @@ if saved:
 if ask:
   (role: dialog)
   Let bug fixes merge without you?
-  When all 4 gates pass, a bug-fix PR merges and ships without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
+  When all 4 gates pass, a bug-fix PR merges without you. You still see it on the floor, and any new error goes back to Intake. If a bug fix causes a regression, this turns off and you merge again. Projects set to always ask you are not affected.
   [Cancel] on keep
   [Turn on] on turnOn
 ```
@@ -2417,7 +2417,7 @@ Opens the Queue, on that row
 Opens Pull requests
 (aria-label: Just so you know)
 Just so you know
-[SF | Software Factory | Fairway: merged without you | #96 Fix TypeError reading 'holes'. Shipping now. |] → PRFix
+[SF | Software Factory | Fairway: merged without you | #96 Fix TypeError reading 'holes' |] → PRFix
 Opens the PR
 [SF | Software Factory | Foundry: shipped | WO-208: Faster workout list |] → FloorBoard
 Opens the floor
