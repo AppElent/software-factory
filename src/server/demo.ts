@@ -14,6 +14,8 @@ import type {
 	NewProjectRun,
 	Plan,
 	PullRequest,
+	SecurityAlertRead,
+	SecurityRead,
 	Stage,
 	ToolkitState,
 	VersionInfo,
@@ -170,6 +172,7 @@ interface ProjectSeed {
 	name: string;
 	toolkit?: Partial<ToolkitState>;
 	main?: Partial<MainBranchState>;
+	security?: { alerts?: SecurityAlertRead[]; setup?: Partial<SecurityRead["setup"]> };
 	missing?: boolean;
 	paused?: boolean;
 	noSentry?: boolean;
@@ -278,8 +281,8 @@ export function installDemo(store: Store) {
 		};
 		store.db
 			.prepare(
-				`INSERT INTO projects (slug, repo, name, url, is_private, local_path, paused, merging, sentry_project, sentry_skipped, default_branch, toolkit, main, pushed_at, added_at, read_at)
-				VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 0, 'main', ?, ?, ?, ?, ?)`,
+				`INSERT INTO projects (slug, repo, name, url, is_private, local_path, paused, merging, sentry_project, sentry_skipped, default_branch, toolkit, main, security, pushed_at, added_at, read_at)
+				VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 0, 'main', ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				p.slug,
@@ -292,6 +295,18 @@ export function installDemo(store: Store) {
 				p.noSentry ? null : p.slug,
 				JSON.stringify({ status: "current", behindDays: 0, changed: 0, ...p.toolkit }),
 				JSON.stringify(main),
+				// Set up and clear unless a scenario says otherwise.
+				JSON.stringify({
+					alerts: p.security?.alerts ?? [],
+					total: p.security?.alerts?.length ?? 0,
+					setup: {
+						alerts: true,
+						securityUpdates: true,
+						dependabotConfig: true,
+						branchProtected: true,
+						...p.security?.setup,
+					},
+				} satisfies SecurityRead),
 				new Date(now - HOUR).toISOString(),
 				new Date(now - 30 * DAY).toISOString(),
 				new Date(now - MIN).toISOString(),
@@ -1612,6 +1627,54 @@ export function installDemo(store: Store) {
 			});
 			healthy();
 		},
+		/** One project past a deadline, one with alerts under it, one with alerts switched off. */
+		security: () => {
+			const alert = (
+				number: number,
+				severity: SecurityAlertRead["severity"],
+				pkg: string,
+				days: number,
+				patched: string | null,
+			): SecurityAlertRead => ({
+				number,
+				severity,
+				package: pkg,
+				ecosystem: "npm",
+				summary: `${pkg} has a sample vulnerability`,
+				ghsaId: `GHSA-demo-${number}`,
+				patched,
+				manifest: "pnpm-lock.yaml",
+				createdAt: new Date(store.now().getTime() - days * DAY).toISOString(),
+			});
+			seedProject({
+				slug: "gather",
+				name: "Gather",
+				security: {
+					alerts: [
+						alert(3, "high", "node-forge", 12, "1.3.2"),
+						alert(5, "critical", "fast-uri", 2, "3.1.4"),
+						alert(7, "moderate", "uuid", 20, "11.1.1"),
+					],
+					setup: { branchProtected: false },
+				},
+			});
+			seedProject({
+				slug: "fairway",
+				name: "Fairway",
+				security: {
+					alerts: [alert(2, "moderate", "protobufjs", 4, "7.6.5")],
+					setup: { dependabotConfig: false },
+				},
+			});
+			seedProject({
+				slug: "labs",
+				name: "labs",
+				noSentry: true,
+				security: { setup: { alerts: false, securityUpdates: false, dependabotConfig: false } },
+			});
+			seedProject({ slug: "foundry", name: "Foundry" });
+			healthy();
+		},
 		// The same projects with a row needing you, so the Later rows open a pane and a sync can be blocked.
 		missing_folder_queue: () => {
 			SCENARIOS.missing_folder?.();
@@ -1638,6 +1701,19 @@ export function installDemo(store: Store) {
 				// A read finds nothing new, and keeps the seeded PRs. It still marks a just-added project as read.
 				store.db.prepare("UPDATE projects SET read_at = ? WHERE read_at IS NULL").run(store.iso());
 				return { ...answer, code: 0, stdout: '{"data":{}}', missing: false };
+			}
+			const turnOn =
+				cmd === "gh" && args[1] === "-X" && args[2] === "PUT"
+					? /^repos\/[^/]+\/([^/]+)\/(vulnerability-alerts|automated-security-fixes)$/.exec(args[3] ?? "")
+					: null;
+			if (turnOn) {
+				const key = turnOn[2] === "vulnerability-alerts" ? "alerts" : "securityUpdates";
+				store.db
+					.prepare(
+						`UPDATE projects SET security = json_set(security, '$.setup.${key}', json('true')) WHERE slug = ?`,
+					)
+					.run(turnOn[1] ?? "");
+				return { ...answer, code: 0, missing: false };
 			}
 			if (cmd === "gh" && args.join(" ").startsWith(`pr merge 31 -R ${OWNER}/satisfactory --squash`)) {
 				// The base moved while it waited: it stays open and needs a rebase.

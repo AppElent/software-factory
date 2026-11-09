@@ -15,8 +15,9 @@ import {
 	PageHeader,
 	SectionLabel,
 } from "../kit.tsx";
-import { useAction, useErrors, useProjects, useQueue, useShell } from "../queries.ts";
-import { ListSkeleton, NothingIn, openSummary, ProjectFilter } from "./prs.tsx";
+import { ProjectPicker, useChosenProjects, useChosenWords } from "../project-picker.tsx";
+import { useAction, useErrors, useQueue, useShell } from "../queries.ts";
+import { ListSkeleton, NothingIn, openSummary } from "./prs.tsx";
 
 /* ---------- parts the error page shares ---------- */
 
@@ -94,22 +95,21 @@ function ErrorRow({ e, checked, onToggle }: { e: ErrorItem; checked: boolean; on
 }
 
 export function ErrorsScreen() {
-	const { project, dismissed } = useSearch({ from: "/shell/errors" });
+	const { dismissed } = useSearch({ from: "/shell/errors" });
 	const navigate = useNavigate();
-	const q = useErrors(project);
+	const [chosenProjects, setChosenProjects] = useChosenProjects();
+	const chosenWords = useChosenWords();
+	const filtered = chosenProjects.length > 0;
+	const q = useErrors(chosenProjects);
 	const shell = useShell();
 	const queue = useQueue();
-	const projects = useProjects();
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [gone, setGone] = useState<Set<string>>(new Set());
 	const [note, setNote] = useState<{ text: string; ids: string[] } | null>(() =>
 		dismissed ? { text: "Dismissed 1 error.", ids: [dismissed] } : null,
 	);
 	const undoRef = useRef<HTMLButtonElement>(null);
-	const selectRef = useRef<HTMLSelectElement>(null);
-
-	const setProject = (slug: string | undefined) =>
-		void navigate({ to: "/errors", search: { project: slug } });
+	const pickerRef = useRef<HTMLButtonElement>(null);
 
 	const errors = (q.data?.errors ?? []).filter((e) => !gone.has(e.id));
 	const chosen = errors.filter((e) => selected.has(e.id));
@@ -133,8 +133,8 @@ export function ErrorsScreen() {
 		onSuccess: (_, ids) => {
 			setGone((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
 			setNote(null);
-			if (dismissed) void navigate({ to: "/errors", search: { project } });
-			selectRef.current?.focus();
+			if (dismissed) void navigate({ to: "/errors", search: {} });
+			pickerRef.current?.focus();
 		},
 	});
 	const start = useAction(
@@ -202,7 +202,7 @@ export function ErrorsScreen() {
 	const { checkedAt, quiet, withoutSentry } = q.data;
 	const checked = checkedAt ? `Checked ${agoWords(checkedAt)}.` : "";
 
-	if (errors.length === 0 && !project) {
+	if (errors.length === 0 && !filtered) {
 		return (
 			<Page>
 				<PageHeader title="Errors" summary="0 open" />
@@ -225,7 +225,6 @@ export function ErrorsScreen() {
 
 	const groups = new Map<string, ErrorItem[]>();
 	for (const e of errors) groups.set(e.projectName, [...(groups.get(e.projectName) ?? []), e]);
-	const projectName = projects.data?.find((p) => p.slug === project)?.name ?? project ?? "";
 	const coverage = [
 		quiet > 0 &&
 			(quiet === 1 ? "1 other project has no open errors." : `${quiet} other projects have no open errors.`),
@@ -243,7 +242,7 @@ export function ErrorsScreen() {
 				<PageHeader
 					title="Errors"
 					summary={openSummary(errors.length, groups.size)}
-					actions={<ProjectFilter value={project} onChange={setProject} selectRef={selectRef} />}
+					actions={<ProjectPicker triggerRef={pickerRef} />}
 				/>
 				{[...groups].map(([name, rows]) => (
 					<section key={name} aria-label={name} className="flex flex-col gap-1">
@@ -255,9 +254,9 @@ export function ErrorsScreen() {
 						))}
 					</section>
 				))}
-				{errors.length === 0 && <NothingIn name={projectName} onShowAll={() => setProject(undefined)} />}
+				{errors.length === 0 && <NothingIn name={chosenWords} onShowAll={() => setChosenProjects([])} />}
 				{notePanel}
-				{!project && coverage && <p className="m-0 text-meta text-text-muted">{coverage}</p>}
+				{!filtered && coverage && <p className="m-0 text-meta text-text-muted">{coverage}</p>}
 			</div>
 			{n > 0 && (
 				<div className="sticky bottom-4 z-10 mt-auto">

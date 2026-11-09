@@ -18,6 +18,7 @@ import {
 	Skeleton,
 	StatusLine,
 } from "../kit.tsx";
+import { ChosenNote, ProjectPicker, useChosenProjects } from "../project-picker.tsx";
 import { useAction, useHealth, useSettings } from "../queries.ts";
 
 /** Numbers show from here. */
@@ -165,7 +166,15 @@ function MergingCell({ row, onAsk }: { row: WorkTypeHealth; onAsk: () => void })
 	return <span className="text-text-muted">{row.runs < FEW_RUNS ? "Too few runs" : "Needs you"}</span>;
 }
 
-function ByWorkType({ health, settings }: { health: HealthResponse; settings: Settings | undefined }) {
+function ByWorkType({
+	health,
+	settings,
+	filtered,
+}: {
+	health: HealthResponse;
+	settings: Settings | undefined;
+	filtered: boolean;
+}) {
 	const [asking, setAsking] = useState<WorkType | null>(null);
 	const turnOn = useAction(
 		(type: WorkType) => {
@@ -184,6 +193,11 @@ function ByWorkType({ health, settings }: { health: HealthResponse; settings: Se
 	return (
 		<section aria-label="By work type" className="flex flex-col gap-2">
 			<SectionLabel>By work type</SectionLabel>
+			{filtered && (
+				<p className="m-0 text-meta text-text-muted">
+					Every project counts here, because merging without you is set per work type.
+				</p>
+			)}
 			<div className="overflow-x-auto">
 				<table className="w-full border-collapse">
 					<thead>
@@ -303,10 +317,12 @@ function Early({ health }: { health: HealthResponse }) {
 function Numbers({ health }: { health: HealthResponse }) {
 	const [tab, setTab] = useState<MetricKey>("shipped");
 	const settings = useSettings();
+	const [chosen] = useChosenProjects();
 	const all = metrics(health);
 	return (
 		<Page>
-			<PageHeader title="Health" summary="Last 14 days" />
+			<PageHeader title="Health" summary="Last 14 days" actions={<ProjectPicker />} />
+			<ChosenNote />
 			<div className="flex flex-wrap gap-2">
 				{(Object.keys(all) as MetricKey[]).map((key) => (
 					<button
@@ -321,13 +337,14 @@ function Numbers({ health }: { health: HealthResponse }) {
 				))}
 			</div>
 			<Chart metric={all[tab]} daily={health.daily} />
-			<ByWorkType health={health} settings={settings.data} />
+			<ByWorkType health={health} settings={settings.data} filtered={chosen.length > 0} />
 		</Page>
 	);
 }
 
 export function HealthScreen() {
-	const health = useHealth();
+	const [chosen] = useChosenProjects();
+	const health = useHealth(chosen);
 	if (health.data) {
 		return health.data.finished < EARLY_UNTIL ? (
 			<Early health={health.data} />

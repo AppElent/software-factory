@@ -18,6 +18,7 @@ import type {
 	ProjectDetail,
 	QueueItem,
 	QueueResponse,
+	SecurityCheck,
 	ShellResponse,
 	Stage,
 	StageCounts,
@@ -59,6 +60,7 @@ export function readShell(store: Store, engine: Engine, build: string): ShellRes
 			environments: store.envViews().filter((e) => e.health.state === "down").length,
 			automations: kvGet<{ items: unknown[] }>(store.db, "automations")?.items.length ?? 0,
 			projects: projects.length,
+			security: projects.filter((p) => p.security.status === "red").length,
 		},
 		agents: { working: limits.build, limit: limits.agents },
 		line: store.line(),
@@ -181,6 +183,7 @@ function readItems(store: Store): QueueItem[] {
 			}
 		}
 	}
+	items.push(...securityItems(store));
 
 	const SERVICE_NAMES: Record<string, string> = { sentry: "Sentry", eas: "EAS", infisical: "Infisical" };
 	const runs = store.db.prepare("SELECT id, json FROM new_projects").all() as Array<{
@@ -281,6 +284,51 @@ function downEnvironments(store: Store): QueueItem[] {
 		}));
 }
 
+const CHECK_WORDS: Record<SecurityCheck, string> = {
+	alerts: "Dependabot alerts",
+	securityUpdates: "security updates",
+	dependabotConfig: "dependabot.yml",
+	branchProtected: "branch protection",
+};
+
+/** Alerts past their deadline need you. A setup gap can wait. */
+function securityItems(store: Store): QueueItem[] {
+	return store.security().flatMap((p): QueueItem[] => {
+		const out: QueueItem[] = [];
+		const base = {
+			project: p.slug,
+			projectName: p.name,
+			users: 0,
+			href: `/security?select=${encodeURIComponent(p.slug)}`,
+		};
+		if (p.overdue) {
+			const overdue = p.alerts.filter((a) => a.overdue);
+			const worst = overdue[0]?.severity ?? "high";
+			out.push({
+				...base,
+				fingerprint: `security:${p.slug}`,
+				kind: "security",
+				title: `${p.overdue === 1 ? "1 security alert" : `${p.overdue} security alerts`} past the deadline`,
+				meta: `Worst is ${worst}`,
+				since: overdue.map((a) => a.dueAt ?? a.createdAt).sort()[0] ?? p.readAt ?? "",
+				security: { ...p, key: overdue.map((a) => a.number).join(",") },
+			});
+		}
+		if (p.missing.length) {
+			out.push({
+				...base,
+				fingerprint: `security-setup:${p.slug}`,
+				kind: "security_setup",
+				title: `Turn on ${p.missing.map((c) => CHECK_WORDS[c]).join(", ")}`,
+				meta: "Security setup",
+				since: p.readAt ?? "",
+				security: { ...p, key: p.missing.join(",") },
+			});
+		}
+		return out;
+	});
+}
+
 function isTriaged(store: Store, item: QueueItem, now: number) {
 	const rec = store.triageRecord(item.fingerprint);
 	if (!rec) return false;
@@ -288,6 +336,8 @@ function isTriaged(store: Store, item: QueueItem, now: number) {
 	if (item.main && rec.action === "dismiss" && rec.baselineRelease !== item.main.sha) return false;
 	// Dismissing an outage is about that outage. Going down again is news.
 	if (item.environment && rec.action === "dismiss" && rec.baselineRelease !== item.since) return false;
+	// Dismissing alerts is about those alerts. A new one past its deadline is news.
+	if (item.security && rec.action === "dismiss" && rec.baselineRelease !== item.security.key) return false;
 	const current = {
 		events: item.error?.events ?? 0,
 		users: item.error?.users ?? 0,
@@ -309,6 +359,7 @@ export function triageBaseline(store: Store, fingerprint: string) {
 			item?.error?.firstRelease ??
 			item?.main?.sha ??
 			item?.environment?.health.downSince ??
+			item?.security?.key ??
 			null,
 	};
 }
@@ -346,7 +397,7 @@ function readAllUntriaged(store: Store): QueueItem[] {
 			},
 		];
 	});
-	return [...errors, ...mains, ...downEnvironments(store)];
+	return [...errors, ...mains, ...downEnvironments(store), ...securityItems(store)];
 }
 
 export function readQueue(store: Store, engine: Engine): QueueResponse {
@@ -370,23 +421,25 @@ export function readQueue(store: Store, engine: Engine): QueueResponse {
 	};
 }
 
-export function readFloor(store: Store, engine: Engine, project?: string): FloorResponse {
+/** `projects` narrows the board to those projects. Empty means all. The line and its limits stay the whole factory's. */
+export function readFloor(store: Store, engine: Engine, projects: string[] = []): FloorResponse {
 	const all = store.workOrders();
-	const open = project ? all.filter((w) => w.project === project) : all;
+	const chosen = (slug: string) => projects.length === 0 || projects.includes(slug);
+	const open = all.filter((w) => chosen(w.project));
 	const columns = Object.fromEntries(STAGES.map((s) => [s, [] as WorkOrder[]])) as unknown as Record<
 		Stage,
 		WorkOrder[]
 	>;
 	for (const w of open) columns[w.stage].push(w);
 	const weekAgo = store.now().getTime() - 7 * 86_400_000;
-	const merged = store.workOrders("merged_at IS NOT NULL");
+	const merged = store.workOrders("merged_at IS NOT NULL").filter((w) => chosen(w.project));
 	const week = merged.filter((w) => w.mergedAt && Date.parse(w.mergedAt) >= weekAgo);
 	const firstTry = week.filter((w) => w.firstTry).length;
 	const limits = engine.limits();
 	// An untriaged error first seen after a change shipped to the same project is traced to that change.
 	const observeErrors = new Map<string, ErrorItem>();
 	const causedErrors: Record<number, number> = {};
-	const openErrors = store.errors(project).filter((e) => !e.triage);
+	const openErrors = store.errors().filter((e) => !e.triage && chosen(e.project));
 	for (const w of columns.Observe) {
 		if (!w.mergedAt) continue;
 		const shipped = Date.parse(w.mergedAt);
@@ -395,7 +448,6 @@ export function readFloor(store: Store, engine: Engine, project?: string): Floor
 		for (const e of caused) observeErrors.set(e.id, e);
 	}
 	return {
-		projects: store.projects().map((p) => ({ slug: p.slug, name: p.name })),
 		columns,
 		observeErrors: [...observeErrors.values()],
 		causedErrors,
@@ -436,14 +488,16 @@ export function readProjectRecord(store: Store, slug: string): ProjectDetail["la
 	};
 }
 
-export function readHealth(store: Store, days = 14): HealthResponse {
+/** `projects` narrows the daily numbers. Work types stay the whole record, because merging without you is per work type. */
+export function readHealth(store: Store, days = 14, projects: string[] = []): HealthResponse {
 	const { approvals } = store.settings();
-	const merged = store.workOrders("merged_at IS NOT NULL");
+	const all = store.workOrders("merged_at IS NOT NULL");
+	const merged = projects.length ? all.filter((w) => projects.includes(w.project)) : all;
 	const regressed = (w: WorkOrder) =>
 		(store.db.prepare("SELECT regressed FROM work_orders WHERE id = ?").get(w.id) as { regressed: number })
 			.regressed === 1;
 	const byType: WorkTypeHealth[] = WORK_TYPES.map((type: WorkType) => {
-		const runs = merged.filter((w) => w.type === type && !ownsNoPr(w.source.kind));
+		const runs = all.filter((w) => w.type === type && !ownsNoPr(w.source.kind));
 		const first = runs.filter((w) => w.firstTry).length;
 		const regressions = runs.filter(regressed).length;
 		return {
@@ -482,7 +536,7 @@ export function readHealth(store: Store, days = 14): HealthResponse {
 		(w) => (w.mergedAt ?? "") >= previousStart && (w.mergedAt ?? "") < (daily[0]?.day ?? ""),
 	);
 	return {
-		finished: merged.length,
+		finished: all.length,
 		byType,
 		daily,
 		window: {

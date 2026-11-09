@@ -15,3 +15,30 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 Element.prototype.scrollIntoView ??= () => {};
 Element.prototype.hasPointerCapture ??= () => false;
+
+// Node's own localStorage shadows jsdom's and is empty without a file, so pages get an in-memory one per test.
+class MemoryStorage implements Storage {
+	private map = new Map<string, string>();
+	get length() {
+		return this.map.size;
+	}
+	clear() {
+		this.map.clear();
+	}
+	getItem(key: string) {
+		return this.map.get(key) ?? null;
+	}
+	key(i: number) {
+		return [...this.map.keys()][i] ?? null;
+	}
+	removeItem(key: string) {
+		this.map.delete(key);
+	}
+	setItem(key: string, value: string) {
+		this.map.set(key, String(value));
+	}
+}
+const storage = new MemoryStorage();
+Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+afterEach(() => storage.clear());

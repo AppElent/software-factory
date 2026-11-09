@@ -7,6 +7,9 @@ import type {
 	Issue,
 	MainBranchState,
 	PullRequest,
+	SecurityAlertRead,
+	SecurityRead,
+	Severity,
 	ToolkitState,
 } from "../../shared/types.ts";
 import type { Cli } from "../cli.ts";
@@ -48,15 +51,68 @@ const Contexts = z
 	.optional();
 
 const Blob = z.object({ text: z.string().nullable().optional() }).nullable().optional();
+const Present = z.object({ id: z.string() }).nullable().optional();
+
+/** Without admin rights GitHub can answer null with an error. That reads as unknown, never as off. */
+const Rulesets = z
+	.object({
+		nodes: z.array(
+			z
+				.object({
+					enforcement: z.string(),
+					target: z.string().nullable().optional(),
+					conditions: z
+						.object({
+							refName: z
+								.object({ include: z.array(z.string()) })
+								.nullable()
+								.optional(),
+						})
+						.nullable()
+						.optional(),
+				})
+				.nullable(),
+		),
+	})
+	.nullable()
+	.optional();
+
+const Alerts = z
+	.object({
+		totalCount: z.number(),
+		nodes: z.array(
+			z
+				.object({
+					number: z.number(),
+					createdAt: z.string(),
+					vulnerableManifestPath: z.string().nullable().optional(),
+					securityVulnerability: z.object({
+						severity: z.string(),
+						package: z.object({ name: z.string(), ecosystem: z.string() }),
+						advisory: z.object({ ghsaId: z.string(), summary: z.string() }),
+						firstPatchedVersion: z.object({ identifier: z.string() }).nullable().optional(),
+					}),
+				})
+				.nullable(),
+		),
+	})
+	.nullable()
+	.optional();
 
 const RepoNode = z.object({
 	nameWithOwner: z.string(),
 	url: z.string(),
 	isPrivate: z.boolean(),
 	pushedAt: z.string().nullable(),
+	hasVulnerabilityAlertsEnabled: z.boolean().nullable().optional(),
+	vulnerabilityAlerts: Alerts,
+	rulesets: Rulesets,
+	dependabotYml: Present,
+	dependabotYaml: Present,
 	defaultBranchRef: z
 		.object({
 			name: z.string(),
+			branchProtectionRule: Present,
 			target: z.object({
 				oid: z.string(),
 				messageHeadline: z.string(),
@@ -156,6 +212,8 @@ export interface RepoRead {
 	prs: Array<Omit<PullRequest, "project" | "projectName" | "workOrderId" | "workType">>;
 	issues: IssueRead[];
 	devtoolsCommit: string | null;
+	/** Security updates come from a separate call, so they're read on their own clock. */
+	security: SecurityRead;
 }
 
 export interface GithubRead {
@@ -165,8 +223,15 @@ export interface GithubRead {
 }
 
 const FIELDS = `
-	nameWithOwner url isPrivate pushedAt
-	defaultBranchRef { name target { ... on Commit { oid messageHeadline committedDate statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
+	nameWithOwner url isPrivate pushedAt hasVulnerabilityAlertsEnabled
+	vulnerabilityAlerts(states: [OPEN], first: 100) { totalCount nodes {
+		number createdAt vulnerableManifestPath
+		securityVulnerability { severity package { name ecosystem } advisory { ghsaId summary } firstPatchedVersion { identifier } }
+	} }
+	rulesets(first: 20, includeParents: true) { nodes { enforcement target conditions { refName { include } } } }
+	dependabotYml: object(expression: "HEAD:.github/dependabot.yml") { id }
+	dependabotYaml: object(expression: "HEAD:.github/dependabot.yaml") { id }
+	defaultBranchRef { name branchProtectionRule { id } target { ... on Commit { oid messageHeadline committedDate statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
 	pullRequests(states: OPEN, first: 40, orderBy: { field: UPDATED_AT, direction: DESC }) { nodes {
 		number title url body isDraft mergeable mergeStateStatus additions deletions changedFiles headRefName isCrossRepository baseRefName createdAt updatedAt
 		commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 50) { nodes { ...checks } } } } } }
@@ -248,6 +313,80 @@ function readMain(
 	};
 }
 
+const SEVERITY: Record<string, Severity> = {
+	CRITICAL: "critical",
+	HIGH: "high",
+	MODERATE: "moderate",
+	LOW: "low",
+};
+
+function readSecurity(node: z.infer<typeof RepoNode>): SecurityRead {
+	const alerts = (node.vulnerabilityAlerts?.nodes ?? []).flatMap((a): SecurityAlertRead[] => {
+		const severity = a && SEVERITY[a.securityVulnerability.severity];
+		if (!a || !severity) return [];
+		const v = a.securityVulnerability;
+		return [
+			{
+				number: a.number,
+				severity,
+				package: v.package.name,
+				ecosystem: v.package.ecosystem.toLowerCase(),
+				summary: v.advisory.summary,
+				ghsaId: v.advisory.ghsaId,
+				patched: v.firstPatchedVersion?.identifier ?? null,
+				manifest: a.vulnerableManifestPath ?? null,
+				createdAt: a.createdAt,
+			},
+		];
+	});
+	const branch = node.defaultBranchRef?.name ?? "main";
+	const ruleCovers = (include: string[]) =>
+		include.some((r) => r === "~DEFAULT_BRANCH" || r === "~ALL" || r === `refs/heads/${branch}`);
+	const ruleset = node.rulesets?.nodes.some(
+		(r) =>
+			r?.enforcement === "ACTIVE" &&
+			r.target === "BRANCH" &&
+			ruleCovers(r.conditions?.refName?.include ?? []),
+	);
+	const protectedNow = !!node.defaultBranchRef?.branchProtectionRule || !!ruleset;
+	return {
+		alerts,
+		total: node.vulnerabilityAlerts?.totalCount ?? alerts.length,
+		setup: {
+			alerts: node.hasVulnerabilityAlertsEnabled ?? null,
+			securityUpdates: null,
+			dependabotConfig:
+				node.dependabotYml === undefined ? null : !!node.dependabotYml || !!node.dependabotYaml,
+			// Rulesets GitHub wouldn't list may still protect it.
+			branchProtected: protectedNow ? true : node.rulesets ? false : null,
+		},
+	};
+}
+
+const SecurityFixes = z.object({ enabled: z.boolean() });
+
+/** REST only, and one call per repo, so the poller asks at most every half hour. Null when GitHub won't say. */
+export async function readSecurityUpdates(cli: Cli, repo: string): Promise<boolean | null> {
+	const res = await cli("gh", ["api", `repos/${repo}/automated-security-fixes`]);
+	if (res.code !== 0) return null;
+	try {
+		const parsed = SecurityFixes.safeParse(JSON.parse(res.stdout));
+		return parsed.success ? parsed.data.enabled : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Turns on Dependabot alerts, then security updates, which need them. Each is one PUT. */
+export async function turnOnSecurity(cli: Cli, repo: string, what: Array<"alerts" | "securityUpdates">) {
+	const paths = { alerts: "vulnerability-alerts", securityUpdates: "automated-security-fixes" } as const;
+	for (const w of (["alerts", "securityUpdates"] as const).filter((x) => what.includes(x))) {
+		const res = await cli("gh", ["api", "-X", "PUT", `repos/${repo}/${paths[w]}`]);
+		if (res.code !== 0)
+			throw new GithubError(scrub(res.stderr.trim()) || `GitHub refused to turn on ${paths[w]}.`);
+	}
+}
+
 export const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 /** Reads every repo in one batched query per 10 repos. Throws GithubError on anything unusable. */
@@ -301,6 +440,7 @@ function toRepoRead(node: z.infer<typeof RepoNode>, now: number): RepoRead {
 		defaultBranch: node.defaultBranchRef?.name ?? "main",
 		main: node.defaultBranchRef ? readMain(node.defaultBranchRef.target) : null,
 		devtoolsCommit: devtoolsCommit(node.devtools?.text),
+		security: readSecurity(node),
 		issues: (node.issues?.nodes ?? []).flatMap((i) =>
 			i
 				? [

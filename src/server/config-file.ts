@@ -88,6 +88,12 @@ const SettingsSchema = z
 			.object({ events: byType(z.boolean()), onlyWhenAway: z.boolean().optional() })
 			.loose()
 			.optional(),
+		security: z
+			.object({
+				deadlines: z.record(z.string(), z.number().int().min(0).nullable()).optional(),
+			})
+			.loose()
+			.optional(),
 		cloneFolder: z.string().optional(),
 	})
 	.loose();

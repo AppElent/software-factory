@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Cli } from "../../src/server/cli.ts";
 import { scrub } from "../../src/server/cli.ts";
-import { cleanLog, GithubError, readRepos, readToolkit } from "../../src/server/connectors/github.ts";
+import {
+	cleanLog,
+	GithubError,
+	readRepos,
+	readSecurityUpdates,
+	readToolkit,
+	turnOnSecurity,
+} from "../../src/server/connectors/github.ts";
 import { parseDetail, readIssues, SentryError } from "../../src/server/connectors/sentry.ts";
 import { parseShow, t3Executor } from "../../src/server/executor/t3.ts";
 
@@ -67,6 +74,96 @@ describe("GitHub responses", () => {
 		};
 		await readRepos(spy, ["bad repo; rm -rf"], NOW);
 		expect(calls).toEqual([]);
+	});
+});
+
+describe("GitHub security", () => {
+	const withSecurity = (extra: Record<string, unknown>) => {
+		const json = JSON.parse(fixture("gh/repo-read.json"));
+		json.data.r0 = { ...json.data.r0, ...extra };
+		const cli: Cli = async () => ok(JSON.stringify(json));
+		return readRepos(cli, ["example-org/gather"], NOW).then((r) => r.repos[0]?.security);
+	};
+	const alert = (number: number, severity: string, patched: string | null = "1.2.4") => ({
+		number,
+		createdAt: "2026-11-01T00:00:00Z",
+		vulnerableManifestPath: "pnpm-lock.yaml",
+		securityVulnerability: {
+			severity,
+			package: { name: `pkg-${number}`, ecosystem: "NPM" },
+			advisory: { ghsaId: `GHSA-${number}`, summary: "Prototype pollution" },
+			firstPatchedVersion: patched ? { identifier: patched } : null,
+		},
+	});
+
+	it("reads open alerts with GitHub's severities and the setup checklist", async () => {
+		const security = await withSecurity({
+			hasVulnerabilityAlertsEnabled: true,
+			vulnerabilityAlerts: {
+				totalCount: 140,
+				nodes: [alert(1, "CRITICAL"), alert(2, "MODERATE", null), null],
+			},
+			dependabotYml: null,
+			dependabotYaml: { id: "x" },
+			rulesets: {
+				nodes: [
+					{
+						enforcement: "ACTIVE",
+						target: "BRANCH",
+						conditions: { refName: { include: ["~DEFAULT_BRANCH"] } },
+					},
+				],
+			},
+		});
+		expect(security?.total).toBe(140);
+		expect(security?.alerts.map((a) => [a.severity, a.package, a.ecosystem, a.patched])).toEqual([
+			["critical", "pkg-1", "npm", "1.2.4"],
+			["moderate", "pkg-2", "npm", null],
+		]);
+		expect(security?.setup).toEqual({
+			alerts: true,
+			securityUpdates: null,
+			dependabotConfig: true,
+			branchProtected: true,
+		});
+	});
+
+	it("reads off only when GitHub says so, and unknown when it won't answer", async () => {
+		const off = await withSecurity({
+			hasVulnerabilityAlertsEnabled: false,
+			dependabotYml: null,
+			dependabotYaml: null,
+			rulesets: {
+				nodes: [
+					{ enforcement: "DISABLED", target: "BRANCH", conditions: { refName: { include: ["~ALL"] } } },
+				],
+			},
+		});
+		expect(off?.setup).toMatchObject({ alerts: false, dependabotConfig: false, branchProtected: false });
+		const refused = await withSecurity({ vulnerabilityAlerts: null, rulesets: null });
+		expect(refused?.setup).toMatchObject({ alerts: null, dependabotConfig: null, branchProtected: null });
+		expect(refused?.alerts).toEqual([]);
+	});
+
+	it("reads security updates, and turns both on in order", async () => {
+		expect(await readSecurityUpdates(async () => ok('{"enabled":true,"paused":false}'), "a/b")).toBe(true);
+		expect(await readSecurityUpdates(async () => ok("", 1, "HTTP 403"), "a/b")).toBeNull();
+		const calls: string[] = [];
+		await turnOnSecurity(
+			async (_cmd, args) => {
+				calls.push(args.join(" "));
+				return ok("");
+			},
+			"a/b",
+			["securityUpdates", "alerts"],
+		);
+		expect(calls).toEqual([
+			"api -X PUT repos/a/b/vulnerability-alerts",
+			"api -X PUT repos/a/b/automated-security-fixes",
+		]);
+		await expect(
+			turnOnSecurity(async () => ok("", 1, "HTTP 403: Must have admin rights"), "a/b", ["alerts"]),
+		).rejects.toThrow("Must have admin rights");
 	});
 });
 

@@ -12,10 +12,16 @@ import type {
 	PullRequest,
 	QueueItem,
 	QueueKind,
+	SecurityAlert,
+	SecurityCheck,
+	SecurityRead,
+	SecuritySettings,
+	SecuritySummary,
+	Severity,
 	StartBlock,
 	WorkType,
 } from "./types.ts";
-import { GATE_NAMES } from "./types.ts";
+import { GATE_NAMES, SEVERITIES } from "./types.ts";
 
 /* ---------- never touch ---------- */
 
@@ -449,6 +455,59 @@ export function triageHides(
 	return true;
 }
 
+/* ---------- security ---------- */
+
+const DAY_MS = 86_400_000;
+
+/** Critical and high turn a project red as soon as they're open. Moderate and low never do. */
+export const DEFAULT_DEADLINES: SecuritySettings["deadlines"] = {
+	critical: 0,
+	high: 0,
+	moderate: null,
+	low: null,
+};
+
+export const SECURITY_CHECKS: SecurityCheck[] = [
+	"alerts",
+	"securityUpdates",
+	"dependabotConfig",
+	"branchProtected",
+];
+
+/** A project's alerts against the deadlines. Red is any alert past its deadline, amber any other open alert or setup gap. */
+export function securityOf(
+	read: SecurityRead | null,
+	deadlines: SecuritySettings["deadlines"],
+	now: number,
+	repoUrl: string,
+): SecuritySummary & { alerts: SecurityAlert[] } {
+	const counts = Object.fromEntries(SEVERITIES.map((s) => [s, 0])) as Record<Severity, number>;
+	if (!read) return { status: "unknown", total: 0, overdue: 0, counts, missing: [], alerts: [] };
+	const alerts = read.alerts.map((a): SecurityAlert => {
+		counts[a.severity] += 1;
+		const days = deadlines[a.severity];
+		const dueAt = days === null ? null : Date.parse(a.createdAt) + days * DAY_MS;
+		return {
+			...a,
+			url: `${repoUrl}/security/dependabot/${a.number}`,
+			overdue: dueAt !== null && now >= dueAt,
+			dueAt: dueAt === null ? null : new Date(dueAt).toISOString(),
+		};
+	});
+	const rank = (s: Severity) => SEVERITIES.indexOf(s);
+	alerts.sort(
+		(a, b) =>
+			Number(b.overdue) - Number(a.overdue) ||
+			rank(a.severity) - rank(b.severity) ||
+			Date.parse(a.createdAt) - Date.parse(b.createdAt),
+	);
+	const missing = SECURITY_CHECKS.filter((c) => read.setup[c] === false);
+	const overdue = alerts.filter((a) => a.overdue).length;
+	const total = Math.max(read.total, alerts.length);
+	const status = overdue ? "red" : total || missing.length ? "amber" : "green";
+	return { status, total, overdue, counts, missing, alerts };
+}
+
 /* ---------- ranking ---------- */
 
 const NEEDS_YOU_ORDER: QueueKind[] = [
@@ -460,10 +519,18 @@ const NEEDS_YOU_ORDER: QueueKind[] = [
 	"run_failed",
 	"new_project",
 	"red_main",
+	"security",
 	"failed_gates",
 	"ready_pr",
 ];
-const LATER_ORDER: QueueKind[] = ["env_down_later", "stale_pr", "rebase_pr", "toolkit", "tool"];
+const LATER_ORDER: QueueKind[] = [
+	"env_down_later",
+	"stale_pr",
+	"rebase_pr",
+	"toolkit",
+	"security_setup",
+	"tool",
+];
 
 export const isNeedsYou = (k: QueueKind) => NEEDS_YOU_ORDER.includes(k);
 

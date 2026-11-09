@@ -32,6 +32,7 @@ import {
 	Skeleton,
 	StatusLine,
 } from "../kit.tsx";
+import { ChosenNote, ProjectPicker, useChosenProjects } from "../project-picker.tsx";
 import { useAction, useEnvironments, useProject, useProjectEnvironments, useQueue } from "../queries.ts";
 
 const envKey = (e: Pick<EnvironmentView, "project" | "name">) => `${e.project}:${e.name}`;
@@ -67,7 +68,7 @@ function Errors({ e }: { e: EnvironmentView }) {
 	return (
 		<Link
 			to="/errors"
-			search={{ project: e.project }}
+			search={{ projects: e.project }}
 			className="lnk inline-flex items-center gap-1 font-mono text-data"
 		>
 			<Glyph kind="err" size={12} /> {e.errors}
@@ -77,7 +78,7 @@ function Errors({ e }: { e: EnvironmentView }) {
 
 function Issues({ e }: { e: EnvironmentView }) {
 	return (
-		<Link to="/issues" search={{ project: e.project }} className="lnk font-mono text-data">
+		<Link to="/issues" search={{ projects: e.project }} className="lnk font-mono text-data">
 			{e.issues}
 		</Link>
 	);
@@ -353,6 +354,7 @@ export function EnvironmentsScreen() {
 	const { select } = useSearch({ from: "/shell/environments" });
 	const navigate = useNavigate();
 	const q = useEnvironments();
+	const [chosen] = useChosenProjects();
 	if (q.isError && !q.data)
 		return (
 			<Page>
@@ -368,12 +370,17 @@ export function EnvironmentsScreen() {
 				<Skeleton width="100%" height={120} />
 			</Page>
 		);
-	const { projects, names, down, behind, checkedAt } = q.data;
+	const { names, checkedAt } = q.data;
+	const projects = q.data.projects.filter((p) => chosen.length === 0 || chosen.includes(p.slug));
 	const configured = projects.filter((p) => p.environments.length > 0);
+	const listed = configured.flatMap((p) => p.environments);
+	const down = listed.filter((e) => e.health.state === "down").length;
+	const behind = listed.filter((e) => (e.behind ?? 0) > 0).length;
 	if (configured.length === 0)
 		return (
 			<Page>
-				<PageHeader title="Environments" />
+				<PageHeader title="Environments" actions={<ProjectPicker />} />
+				<ChosenNote />
 				<div className="flex max-w-[560px] flex-col items-start gap-2 pt-8">
 					<h2 className="m-0 text-detail-title">No environments yet</h2>
 					<p className="m-0 text-text-muted">
@@ -398,14 +405,15 @@ export function EnvironmentsScreen() {
 	]
 		.filter(Boolean)
 		.join(", ");
-	const every = configured.flatMap((p) => p.environments);
+	const every = listed;
 	const current =
 		every.find((e) => envKey(e) === select) ?? every.find((e) => e.health.state === "down") ?? null;
 	const open = (e: EnvironmentView) =>
 		void navigate({ to: "/environments", search: { select: envKey(e) }, replace: true });
 	return (
 		<Page pane={current ? <FleetPane e={current} folder={current.folder} /> : undefined}>
-			<PageHeader title="Environments" summary={summary || "All up"} />
+			<PageHeader title="Environments" summary={summary || "All up"} actions={<ProjectPicker />} />
+			<ChosenNote />
 			<div className="overflow-x-auto">
 				<table className="w-full min-w-[560px] border-collapse">
 					<thead>

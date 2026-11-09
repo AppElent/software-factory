@@ -75,6 +75,7 @@ export function openDb(path: string): Db {
 	db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;");
 	db.exec(SCHEMA);
 	addColumn(db, "work_orders", "mode", "TEXT");
+	addColumn(db, "projects", "security", "TEXT");
 	return db;
 }
 

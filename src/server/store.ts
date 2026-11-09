@@ -6,11 +6,13 @@ import type { TriageRecord } from "../shared/rules.ts";
 import {
 	agentHoldsMerge,
 	branchIsntOurs,
+	DEFAULT_DEADLINES,
 	isRegression,
 	issueGroup,
 	issueLocked,
 	issueSignals,
 	noGates,
+	securityOf,
 	triageHides,
 } from "../shared/rules.ts";
 import type {
@@ -24,7 +26,10 @@ import type {
 	Mode,
 	NotificationSettings,
 	Project,
+	ProjectSecurity,
 	PullRequest,
+	SecurityRead,
+	SecuritySettings,
 	Settings,
 	SourceHealth,
 	SourceName,
@@ -129,6 +134,7 @@ export class Store {
 			agents?: Partial<AgentSettings>;
 			approvals?: Partial<ApprovalSettings>;
 			notifications?: Partial<NotificationSettings>;
+			security?: { deadlines?: Partial<SecuritySettings["deadlines"]> };
 			cloneFolder?: string;
 		};
 		const notifications = kvGet<Partial<NotificationSettings>>(this.db, "settings:notifications");
@@ -161,6 +167,7 @@ export class Store {
 				cloneFolder: cloneFolderHere(saved.cloneFolder ?? kvGet<string>(this.db, "settings:cloneFolder")),
 				neverTouch: readNeverTouch(this.configDir),
 			},
+			security: { deadlines: { ...DEFAULT_DEADLINES, ...saved.security?.deadlines } },
 		};
 	}
 
@@ -168,6 +175,7 @@ export class Store {
 		agents?: AgentSettings;
 		approvals?: ApprovalSettings;
 		notifications?: Omit<NotificationSettings, "lastTest">;
+		security?: SecuritySettings;
 		cloneFolder?: string;
 	}): void {
 		this.file.update((data) => ({
@@ -264,19 +272,25 @@ export class Store {
 
 	/** Every project read goes through here, so a new never-touch rule takes effect everywhere at once. */
 	projects(): Project[] {
+		const { deadlines } = this.settings().security;
+		return this.projectRows().map((row) => this.toProject(row, deadlines));
+	}
+
+	private projectRows(): ProjectRow[] {
 		const rows = this.db
 			.prepare("SELECT * FROM projects WHERE removed_at IS NULL ORDER BY name COLLATE NOCASE")
 			.all() as unknown as ProjectRow[];
 		const candidates = rows.map((r) => ({ row: r, repo: r.repo, path: r.local_path }));
-		const { kept } = filterNeverTouch(this.neverTouch(), candidates);
-		return kept.map(({ row }) => this.toProject(row));
+		return filterNeverTouch(this.neverTouch(), candidates).kept.map(({ row }) => row);
 	}
 
 	project(slug: string): Project | null {
 		return this.projects().find((p) => p.slug === slug) ?? null;
 	}
 
-	private toProject(r: ProjectRow): Project {
+	private toProject(r: ProjectRow, deadlines: SecuritySettings["deadlines"]): Project {
+		const read = r.security ? (JSON.parse(r.security) as SecurityRead) : null;
+		const { alerts: _, ...security } = securityOf(read, deadlines, this.now().getTime(), r.url);
 		const count = (sql: string, ...args: (string | number)[]) =>
 			(this.db.prepare(sql).get(...args) as { n: number }).n;
 		const main = r.main ? JSON.parse(r.main) : null;
@@ -311,7 +325,30 @@ export class Store {
 				r.slug,
 			),
 			redMain: main?.state === "red",
+			security,
 		};
+	}
+
+	/** Every project's alerts and setup. */
+	security(): ProjectSecurity[] {
+		const { deadlines } = this.settings().security;
+		return this.projectRows().map((r) => {
+			const read = r.security ? (JSON.parse(r.security) as SecurityRead) : null;
+			return {
+				...securityOf(read, deadlines, this.now().getTime(), r.url),
+				slug: r.slug,
+				name: r.name,
+				repo: r.repo,
+				url: r.url,
+				setup: read?.setup ?? {
+					alerts: null,
+					securityUpdates: null,
+					dependabotConfig: null,
+					branchProtected: null,
+				},
+				readAt: read ? r.read_at : null,
+			};
+		});
 	}
 
 	main(slug: string) {
@@ -744,6 +781,7 @@ export interface ProjectRow {
 	default_branch: string;
 	toolkit: string;
 	main: string | null;
+	security: string | null;
 	pushed_at: string | null;
 	added_at: string;
 	read_at: string | null;

@@ -152,6 +152,77 @@ export interface ToolkitState {
 	changed: number;
 }
 
+export const SEVERITIES = ["critical", "high", "moderate", "low"] as const;
+/** GitHub's words for how bad an advisory is. */
+export type Severity = (typeof SEVERITIES)[number];
+
+/** One open Dependabot alert, as GitHub has it. */
+export interface SecurityAlertRead {
+	number: number;
+	severity: Severity;
+	package: string;
+	ecosystem: string;
+	summary: string;
+	ghsaId: string;
+	/** The first version without it. Null when no fix exists yet. */
+	patched: string | null;
+	manifest: string | null;
+	createdAt: string;
+}
+
+export interface SecurityAlert extends SecurityAlertRead {
+	url: string;
+	/** Open longer than its severity's deadline allows. */
+	overdue: boolean;
+	/** When its deadline passes, or null when its severity has none. */
+	dueAt: string | null;
+}
+
+/** The setup checklist. Null means GitHub didn't say, usually for lack of admin rights. */
+export interface SecuritySetup {
+	alerts: boolean | null;
+	securityUpdates: boolean | null;
+	dependabotConfig: boolean | null;
+	branchProtected: boolean | null;
+}
+
+export type SecurityCheck = keyof SecuritySetup;
+
+/** What a GitHub read keeps. The status is worked out on reading back, so a new deadline applies at once. */
+export interface SecurityRead {
+	alerts: SecurityAlertRead[];
+	/** Open alerts on GitHub. Only the first 100 are read. */
+	total: number;
+	setup: SecuritySetup;
+}
+
+/** `red`: an alert past its deadline. `amber`: open alerts or a setup gap. `unknown`: not read yet. */
+export type SecurityStatus = "red" | "amber" | "green" | "unknown";
+
+export interface SecuritySummary {
+	status: SecurityStatus;
+	total: number;
+	overdue: number;
+	counts: Record<Severity, number>;
+	/** Checklist items that are off. Unknown ones aren't counted. */
+	missing: SecurityCheck[];
+}
+
+export interface ProjectSecurity extends SecuritySummary {
+	slug: string;
+	name: string;
+	repo: string;
+	url: string;
+	setup: SecuritySetup;
+	alerts: SecurityAlert[];
+	readAt: string | null;
+}
+
+export interface SecurityResponse {
+	projects: ProjectSecurity[];
+	deadlines: SecuritySettings["deadlines"];
+}
+
 export interface Project {
 	slug: string;
 	repo: string;
@@ -175,6 +246,7 @@ export interface Project {
 	openErrors: number;
 	openWorkOrders: number;
 	redMain: boolean;
+	security: SecuritySummary;
 }
 
 export type CheckBucket = "pass" | "fail" | "running" | "skipped";
@@ -296,6 +368,8 @@ export type QueueKind =
 	| "stale_pr"
 	| "rebase_pr"
 	| "toolkit"
+	| "security"
+	| "security_setup"
 	| "tool"
 	| "waiting_in_t3"
 	| "run_failed"
@@ -316,6 +390,8 @@ export interface QueueItem {
 	pr?: PullRequest;
 	main?: MainBranchState & { blocks: number };
 	toolkit?: ToolkitState;
+	/** `key` names what's wrong, so a dismissal holds until something new is. */
+	security?: SecuritySummary & { key: string };
 	tool?: { name: string; fix: string | null };
 	newProject?: { id: number; step: NewProjectStep };
 	environment?: EnvironmentView;
@@ -459,8 +535,6 @@ export interface EnvironmentsResponse {
 	projects: Array<{ slug: string; name: string; environments: EnvironmentView[] }>;
 	/** Column order for the fleet: production last. */
 	names: string[];
-	down: number;
-	behind: number;
 	checkedAt: string | null;
 }
 
@@ -555,6 +629,7 @@ export interface ShellResponse {
 		environments: number;
 		automations: number;
 		projects: number;
+		security: number;
 	};
 	agents: { working: number; limit: number };
 	line: { stopped: boolean; stoppedAt: string | null };
@@ -564,7 +639,6 @@ export interface ShellResponse {
 }
 
 export interface FloorResponse {
-	projects: Array<{ slug: string; name: string }>;
 	columns: Record<Stage, WorkOrder[]>;
 	/** Errors first seen after a work order in Observe shipped to the same project. */
 	observeErrors: ErrorItem[];
@@ -670,11 +744,17 @@ export interface ProjectSettings {
 	neverTouch: string[];
 }
 
+/** Days an open alert may stay open before it turns its project red. Null never does. */
+export interface SecuritySettings {
+	deadlines: Record<Severity, number | null>;
+}
+
 export interface Settings {
 	agents: AgentSettings;
 	approvals: ApprovalSettings;
 	notifications: NotificationSettings;
 	projects: ProjectSettings;
+	security: SecuritySettings;
 }
 
 export interface ToolStatus {

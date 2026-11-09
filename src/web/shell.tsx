@@ -26,6 +26,7 @@ import {
 	Glyph,
 	InlineError,
 } from "./kit.tsx";
+import { useRestoreChosenProjects } from "./project-picker.tsx";
 import {
 	useAction,
 	useErrors,
@@ -136,6 +137,7 @@ const GO: Record<string, string> = {
 	i: "/issues",
 	e: "/errors",
 	v: "/environments",
+	x: "/security",
 	o: "/projects",
 	u: "/automations",
 	y: "/improve",
@@ -188,6 +190,7 @@ const NAV: Array<{ label: string; to: string; count?: keyof ShellResponse["count
 	{ label: "Issues", to: "/issues", count: "issues" },
 	{ label: "Errors", to: "/errors", count: "errors" },
 	{ label: "Environments", to: "/environments", count: "environments" },
+	{ label: "Security", to: "/security", count: "security" },
 	{ label: "Projects", to: "/projects", count: "projects" },
 	{ label: "Automations", to: "/automations", count: "automations" },
 	{ label: "Health", to: "/health" },
@@ -208,6 +211,7 @@ function statusLines(data: ShellResponse): [string, string[]] {
 }
 
 export function ShellOutlet() {
+	useRestoreChosenProjects();
 	const shell = useShell();
 	const stale = useSyncExternalStore(connection.subscribe, connection.staleBuild);
 	const location = useLocation();
@@ -727,6 +731,7 @@ function CommandMenu() {
 		["Issues", "/issues", "g i"],
 		["Errors", "/errors", "g e"],
 		["Environments", "/environments", "g v"],
+		["Security", "/security", "g x"],
 		["Projects", "/projects", "g o"],
 		["Automations", "/automations", "g u"],
 		["Health", "/health", "g h"],

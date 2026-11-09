@@ -25,7 +25,7 @@ describe("errors list", () => {
 
 	it("filter: nothing open in a project, with the way back", async () => {
 		const user = userEvent.setup();
-		const h = await renderApp("/errors?project=labs", "errors_list");
+		const h = await renderApp("/errors?projects=labs", "errors_list");
 		expect(await screen.findByText("Nothing open in labs.")).toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Show all projects" }));
 		await waitFor(() => expect(h.router.state.location.search).toEqual({}));

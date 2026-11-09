@@ -1,4 +1,10 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import {
+	createRootRoute,
+	createRoute,
+	createRouter,
+	redirect,
+	retainSearchParams,
+} from "@tanstack/react-router";
 import { z } from "zod";
 import { AutomationsScreen } from "./screens/automations.tsx";
 import { EnvironmentsScreen, ProjectEnvironmentsScreen } from "./screens/environments.tsx";
@@ -15,20 +21,28 @@ import { ProjectDetailScreen } from "./screens/project-detail.tsx";
 import { ProjectsScreen } from "./screens/projects.tsx";
 import { PullRequestsScreen } from "./screens/prs.tsx";
 import { QueueScreen } from "./screens/queue.tsx";
+import { SecurityScreen } from "./screens/security.tsx";
 import { SettingsScreen } from "./screens/settings.tsx";
 import { WelcomeScreen } from "./screens/welcome.tsx";
 import { WorkOrderScreen } from "./screens/work-order.tsx";
 import { Root, SetupOutlet, ShellOutlet } from "./shell.tsx";
 
-/** Search params every route shares: the new work order dialog can open over any page. */
+/**
+ * Search params every route shares: the new work order dialog can open over any page, and `projects` is the
+ * project choice, which every link carries along.
+ */
 const rootSearch = z.object({
 	new: z.literal("work-order").optional(),
 	newProject: z.string().optional(),
 	newText: z.string().optional(),
+	projects: z.string().optional(),
 });
-const projectFilter = z.object({ project: z.string().optional() });
 
-const rootRoute = createRootRoute({ component: Root, validateSearch: rootSearch });
+const rootRoute = createRootRoute({
+	component: Root,
+	validateSearch: rootSearch,
+	search: { middlewares: [retainSearchParams(["projects"])] },
+});
 
 const shell = createRoute({ getParentRoute: () => rootRoute, id: "shell", component: ShellOutlet });
 const setup = createRoute({ getParentRoute: () => rootRoute, id: "setup", component: SetupOutlet });
@@ -43,13 +57,11 @@ const floor = createRoute({
 	getParentRoute: () => shell,
 	path: "/floor",
 	component: FloorScreen,
-	validateSearch: projectFilter,
 });
 const prs = createRoute({
 	getParentRoute: () => shell,
 	path: "/prs",
 	component: PullRequestsScreen,
-	validateSearch: projectFilter,
 });
 const prReview = createRoute({
 	getParentRoute: () => shell,
@@ -60,13 +72,13 @@ const issues = createRoute({
 	getParentRoute: () => shell,
 	path: "/issues",
 	component: IssuesScreen,
-	validateSearch: projectFilter.extend({ select: z.string().optional() }),
+	validateSearch: z.object({ select: z.string().optional() }),
 });
 const errors = createRoute({
 	getParentRoute: () => shell,
 	path: "/errors",
 	component: ErrorsScreen,
-	validateSearch: projectFilter.extend({ dismissed: z.string().optional() }),
+	validateSearch: z.object({ dismissed: z.string().optional() }),
 });
 const errorDetail = createRoute({
 	getParentRoute: () => shell,
@@ -107,6 +119,12 @@ const projectDetail = createRoute({
 	component: ProjectDetailScreen,
 });
 const health = createRoute({ getParentRoute: () => shell, path: "/health", component: HealthScreen });
+const security = createRoute({
+	getParentRoute: () => shell,
+	path: "/security",
+	component: SecurityScreen,
+	validateSearch: z.object({ select: z.string().optional() }),
+});
 const settingsIndex = createRoute({
 	getParentRoute: () => shell,
 	path: "/settings",
@@ -154,6 +172,7 @@ export const routeTree = rootRoute.addChildren([
 		projects,
 		projectDetail,
 		health,
+		security,
 		settingsIndex,
 		settings,
 		samples,
