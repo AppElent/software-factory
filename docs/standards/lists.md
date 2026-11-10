@@ -2,7 +2,7 @@
 type: standard
 kind: pattern
 description: Read when adding row actions, selection, or section menus to a list.
-version: 1.0.2
+version: 1.0.3
 applies_to: [web, mobile]
 ---
 
@@ -17,14 +17,6 @@ Every row action is discoverable without gestures, and bulk work uses an explici
 - When a section owns actions, its labelled heading can open the menu. Preserve a clear disclosure affordance and accessible name. Empty sections only expose applicable actions. Screens with editable text rows need a gesture implementation that preserves caret, selection, focus, and keyboard behavior.
 - Match the primary action to the task: a review row may open details, while a logging row opens an editor. Product behavior owns that choice, action inventory, and consequences. A redesign retains existing actions unless their removal is explicitly agreed.
 
-## Implementation
-
-A nutrition diary was the originating example; its domain actions and platform adapters remain app-owned.
-
 ## Verify
 
 - Tap, swipe, context menu, selection, keyboard/screen-reader access, large text, empty groups, and action failures.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.

@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read when adding a workspace package, moving top-level folders, or wiring web, Convex, and mobile to shared code.
-version: 1.0.0
+version: 1.0.1
 applies_to: [web, mobile, backend]
 ---
 
@@ -11,8 +11,6 @@ applies_to: [web, mobile, backend]
 One repository holds the web app, the Convex backend, the Expo app, and the code they share, in the same places in every app.
 
 ## Rules
-
-Rules are required unless marked **Default** (replaceable with a recorded exception).
 
 - The web app is the repository root: `src/`, `vite.config.ts`, `wrangler.jsonc`, `public/`. `convex/` sits next to it. The Expo app is `apps/mobile`; shared code is `packages/core`. Toolkit and app scripts live in `scripts/`, docs in `docs/`, and `env.manifest.ts` and `appelent.json` at the root.
 - `pnpm-workspace.yaml` lists `apps/*` and `packages/*`; the root package is the web app.
@@ -58,8 +56,4 @@ A built core (tsup to `dist/` with a `react-native` condition pointing at `src/`
 
 ## Migration
 
-Existing apps keep their current names and folders. Move a deep `convex/_generated` import to the `api.ts` module when touching the file. Switching a built core to raw `.ts` subpaths is a separate change: remove the build, point `exports` at `src/`, and drop the build step from scripts and CI in the same PR.
-
-## Exceptions
-
-Record in `CODING_STANDARDS.md`: rule, scope, replacement, reason.
+Existing apps keep their names and folders; move a deep `convex/_generated` import to `api.ts` when touching the file, and switch a built core to raw `.ts` subpaths (remove the build, point `exports` at `src/`, drop the build step from scripts and CI) in one dedicated PR.

@@ -2,7 +2,7 @@
 type: standard
 kind: capability
 description: Read when adding or changing how users report a problem from inside the app.
-version: 2.0.0
+version: 2.0.1
 applies_to: [web, mobile]
 ---
 
@@ -36,11 +36,3 @@ Screenshot, replay, and attachment detail: [Sentry setup](sentry-monitoring/setu
 - Unit test: the feedback processor redacts a secret in the message, and leaves non-feedback events to the error hooks.
 - On a release-test build: shake opens the form, a report with a screenshot arrives in Sentry with environment, release, and user, and without name or email fields.
 - Switching language changes the form copy.
-
-## Migration
-
-Replaces the GitHub-issue reporter (`features/issue-reporter`). Remove its server endpoint, `GITHUB_ISSUES_TOKEN`/`GITHUB_ISSUES_REPOSITORY` configuration, and form after the Sentry flow is verified. Keep the existing Settings route and copy where they fit.
-
-## Exceptions
-
-Record in `CODING_STANDARDS.md` or `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.

@@ -1,3 +1,9 @@
+// Optional starter for custom release tooling. Fails closed unless profile,
+// environment, and channel match the expected build and the caller supplies
+// the resolved runtime fingerprint/version of the installed native binary. A
+// fingerprint policy string ("fingerprint") is not a resolved fingerprint. It
+// does not query EAS, compute a fingerprint, or run any update command; the
+// publish wrapper (../templates/publish-update.mjs) covers the normal flow.
 export type NativeOtaSelection = {
 	profile: string;
 	environment: string;

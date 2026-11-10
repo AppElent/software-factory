@@ -2,7 +2,7 @@
 type: standard
 kind: pattern
 description: Read when entering or adjusting a numeric value.
-version: 1.0.2
+version: 1.0.3
 applies_to: [web, mobile]
 ---
 
@@ -20,15 +20,7 @@ Numbers are edited inline, parsed separately from their text, and validated at a
   - **Replace on focus:** for rapidly replacing an existing value, show the previous value as a placeholder; the first input replaces it. Leaving untouched or cleared restores the previous value. Removal is a separate action. Unsuitable when empty itself must be saved.
   - **Quantity adjustment:** combine direct entry with useful increments and optional unit/serving selection. Keep conversion and remembered amounts domain-owned.
 
-## Implementation
-
-These patterns came from an app's inline number row and quantity editor. They are examples, not proof that every variant or locale passes.
-
 ## Verify
 
 - Decimal separators, paste, zero/empty/invalid values, bounds, precision, focus/blur without typing, clear, keyboard dismissal, larger text, and screen-reader label/value/unit.
 - A failed save preserves input.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.

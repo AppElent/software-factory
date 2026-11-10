@@ -1,4 +1,18 @@
 // Starter for the `retention` flavor. Copied code becomes project-owned.
+//
+// Copy into the app's client query folder; screens import query hooks from it.
+// Wrap the authenticated subtree (below the auth gate) with `QueryCacheProvider`:
+// - `account`: the current account id. The provider is keyed by it, so an
+//   account change disposes every retained subscription.
+// - `confirmedAccount`: the current result of the app's live backend
+//   viewer/account query, read outside this provider with the raw `convex/react`
+//   hook inside the app-owned query boundary, and `"skip"` until Convex
+//   authenticates. The backend derives it from `ctx.auth` in the same account
+//   vocabulary as `account` and never echoes a caller-selected account. Never
+//   pass a disk copy or the local auth identity; a stale previous-account result
+//   fails the match. Handle identity-query errors with the app's error boundary.
+// - `fallback`: the app's auth loading/recovery UI, shown until the identities
+//   match.
 import {
 	ConvexQueryCacheProvider,
 	useQueries,

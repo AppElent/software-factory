@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read when setting up or changing repository, package-manager, formatter, type, test, or CI configuration, or when installing or updating the toolkit.
-version: 2.2.0
+version: 2.3.0
 applies_to: [all]
 ---
 
@@ -12,65 +12,68 @@ Every JavaScript/TypeScript repository uses the same package manager, checks, an
 
 ## Rules
 
-Use pnpm, TypeScript, and Biome for new JavaScript/TypeScript applications. Keep versions and formatter options in configuration. Commit the lockfile; CI installs it frozen and runs the affected targets' lint/format, types, tests, and build checks. Existing target-specific test runners remain valid: the web baseline uses Vitest and the mobile baseline uses Jest with Expo support. Respect the configured dependency release-age policy and build-script approvals; security overrides need a demonstrated advisory and compatible resolution.
+- New JavaScript/TypeScript apps use pnpm, TypeScript, and Biome. Versions and formatter options live in configuration.
+- Commit the lockfile. CI installs it frozen and runs the affected targets' lint/format, types, tests, and build.
+- Existing test runners stay: Vitest on [web](web-baseline.md), Jest with Expo support on [mobile](mobile-baseline.md).
+- Layout, package names, and deployment identities are project-owned.
 
-### Dependencies and configuration
+### Dependencies
 
 - Start `pnpm-workspace.yaml` from the [template](baseline/templates/pnpm-workspace.yaml): `minimumReleaseAge: 4320`, an `allowBuilds` ledger where every entry carries its reason, `virtualStoreDirMaxLength: 60`, and `verifyDepsBeforeRun: install`. A cooldown exemption names its date and reason.
+- Approve build scripts only for native builds the dependency graph actually requires.
+- A security override needs a demonstrated advisory and a compatible resolution. Never copy overrides from another app.
 - Every dependency has an explicit version or semver range. Never `latest`, `*`, or a dist-tag; the lockfile pins what installs. Use `expo install` versions for SDK packages.
-- One TypeScript channel: `typescript` from npm on the 6.0 line (`~6.0.x`), with no npm aliases. Do not add `@typescript/native` or alias `typescript` to `@typescript/typescript6`. Toolkit checks such as `check-mobile-structure.mjs` use the TypeScript compiler API, and Expo and the Vite toolchain still target 6.0. Move every app to 7 in one coordinated change.
-- Every tsconfig keeps the root's strictness: `strict`, `noUnusedLocals`, `noUnusedParameters`, `noUncheckedSideEffectImports`. `noUncheckedIndexedAccess` is optional. It catches unguarded record and array lookups, but it also flags every index into a known-length tuple or a just-checked array, so existing code needs many non-null assertions. Enable it per app when the code base is ready, for every target at once.
+- One TypeScript channel: `typescript` from npm on the 6.0 line (`~6.0.x`, or an exact `6.0.x` pin), with no npm aliases. No `@typescript/native` and no alias to `@typescript/typescript6`: toolkit checks use the 6.0 compiler API, and Expo and Vite target 6.0. Move every app to 7 in one coordinated change.
+
+### Configuration
+
+- Every tsconfig keeps the root's strictness: `strict`, `noUnusedLocals`, `noUnusedParameters`, `noUncheckedSideEffectImports`. `noUncheckedIndexedAccess`: optional, per app, all targets at once.
+- New TypeScript configuration comes from the framework scaffold. Never overwrite a framework-specific tsconfig with a generic one.
 - Merge the [Biome fragment](baseline/templates/biome.fragment.json) into `biome.json`: tabs and double quotes; in `apps/mobile`, `noReactNativeRawText` (skipping the app's `AppText`) and `noRestrictedImports` that sends Convex query hooks through `src/convex/query-cache` ([Convex query caching](convex-query-caching.md)).
-- CI starts from the [shared workflow](baseline/templates/ci.yml): check, env:check, typecheck for web, core, and mobile, Vitest, mobile Jest when present, and build. An optional [lefthook pre-commit](baseline/templates/lefthook.yml) runs `biome check --staged`.
-
-Install and update the toolkit with `scripts/sync-devtools.mjs`; it needs Node 22.15+ and GitHub CLI authenticated for AppElent/developer-tools. Commit installed files and `.appelent/devtools.json`. Never edit toolkit-owned files in the project: change them upstream. Sync never runs downloaded code, provisions resources, enables a capability, or migrates application code. Review changed scripts before running them. Install skills separately with the skills CLI.
-
-Repository layout, package names, aliases, and deployment identities remain project-owned. These standards describe defaults, not an automatic migration of existing projects. Record deliberate exceptions with scope and reason in CODING_STANDARDS.md.
-
-## Implementation
-
-Run from the repository root. Read the installed general coding/design guidance and project decisions first.
-
-```sh
-node scripts/baseline.mjs --dry-run
-node scripts/baseline.mjs --apply
-node scripts/check-project.mjs
-```
-
-The script creates missing editor/LF settings. With package.json it pins the installed pnpm version (or `--pnpm-version 11.8.0`), adds missing scripts only for tools already declared, and creates starter pnpm/Biome configuration when absent. It installs no packages. A repository without package.json receives only text-file settings; no Node app is created.
-
-Existing scripts, versions, configuration, and unknown package fields survive. A non-pnpm lockfile blocks automatic setup: review `pnpm import`, install, and remove the old lockfile only as an explicit package-manager migration. Existing pnpm-workspace.yaml is preserved; inspect it for a release-age policy and approve only native build scripts actually required by the dependency graph. Do not copy vulnerability overrides from another app.
-
-Choose compatible Biome, TypeScript, and target-specific test dependencies in the application, then rerun setup. The script creates check/format for Biome, typecheck for TypeScript, and test for Vitest only when those dependencies exist. Existing test runners remain valid. New TypeScript configuration should come from the framework scaffold; do not overwrite a framework-specific tsconfig with a generic one.
-
-`--ci` creates a workflow only if required package roles exist. Existing ci.yml is preserved. Inspect other workflows before enabling it to avoid duplicate checks. The generated workflow assumes a public dependency graph; an app still using private packages must retain its existing registry authentication. Monorepos should apply root settings once and keep target-specific workflows at the correct working directory.
-
-For a new web or Expo app, create it with the supported upstream scaffold first, then follow [web](web-baseline.md) or [mobile](mobile-baseline.md). Those scripts include this shared setup; they are not independent package-manager policies.
+- CI starts from the [shared workflow](baseline/templates/ci.yml): check, env:check, typecheck for web, core, and mobile, Vitest, mobile Jest when present, and build. The job is named `check`, the status check a `main` ruleset requires ([deployments](deployments.md)). Monorepos apply root settings once and run target-specific workflows in the target's working directory. An optional [lefthook pre-commit](baseline/templates/lefthook.yml) runs `biome check --staged`.
 
 ### Toolkit
 
-```sh
-node scripts/sync-devtools.mjs --dry-run   # preview upstream changes
-node scripts/sync-devtools.mjs             # install or update everything
-node scripts/sync-devtools.mjs --check     # offline drift check
-npx skills add https://github.com/AppElent/developer-tools/tree/main/skills --skill '*' -a codex claude-code -g
-npx skills update
-```
+- Install and update the toolkit with `scripts/sync-devtools.mjs` (Node 22.15+, GitHub CLI authenticated for AppElent/developer-tools). Commit installed files and `.appelent/devtools.json`.
+- Never edit toolkit-owned files in the project: change them upstream.
+- Sync never runs downloaded code, provisions resources, enables a capability, or migrates application code. Review changed scripts before running them.
+- After an update, apply the migration notes of changed standards you use, then run the app's checks.
+- Install skills separately with the skills CLI.
 
-Copy a reviewed `scripts/sync-devtools.mjs` once to bootstrap; it updates itself, and the new version runs on the next invocation. Updates resolve `main` once and fetch every file from that commit. After an update, read the migration notes of changed standards you use, apply them to the app, and run its checks: syncing a standard is not proof of migration. Options, conflicts, interruption recovery, and upgrades from earlier updaters: [toolkit sync detail](baseline/toolkit.md).
+## Implementation
+
+Run from the repository root.
+
+1. For a new web or Expo app, create it with the upstream scaffold, then follow [web](web-baseline.md) or [mobile](mobile-baseline.md); their scripts include this shared setup.
+2. Install compatible Biome, TypeScript, and test dependencies first; setup adds scripts only for declared tools.
+3. Run setup. Its header comment (`scripts/baseline.mjs`) lists what it creates and preserves.
+
+   ```sh
+   node scripts/baseline.mjs --dry-run
+   node scripts/baseline.mjs --apply
+   node scripts/check-project.mjs
+   ```
+
+   A non-pnpm lockfile blocks setup: review `pnpm import`, install, and remove the old lockfile only as an explicit package-manager migration.
+4. `--ci` adds a workflow only when the required package scripts exist, and keeps an existing `ci.yml`. Inspect other workflows first to avoid duplicate checks.
+5. Install or update the toolkit. Copy a reviewed `scripts/sync-devtools.mjs` once to bootstrap; it updates itself. Options, conflicts, interruption recovery, and upgrades from earlier updaters: [toolkit sync detail](baseline/toolkit.md).
+
+   ```sh
+   node scripts/sync-devtools.mjs --dry-run   # preview upstream changes
+   node scripts/sync-devtools.mjs             # install or update everything
+   node scripts/sync-devtools.mjs --check     # offline drift check
+   npx skills add https://github.com/AppElent/developer-tools/tree/main/skills --skill '*' -a codex claude-code -g
+   npx skills update
+   ```
 
 ## Verify
 
-Setup output becomes app-owned. No capability catalog, adoption version, or permanent recipe receipt is added. Plans list paths and manual review items without dumping existing config values. Writes preflight expected contents and preserve symlink boundaries. They are individually atomic, not one transaction: after interruption inspect the diff and rerun; matching files are retained. A stale .appelent/baseline.lock requires verifying no setup process remains before manual removal.
-
-`node scripts/sync-devtools.mjs --check` passes. Run the actual install, check, typecheck, test, and build roles. A successful setup command proves configuration writes only. `check-project.mjs` reads metadata and routing files without executing app code, reading dotenv values, or contacting providers.
+- `node scripts/sync-devtools.mjs --check` passes.
+- `node scripts/check-project.mjs` passes with no warnings. It reads package, CI, Wrangler, and routing metadata only: no app code, dotenv values, or provider calls. Besides routing files, it warns on `*`, empty, and dist-tag ranges (a `*` peer dependency is fine), npm aliases, `@typescript/native`, a `typescript` range off the 6.0 line, a CI workflow without a block-style `check` job or whose `check` job sets `name:` or a `strategy`, Wrangler environments other than `dev`, `staging`, and `pr`, and a `wrangler.toml`. Once it is clean, CI's `check` job runs `node scripts/check-project.mjs --strict`, which fails on warnings, so new drift blocks the pull request.
+- Install, check, typecheck, test, and build pass for every target.
 
 ## Migration
 
+From 2.2: rename the CI gate job to `check` and update any ruleset or factory setting that names the old id. Run `node scripts/check-project.mjs` and fix its new warnings, or record each one as an exception; add `node scripts/check-project.mjs --strict` to the `check` job only once no warnings remain. `--strict` does not read recorded exceptions, so leave it out while any exist.
+
 From 2.1: compare `pnpm-workspace.yaml`, `biome.json`, and CI with the templates and add what is missing. Replace `latest` ranges with the installed versions. Add the root's strictness flags to `apps/mobile/tsconfig.json` and fix what they report. Record existing differences, such as another formatter style or an aliased TypeScript, as exceptions until they are migrated.
-
-Replace `appelent recipe ... baseline.config` with focused baseline script invocations. Preserve prior recipe receipts and feature records as historical evidence until project migration is reviewed. Do not infer that old numbered steps are all complete.
-
-## Exceptions
-
-Record in `CODING_STANDARDS.md`: rule, scope, replacement, reason.

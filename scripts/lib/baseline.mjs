@@ -76,13 +76,13 @@ export async function planBaseline(kind, options = {}) {
     if (kind === 'mobile') {
       if (!dependencies.expo || !dependencies['expo-router']) throw new Error('Mobile baseline requires an existing Expo Router scaffold; run it at the app target root.');
       script('start', 'expo start --dev-client'); script('ios', 'expo run:ios'); script('android', 'expo run:android');
-      await create('eas.json', json({ cli: { appVersionSource: 'remote' }, build: { development: { developmentClient: true, distribution: 'internal' }, preview: { distribution: 'internal' }, production: { autoIncrement: true } } }));
+      await create('eas.json', json({ cli: { appVersionSource: 'remote' }, build: { development: { developmentClient: true, distribution: 'internal' }, preview: { channel: 'preview' }, 'preview-internal': { extends: 'preview', distribution: 'internal' }, production: { autoIncrement: true } } }));
       notes.push('Preserved app identifiers, routes, SDK versions, and native dependencies. Install expo-dev-client before using start. Build/device acceptance and OTA compatibility remain explicit.');
     }
     if (options.ci) {
       const roles = kind === 'mobile' ? ['check', 'typecheck', 'test'] : ['check', 'typecheck', 'test', 'build'];
       if (roles.some(role => !pkg.scripts[role])) throw new Error(`CI requires declared scripts: ${roles.join(', ')}`);
-      await create('.github/workflows/ci.yml', `name: CI\non: [push, pull_request]\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@v4\n      - uses: pnpm/action-setup@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n          cache: pnpm\n      - run: pnpm install --frozen-lockfile\n${roles.map(role => `      - run: pnpm ${role}\n`).join('')}`);
+      await create('.github/workflows/ci.yml', `name: CI\non:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  # Keep the id \`check\`: the main ruleset requires it. Add \`node scripts/check-project.mjs --strict\` once it shows no warnings.\n  check:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n    steps:\n      - uses: actions/checkout@v4\n      - uses: pnpm/action-setup@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22.15.0\n          cache: pnpm\n      - run: pnpm install --frozen-lockfile\n${roles.map(role => `      - run: pnpm ${role}\n`).join('')}`);
     }
     const after = json(pkg);
     if (JSON.stringify(pkg) !== JSON.stringify(object(packageText, 'package.json'))) files.set('package.json', { path: 'package.json', before: packageText, after });

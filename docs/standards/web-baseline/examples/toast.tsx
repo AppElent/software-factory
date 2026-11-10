@@ -1,3 +1,6 @@
+// App-owned starting point (web-baseline.md). Needs Base UI and React versions
+// compatible with this file, translated labels, and `ToastHost` mounted above
+// every caller.
 import { Toast } from "@base-ui/react/toast";
 
 export function useToast() {

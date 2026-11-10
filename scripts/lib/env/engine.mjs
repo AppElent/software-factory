@@ -30,11 +30,13 @@ export async function checkEnvironment(request) {
         return { findings, operations: planned.plan.operations };
     const cache = new Map();
     const expectedByDestination = new Map();
+    const variables = new Map();
     for (const placement of planned.placements) {
         const label = destinationLabel(placement.destination);
         const names = expectedByDestination.get(label) ?? [];
         names.push(placement.name);
         expectedByDestination.set(label, names);
+        variables.set(`${label}\0${placement.name}`, placement.variable ?? placement.name);
     }
     for (const placement of planned.placements) {
         const label = destinationLabel(placement.destination);
@@ -53,6 +55,7 @@ export async function checkEnvironment(request) {
                         ci: request.options.ci,
                         environ: request.options.environ,
                         expectedNames: expectedByDestination.get(label) ?? [],
+                        variableFor: (name) => variables.get(`${label}\0${name}`) ?? name,
                     });
             cache.set(label, state);
         }
@@ -115,12 +118,13 @@ export function checkJobEnvironment(manifest, environment, environ, options = {}
             skipped.add(label);
             continue;
         }
-        if (environ[placement.name])
+        const variable = placement.variable ?? placement.name;
+        if (environ[variable])
             continue;
         findings.push({
             level: placement.entry.optional ? "warning" : "error",
             code: "destination.missing",
-            message: `${label}/${placement.name}: missing from the job environment (${placement.entry.key})${placement.entry.optional ? " (optional)" : ""}`,
+            message: `${label}/${placement.name}: missing from the job environment${variable === placement.name ? "" : ` as ${variable}`} (${placement.entry.key})${placement.entry.optional ? " (optional)" : ""}`,
         });
     }
     for (const label of skipped)

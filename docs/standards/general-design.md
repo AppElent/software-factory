@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read before designing or changing any user interface.
-version: 1.4.0
+version: 1.4.1
 applies_to: [web, mobile]
 ---
 
@@ -11,8 +11,6 @@ applies_to: [web, mobile]
 Every screen designs all its states, preserves input, and makes destructive actions deliberate.
 
 ## Rules
-
-Rules are required unless marked **Default** (replaceable with a recorded exception).
 
 - Before changing a screen, identify the user's immediate job, primary action, entry/exit navigation, presentation, and Back/Cancel behavior. Design populated, initial-loading, empty, error, pending, refresh, long-text, and keyboard states together.
 - Use a layout-matched skeleton when content shape is predictable; otherwise use appropriate progress feedback. Keep existing content during refresh.
@@ -25,7 +23,3 @@ Rules are required unless marked **Default** (replaceable with a recorded except
 ## Verify
 
 - Delayed, empty, and failed responses as well as success. A screenshot does not establish interaction behavior.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.

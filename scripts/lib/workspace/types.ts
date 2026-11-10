@@ -129,6 +129,7 @@ export type WorkspaceCommandResult =
 	| {
 			status: "missing" | "denied" | "not-found" | "failed";
 			stdout?: string;
+			detail?: string;
 	  };
 
 export type WorkspaceCommandRunner = (

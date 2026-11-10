@@ -33,12 +33,15 @@ jobs:
       ENVIRONMENT_NAME: ${{ github.event_name == 'workflow_dispatch' && 'production' || 'staging' }}
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
       VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      # The Cloudflare Vite plugin picks the Wrangler env at build time and
+      # `wrangler deploy` follows dist/server/wrangler.json; --env is ignored.
       # wrangler.jsonc: top-level = APP_NAME (production), env.staging = APP_NAME-staging.
-      WRANGLER_ARGS: ${{ github.event_name == 'workflow_dispatch' && ' ' || '--env staging' }}
+      CLOUDFLARE_ENV: ${{ github.event_name != 'workflow_dispatch' && 'staging' || '' }}
+      EXPECTED_WORKER: ${{ github.event_name == 'workflow_dispatch' && 'APP_NAME' || 'APP_NAME-staging' }}
     steps:
       - name: Guard production ref
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
@@ -70,5 +73,14 @@ jobs:
             --cmd-url-env-var-name CONVEX_URL \
             --cmd "VITE_CONVEX_URL=\$CONVEX_URL pnpm build"
 
+      # A build for the wrong env would replace another environment's Worker.
+      - name: Guard Worker name
+        run: |
+          built=$(jq -r .name dist/server/wrangler.json)
+          if [ "$built" != "$EXPECTED_WORKER" ]; then
+            echo "::error::Built Worker is $built, expected $EXPECTED_WORKER. Check CLOUDFLARE_ENV."
+            exit 1
+          fi
+
       - name: Deploy Worker
-        run: pnpm exec wrangler deploy $WRANGLER_ARGS
+        run: pnpm exec wrangler deploy

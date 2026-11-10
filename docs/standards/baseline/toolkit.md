@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read when a toolkit sync stops on conflicts or interruption, or when upgrading from an earlier updater.
-version: 1.0.0
+version: 1.1.0
 applies_to: [all]
 ---
 
@@ -12,7 +12,7 @@ Supporting detail for the [baseline](../baseline.md) toolkit rules.
 
 ## Options
 
-`--ref <branch|tag|commit>` is retained in the receipt; `--ref main` returns to the default. `--check` is offline drift detection; `--dry-run` discovers upstream changes. `--source /path/to/developer-tools` installs from a local checkout without fetching or executing it; the receipt says local and records no machine path, and the next normal update fetches the retained ref. Only committed and pushed source is available through GitHub. `--path <root>` targets another project root.
+An update resolves its ref (default `main`) once and fetches every file from that commit. A self-updated `sync-devtools.mjs` runs on the next invocation. `--ref <branch|tag|commit>` is retained in the receipt; `--ref main` returns to the default. `--check` is offline drift detection; `--dry-run` discovers upstream changes. `--source /path/to/developer-tools` installs from a local checkout without fetching or executing it; the receipt says local and records no machine path, and the next normal update fetches the retained ref. Only committed and pushed source is available through GitHub. `--path <root>` targets another project root.
 
 ## Ownership and conflicts
 

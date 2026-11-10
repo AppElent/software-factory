@@ -10,7 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  # Keep the id `check` and give the job no `name:` or matrix: the main ruleset requires
+  # a status check named `check`, and Software Factory reads it as the typecheck, tests,
+  # and lint gate.
+  check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,6 +29,9 @@ jobs:
       - run: pnpm check
       # Manifest and .env.example only; needs no credentials.
       - run: pnpm env:check
+      # Toolkit drift (CI job name, Wrangler environments, dependency ranges). Once
+      # `node scripts/check-project.mjs` shows no warnings, add:
+      #   - run: node scripts/check-project.mjs --strict
       - name: Typecheck web
         run: pnpm typecheck
       - name: Typecheck core

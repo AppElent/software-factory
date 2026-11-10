@@ -10,7 +10,7 @@ import { digestText, readEnvValues, readProjectText } from "./dotenv.mjs";
 import { resolveWorkspaceIdentity } from "./identity.mjs";
 import { defaultWorkspaceStateRoot, readWorkspaceLedger, withWorkspaceLock, writeWorkspaceLedger, } from "./ledger.mjs";
 import { readWorkspacePolicy } from "./policy.mjs";
-import { runWorkspaceCommand } from "./process.mjs";
+import { describeFailure, runWorkspaceCommand } from "./process.mjs";
 import { createScopedCredential, PROVIDER_ENV_REMOVALS, prepareBackend, pushBackend, writeClientOutputs, } from "./provider.mjs";
 const STEP_IDS = [
     "prerequisites",
@@ -137,8 +137,25 @@ export async function prepareWorkspace(options) {
     const identity = dependencies.identity ??
         (await resolveWorkspaceIdentity(options.root, run));
     return withWorkspaceLock(stateRoot, identity, async () => {
-        const ledger = (await readWorkspaceLedger(stateRoot, identity.id)) ??
-            newLedger(identity, policy, now().toISOString());
+        const stored = await readWorkspaceLedger(stateRoot, identity.id);
+        if (stored?.status === "cleaning")
+            return {
+                command: "prepare",
+                workspaceId: identity.id,
+                status: "failed",
+                operations: [],
+                findings: [
+                    {
+                        level: "error",
+                        code: "workspace.cleanup.interrupted",
+                        message: "Workspace cleanup was interrupted; clean this workspace before preparing it again",
+                    },
+                ],
+            };
+        // Completed steps no longer describe a cleaned checkout, so start over.
+        const ledger = stored && stored.status !== "clean"
+            ? stored
+            : newLedger(identity, policy, now().toISOString());
         if (JSON.stringify(ledger.policy) !== JSON.stringify(policy))
             return {
                 command: "prepare",
@@ -310,7 +327,7 @@ export async function prepareWorkspace(options) {
                     removeEnv: PROVIDER_ENV_REMOVALS,
                 });
                 if (result.status !== "ok")
-                    throw new Error(`Dependency installation failed (${result.status})`);
+                    throw new Error(describeFailure("Dependency installation", result));
                 operations.push({ action: "run", target: "pnpm install" });
             });
             if (policy.backend.mode !== "none") {
@@ -332,7 +349,7 @@ export async function prepareWorkspace(options) {
                         removeEnv: PROVIDER_ENV_REMOVALS,
                     });
                     if (result.status !== "ok")
-                        throw new Error(`Build prerequisite ${script} failed (${result.status})`);
+                        throw new Error(describeFailure(`Build prerequisite ${script}`, result));
                     operations.push({ action: "run", target: `pnpm run ${script}` });
                 }
             });
@@ -451,7 +468,7 @@ export async function prepareWorkspace(options) {
                     removeEnv: PROVIDER_ENV_REMOVALS,
                 });
                 if (result.status !== "ok")
-                    throw new Error(`Seed failed (${result.status})`);
+                    throw new Error(describeFailure("Seed", result));
                 operations.push({
                     action: "run",
                     target: `pnpm run ${policy.seedScript}`,
@@ -516,7 +533,7 @@ export async function prepareWorkspace(options) {
                 readiness: ledger.readiness,
             };
         }
-        catch {
+        catch (error) {
             const failedStep = ledger.steps.find((item) => item.status === "failed")?.id ?? "unknown";
             return {
                 command: "prepare",
@@ -528,7 +545,7 @@ export async function prepareWorkspace(options) {
                     {
                         level: "error",
                         code: `workspace.prepare.${failedStep}.failed`,
-                        message: `Workspace preparation stopped at ${failedStep}; rerun to resume from the recorded step`,
+                        message: `Workspace preparation stopped at ${failedStep}: ${error instanceof Error ? error.message : String(error)}. Rerun to resume from the recorded step`,
                     },
                 ],
             };

@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read before designing or changing iOS UI.
-version: 1.2.1
+version: 1.2.2
 applies_to: [ios]
 ---
 
@@ -19,7 +19,3 @@ iOS screens use native controls, top-right screen actions, and working gestures.
 ## Verify
 
 - Swipe actions, swipe-back, and context menus work on device.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.
