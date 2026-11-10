@@ -71,7 +71,10 @@ const TEMPLATES = {
 	bare: () => {},
 };
 
-/** The factory's gates read this. Its job name, `verify`, stands for typecheck, tests, and lint. */
+/**
+ * The factory's gates read this. Its job name, `check`, stands for typecheck, tests, and lint, and is the status
+ * check the `main` ruleset requires, so it keeps no `name:` and no matrix.
+ */
 const ciWorkflow = (node) => `name: CI
 on:
   pull_request:
@@ -81,7 +84,7 @@ concurrency:
   group: ci-\${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  check:
     runs-on: ubuntu-latest
     permissions:
       contents: read

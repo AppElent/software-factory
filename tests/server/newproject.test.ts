@@ -397,6 +397,8 @@ describe("the scaffold script", () => {
 			git(folder, "remote", "set-url", "--push", "origin", remote);
 			expect(baseline().status).toBe(0);
 			expect(git(remote, "ls-tree", "-r", "--name-only", "main")).toContain(".github/workflows/ci.yml");
+			// The `main` ruleset requires a status check named `check`, so the gate job keeps that id.
+			expect(git(remote, "show", "main:.github/workflows/ci.yml")).toMatch(/^jobs:\n {2}check:\n/m);
 			rmSync(root, { recursive: true, force: true });
 		});
 
