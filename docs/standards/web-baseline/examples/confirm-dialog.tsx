@@ -1,3 +1,6 @@
+// App-owned starting point (web-baseline.md). Needs Base UI and React versions
+// compatible with this file, translated labels, and `ConfirmDialogProvider`
+// mounted above every caller.
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import {
 	createContext,

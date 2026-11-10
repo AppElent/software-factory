@@ -99,8 +99,8 @@ const TESTS = /\btests?\b|vitest|jest|pytest|rspec|\bunit\b|\be2e\b|maestro/i;
 const LINT = /\blint\b|biome|eslint/i;
 const PREVIEW = /preview|\bdeploy\b|vercel|pages/i;
 /**
- * The toolkit's CI runs typecheck, tests, and lint in one job called `check` or `verify`. Only a job with exactly
- * that name counts. `Spell check` and `EAS Build` pass without running a single test.
+ * The toolkit's CI runs typecheck, tests, and lint in one job called `check`; older projects call it `verify`. Only a
+ * job with exactly that name counts. `Spell check` and `EAS Build` pass without running a single test.
  */
 const COMBINED = /^(?:[\w-]+\s*\/\s*)?(?:check|checks|verify|ci)$/i;
 

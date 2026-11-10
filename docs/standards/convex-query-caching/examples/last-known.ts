@@ -1,5 +1,19 @@
 // Starter for the `last-known` flavor, layered on `retention.tsx`. Copied code
 // becomes project-owned. Screens import from this file only.
+//
+// Mount `QueryCacheProvider` under the Convex auth provider and above the auth
+// gate, and keep it mounted while signed out; query screens stay below the gate.
+// - `account`: the current account id, `undefined` while the app's auth provider
+//   restores its session, `null` only after confirmed sign-out.
+// - `bundleVersion`: native build plus OTA update id.
+// - `confirmedAccount` and `fallback`: as in `retention.tsx`.
+// It supplies the disk scope, defers pruning while auth loads, prunes when the
+// startup/account/bundle identity resolves, and keys the retention subtree.
+// Confirmed sign-out clears disk; provider unmount alone preserves it for the
+// next launch. It hides protected children and disables disk scope until the
+// identities match. During sign-out or a loading transition it keeps `fallback`
+// visible while Convex still reports authentication; once authentication is
+// lost, the outer auth gate shows its signed-out UI.
 import type { OptionalRestArgsOrSkip, RequestForQueries } from "convex/react";
 import { useConvexAuth, useConvexConnectionState } from "convex/react";
 import type { FunctionReference, FunctionReturnType } from "convex/server";

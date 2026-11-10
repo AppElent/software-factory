@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read before designing or changing native mobile UI.
-version: 1.1.1
+version: 1.1.2
 applies_to: [mobile]
 ---
 
@@ -20,7 +20,3 @@ Native UI uses platform navigation, respects safe areas and the keyboard, and is
 ## Verify
 
 - Affected flows on their intended platforms, including keyboard opening/dismissal and gesture behavior. State any untested platform; web preview/typechecking alone is not device evidence.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.

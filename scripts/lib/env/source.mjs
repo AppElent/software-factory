@@ -153,14 +153,15 @@ export async function loadInfisicalSource(request) {
     return mergeSourceFolders(folders);
 }
 /**
- * Source values read from the job environment under their destination names, for
+ * Source values read from the job environment under their variable names, for
  * `apply --ci` without canonical-source credentials. A workflow maps each value it
- * needs onto the destination name; anything unset is treated as missing.
+ * needs onto its variable name (unprefixed in repository scope); anything unset is
+ * treated as missing.
  */
 export function jobEnvironmentSource(manifest, environment, environ, options = {}) {
     const values = safeRecord();
     for (const placement of selectPlacements(manifest, environment, options)) {
-        const value = environ[placement.name];
+        const value = environ[placement.variable ?? placement.name];
         if (value && !Object.hasOwn(values, placement.entry.infisicalKey))
             values[placement.entry.infisicalKey] = value;
     }

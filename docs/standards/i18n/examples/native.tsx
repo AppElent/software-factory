@@ -26,6 +26,23 @@ export type NativeLocaleConfig<L extends string, M> = {
 	writeStoredLocale?: (locale: L) => void;
 };
 
+export type NativeI18nValue<L extends string, M> = {
+	locale: L;
+	messages: M;
+	setLocale: (locale: L) => void;
+};
+
+export type NativeLocaleProviderProps<L extends string, M> = {
+	/** The app's module-level config; the same object passed to `createNativeI18n`. */
+	config: NativeLocaleConfig<L, M>;
+	children: ReactNode;
+};
+
+// Components and hooks live at module scope (Biome's noComponentHookFactories);
+// `createNativeI18n` only binds their types to the app's locales.
+// The context is untyped; `useLocaleContext<L, M>` restores the app's types.
+const Context = createContext<unknown>(null);
+
 function deviceLocaleHeader(
 	value: readonly NativeDeviceLocale[] | string,
 ): string {
@@ -46,39 +63,39 @@ function readStored<L extends string, M>(
 	}
 }
 
-/** Build a synchronous-first-paint locale provider for a native app. */
-export function createNativeI18n<L extends string, M>(
+/** Resolve the first-paint locale: stored choice, then device locales, then fallback. */
+export function readInitialLocale<L extends string, M>(
 	config: NativeLocaleConfig<L, M>,
-) {
-	function readInitialLocale(): L {
-		let deviceLocales: readonly NativeDeviceLocale[] | string = "";
-		try {
-			deviceLocales = config.getDeviceLocales();
-		} catch {
-			// An unavailable native locale module falls back to the configured locale.
-		}
-		const stored = readStored(config);
-		return resolveLocale(
-			config.locales,
-			config.fallback,
-			isLocale(config.locales, stored) ? stored : undefined,
-			deviceLocaleHeader(deviceLocales),
-		);
+): L {
+	let deviceLocales: readonly NativeDeviceLocale[] | string = "";
+	try {
+		deviceLocales = config.getDeviceLocales();
+	} catch {
+		// An unavailable native locale module falls back to the configured locale.
 	}
+	const stored = readStored(config);
+	return resolveLocale(
+		config.locales,
+		config.fallback,
+		isLocale(config.locales, stored) ? stored : undefined,
+		deviceLocaleHeader(deviceLocales),
+	);
+}
 
-	function hasExplicitLocaleChoice(): boolean {
-		return isLocale(config.locales, readStored(config));
-	}
+export function hasExplicitLocaleChoice<L extends string, M>(
+	config: NativeLocaleConfig<L, M>,
+): boolean {
+	return isLocale(config.locales, readStored(config));
+}
 
-	const Context = createContext<{
-		locale: L;
-		messages: M;
-		setLocale: (locale: L) => void;
-	} | null>(null);
-
-	function LocaleProvider({ children }: { children: ReactNode }) {
-		const [locale, setLocaleState] = useState(readInitialLocale);
-		const setLocale = useCallback((next: L) => {
+/** Synchronous-first-paint locale provider for a native app. */
+export function LocaleProvider<L extends string, M>({
+	config,
+	children,
+}: NativeLocaleProviderProps<L, M>) {
+	const [locale, setLocaleState] = useState(() => readInitialLocale(config));
+	const setLocale = useCallback(
+		(next: L) => {
 			if (!isLocale(config.locales, next)) return;
 			setLocaleState(next);
 			try {
@@ -86,30 +103,42 @@ export function createNativeI18n<L extends string, M>(
 			} catch {
 				// Persistence is best effort; the current session still changes.
 			}
-		}, []);
-		const value = useMemo(
-			() => ({ locale, messages: config.messages[locale], setLocale }),
-			[locale, setLocale],
-		);
-		return <Context.Provider value={value}>{children}</Context.Provider>;
-	}
+		},
+		[config],
+	);
+	const value = useMemo<NativeI18nValue<L, M>>(
+		() => ({ locale, messages: config.messages[locale], setLocale }),
+		[config, locale, setLocale],
+	);
+	return <Context.Provider value={value}>{children}</Context.Provider>;
+}
 
-	function useI18n() {
-		const value = useContext(Context);
-		if (!value) throw new Error("useI18n must be used within a LocaleProvider");
-		return value;
-	}
+/** Context read; apps use the `useI18n` that `createNativeI18n` binds to their types. */
+export function useLocaleContext<L extends string, M>(): NativeI18nValue<L, M> {
+	const value = useContext(Context);
+	if (!value) throw new Error("useI18n must be used within a LocaleProvider");
+	return value as NativeI18nValue<L, M>;
+}
 
-	function useMessages(): M {
-		return useI18n().messages;
-	}
+function useLocaleMessages<L extends string, M>(): M {
+	return useLocaleContext<L, M>().messages;
+}
 
+/**
+ * Bind the module-level provider, hooks, and helpers to one app's locales and
+ * message shape. Call it once at module scope with a module-level config, and
+ * render `<LocaleProvider config={config}>`.
+ */
+export function createNativeI18n<L extends string, M>(
+	config: NativeLocaleConfig<L, M>,
+) {
 	return {
-		LocaleProvider,
-		useI18n,
-		useMessages,
-		readInitialLocale,
-		hasExplicitLocaleChoice,
+		config,
+		LocaleProvider: LocaleProvider<L, M>,
+		useI18n: useLocaleContext<L, M>,
+		useMessages: useLocaleMessages<L, M>,
+		readInitialLocale: (): L => readInitialLocale(config),
+		hasExplicitLocaleChoice: (): boolean => hasExplicitLocaleChoice(config),
 	};
 }
 

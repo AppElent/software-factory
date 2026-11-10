@@ -11,7 +11,17 @@ updates:
     open-pull-requests-limit: 5
     commit-message: { prefix: "chore(deps)" }
     labels: [dependencies]
+    # Each update joins the first group it matches, so packages linked by a peer
+    # dependency share a group listed before the dependency-type groups; split
+    # across dev and prod, each PR fails CI. Keep the groups for packages the
+    # project uses. Ignore entries still apply inside a group.
     groups:
+      cloudflare:
+        patterns: ["wrangler", "@cloudflare/*"]
+        update-types: [minor, patch]
+      convex:
+        patterns: ["convex", "convex-test", "convex-helpers"]
+        update-types: [minor, patch]
       dev-minor-patch:
         dependency-type: development
         update-types: [minor, patch]

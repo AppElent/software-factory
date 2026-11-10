@@ -82,8 +82,10 @@ export async function readRemoteDestination(request) {
     if (destination.kind === "github") {
         if (request.ci) {
             // The job holds the values, so public ones can be compared with the source.
-            const names = request.expectedNames.filter((name) => Boolean(request.environ[name]));
-            return { status: "ok", names, values: Object.fromEntries(names.map((name) => [name, request.environ[name]])) };
+            // Job env holds values under their variable names (unprefixed in repository scope).
+            const variable = request.variableFor ?? ((name) => name);
+            const names = request.expectedNames.filter((name) => Boolean(request.environ[variable(name)]));
+            return { status: "ok", names, values: Object.fromEntries(names.map((name) => [name, request.environ[variable(name)]])) };
         }
         const scope = githubArgs(request.manifest.ENV_CONFIG, destination);
         const [secrets, variables] = await Promise.all([

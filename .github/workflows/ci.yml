@@ -1,7 +1,7 @@
 name: CI
 on: [push, pull_request]
 jobs:
-  verify:
+  check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -14,6 +14,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: node scripts/check-project.mjs --strict
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

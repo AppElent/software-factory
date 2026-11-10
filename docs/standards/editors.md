@@ -2,7 +2,7 @@
 type: standard
 kind: pattern
 description: Read when choosing fullscreen, sheet, or keyboard-anchored editing, or handling drafts.
-version: 1.1.1
+version: 1.2.0
 applies_to: [web, mobile]
 ---
 
@@ -24,17 +24,9 @@ Choose the editing presentation by attention, space, and navigation needs, and n
 - View and edit are separate tasks: viewing reads saved data; editing owns a draft, validation, and save. Create the draft once per editing session and keep it when switching presentation; calling the same hook twice does not share state.
 - Page and sheet are presentations, not separate screens. When content and behavior match, reuse one screen and set the presentation in the navigator. Add page/sheet wrappers only when composition differs; they share content or form components and own navigation and dismissal.
 - Use routed sheets for navigable tasks and local sheets for auxiliary controls.
-- One owner coordinates scroll, keyboard, safe-area insets, and dismissal. The focused input and required actions stay visible. Avoid layering platform hosts inside keyboard windows unless the installed runtime supports that composition.
-
-## Implementation
-
-The developer-tools mobile lab demonstrates native inputs. App editors built on these rules are product bindings, not shared code. A crash workaround for InputAccessoryView with SwiftUI is runtime-specific, not a ban on keyboard-anchored editors.
+- One owner coordinates scroll, keyboard, safe-area insets, and dismissal. The focused input and required actions stay visible. Avoid layering platform hosts inside keyboard windows unless the installed runtime supports that composition. Runtime-specific workarounds live beside the affected adapter.
 
 ## Verify
 
-- Open/focus, next field, nested popup, expansion, dismissal by each route, reopen, invalid input, failed commit, large text, and keyboard motion.
-- Closed auxiliary controls leave the parent tappable.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason. Runtime-specific workarounds belong beside the affected adapter.
+- Before polishing, run a small complete flow: open/focus, next field, nested popup, switching inputs and presentations, expansion, dismissal by each route, reopen, invalid input, failed commit, large text, and keyboard motion. Repeat affected transitions after geometry or adapter changes.
+- The draft survives the intended transitions, and closed auxiliary controls leave the parent tappable.

@@ -2,7 +2,7 @@
 type: standard
 kind: platform
 description: Read before designing or changing Android UI.
-version: 1.1.1
+version: 1.1.2
 applies_to: [android]
 ---
 
@@ -18,7 +18,3 @@ Android screens follow Android conventions while reaching the same product outco
 ## Verify
 
 - Back behavior, keyboard dismissal, edge-to-edge insets, larger text, and relevant gestures on Android.
-
-## Exceptions
-
-Record in `DESIGN_SYSTEM.md`: rule, scope, replacement, reason.

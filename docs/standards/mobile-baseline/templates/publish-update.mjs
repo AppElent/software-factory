@@ -4,7 +4,7 @@
 // env:exec, which adds the Sentry token from the secret store without
 // writing it to a file:
 //
-//   "mobile:update:preview": "node scripts/env.mjs exec preview --only eas -- node apps/mobile/scripts/publish-update.mjs preview"
+//   "mobile:update:preview": "node scripts/env.mjs exec staging --only eas -- node apps/mobile/scripts/publish-update.mjs preview"
 //   pnpm mobile:update:preview --message "…"
 //   pnpm mobile:update:production --upload-only   (retry the maps upload only)
 //

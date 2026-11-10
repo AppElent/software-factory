@@ -68,6 +68,24 @@ async function resolveTool(spec) {
     }
     return external(spec.tool);
 }
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "gu");
+// Provider output reaches the terminal and agent logs, so a failure shows one
+// line of it, with anything shaped like a credential removed.
+export function failureDetail(output) {
+    const lines = output
+        .replace(ANSI, "")
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("at "));
+    const line = lines.findLast((item) => /\berror\b|\bERR_|✖/iu.test(item)) ?? lines.at(-1);
+    return line
+        ?.replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]+@/giu, "$1[redacted]@")
+        .replace(/\b(?:dev|prod|preview|project):[^\s|]*\|\S+/gu, "[redacted]")
+        .replace(/\b(bearer)\s+\S+/giu, "$1 [redacted]")
+        .replace(/\b((?:[\w-]*(?:key|token|secret|password))["']?\s*[=:]\s*)(?:"[^"]*"?|'[^']*'?|\S+)/giu, "$1[redacted]")
+        .slice(0, 300);
+}
+export const describeFailure = (label, result) => `${label} failed (${result.status})${result.detail ? `: ${result.detail}` : ""}`;
 export const runWorkspaceCommand = async (spec) => {
     const executable = await resolveTool(spec);
     if (!executable)
@@ -155,7 +173,7 @@ export const runWorkspaceCommand = async (spec) => {
                 return finish({ status: "not-found" });
             if (/unauthenticated|authentication failed|not authorized|permission denied|forbidden/u.test(safe))
                 return finish({ status: "denied" });
-            return finish({ status: "failed" });
+            return finish({ status: "failed", detail: failureDetail(`${stdout}\n${diagnostic}`) });
         });
         child.stdin.end(spec.input);
     });

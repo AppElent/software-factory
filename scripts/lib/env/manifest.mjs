@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { stripTypeScriptTypes } from "node:module";
 import { assertSafeProjectPath } from "./files.mjs";
+import { resolveEnvironmentManifest, STANDARD_ENVIRONMENTS, STANDARD_SOURCE } from "./routing.mjs";
 export function destinationLabel(destination) {
     switch (destination.kind) {
         case "file":
@@ -31,7 +32,7 @@ export async function loadEnvironmentManifest(root, manifestPath) {
         const loaded = (await import(`data:text/javascript;base64,${encoded}`));
         if (!isRecord(loaded))
             throw new Error("missing exports");
-        return loaded;
+        return resolveEnvironmentManifest(loaded);
     }
     catch {
         throw new Error("Environment manifest could not be imported; runtime imports are unsupported");
@@ -67,11 +68,24 @@ function validateEnvironmentManifestUnsafe(manifest) {
     }
     const envSet = new Set(manifest.ENVIRONMENTS);
     for (const environment of manifest.ENVIRONMENTS) {
-        if (!nonEmpty(manifest.ENV_CONFIG?.source?.environments?.[environment]))
+        const mapped = manifest.ENV_CONFIG?.source?.environments?.[environment];
+        if (!nonEmpty(mapped))
             findings.push({
                 level: "error",
                 code: "source.mapping",
                 message: `${environment}: source mapping is missing`,
+            });
+        if (!STANDARD_ENVIRONMENTS.includes(environment))
+            findings.push({
+                level: "warning",
+                code: "environment.nonstandard",
+                message: `${environment}: not a standard environment (${STANDARD_ENVIRONMENTS.join(", ")})`,
+            });
+        else if (nonEmpty(mapped) && mapped !== STANDARD_SOURCE[environment])
+            findings.push({
+                level: "warning",
+                code: "source.nonstandard",
+                message: `${environment}: reads Infisical ${mapped}, not ${STANDARD_SOURCE[environment]}`,
             });
     }
     const paths = manifest.ENV_CONFIG?.source?.paths;
@@ -152,6 +166,19 @@ function validateEnvironmentManifestUnsafe(manifest) {
                     level: "error",
                     code: "landing.client-prefix",
                     message: `${entry.key}.${consumer}: client name must start with EXPO_PUBLIC_`,
+                });
+            if (/TEST_USER/.test(landing.name) &&
+                landing.environments.some((environment) => environment !== "local" && environment !== "dev"))
+                findings.push({
+                    level: "warning",
+                    code: "landing.test-user",
+                    message: `${entry.key}.${consumer}: test-user values land only in local and dev`,
+                });
+            if ((consumer === "expo-build" || consumer === "eas-tooling") && landing.environments.includes("preview"))
+                findings.push({
+                    level: "warning",
+                    code: "landing.eas-preview",
+                    message: `${entry.key}.${consumer}: the installed preview app reads staging; list "staging", not "preview"`,
                 });
             for (const environment of landing.environments)
                 if (!envSet.has(environment))
